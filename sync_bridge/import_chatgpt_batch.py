@@ -12,9 +12,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-INBOX = Path("/share/stevora_sync/inbox")
-ARCHIVE = Path("/share/stevora_sync/processed")
-MEMORY = Path("/homeassistant/stevora/memory")
+INBOX = Path(os.environ.get("STEVORA_SYNC_INBOX", "/share/stevora_sync/inbox"))
+ARCHIVE = Path(os.environ.get("STEVORA_SYNC_ARCHIVE", "/share/stevora_sync/processed"))
+MEMORY = Path(os.environ.get("STEVORA_MEMORY_DIR", "/homeassistant/stevora/memory"))
 PROPOSALS = MEMORY / "proposals"
 CATEGORIES = {"idea", "decision", "implementation"}
 MAX_BATCH = 100
