@@ -56,9 +56,7 @@ def refresh_memory_status():
                 "proposals": counts,
             },
         })
-        # A successful poll is not necessarily a new import; do not falsify last_sync.
-        if status.get("last_sync") == sync.get("last_check_utc"):
-            status["last_sync"] = None
+        # Legacy last_sync is preserved for compatibility; github_last_check_utc is a poll timestamp, not an import timestamp.
 
         # Avoid rewriting the SD card every 60 seconds if nothing changed.
         comparable_old = dict(previous)
