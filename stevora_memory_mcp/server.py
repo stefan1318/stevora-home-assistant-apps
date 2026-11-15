@@ -89,7 +89,7 @@ def memory_propose(category: str, title: str, details: str, source: str = "HA AI
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         json.dump(record, handle, ensure_ascii=False, indent=2)
-        handle.write("\\n")
+        handle.write("\n")
     return json.dumps({"id": proposal_id, "status": "pending_review"}, ensure_ascii=False)
 
 @mcp.tool()
