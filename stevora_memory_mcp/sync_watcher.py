@@ -11,6 +11,7 @@ _INTERVAL = 60
 def _loop():
     from github_sync import poll_github
     from import_chatgpt_batch import main
+    from memory_status_updater import refresh_memory_status
 
     inbox = Path(os.environ["STEVORA_SYNC_INBOX"])
     stop = threading.Event()
@@ -24,6 +25,7 @@ def _loop():
                 main()
         except Exception:
             _LOG.exception("Local STEVORA Sync Watcher failed; will retry")
+        refresh_memory_status()
         stop.wait(_INTERVAL)
 
 
