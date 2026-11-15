@@ -1,14 +1,14 @@
 name: "STEVORA Memory MCP"
-version: "1.0.0"
+version: "1.1.0"
 slug: "stevora_memory_mcp"
-description: "Read-only MCP server for local STEVORA project memory"
+description: "Read STEVORA memory and stage proposals for human review"
 startup: services
 boot: auto
 init: false
 arch:
   - aarch64
 map:
-  - config:ro
+  - config:rw
 ports:
   8765/tcp: null
 ports_description:
