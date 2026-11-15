@@ -50,8 +50,8 @@ def memory_search(query: str) -> str:
             if query.casefold() in line.casefold():
                 results.append(f"{filename}:{line_no}: {line[:500]}")
                 if len(results) >= 50:
-                    return "\\n".join(results)
-    return "\\n".join(results) or "No matches"
+                    return "\n".join(results)
+    return "\n".join(results) or "No matches"
 
 @mcp.tool()
 def memory_status() -> str:
@@ -118,7 +118,7 @@ def memory_save_confirmed(category: str, title: str, details: str,
         return "Rejected: invalid field lengths"
     # Conservative screening: avoid storing credentials or credential-like material.
     forbidden = re.compile(
-        r"(?i)(password|passwd|api[_ -]?key|secret|bearer\\s+|private[_ -]?key|"
+        r"(?i)(password|passwd|api[_ -]?key|secret|bearer\s+|private[_ -]?key|"
         r"access[_ -]?token|refresh[_ -]?token|парола|токен|частен ключ|"
         r"-----BEGIN|ghp_|github_pat_|sk-[A-Za-z0-9])"
     )
@@ -145,7 +145,7 @@ def memory_save_confirmed(category: str, title: str, details: str,
             return "Rejected: unsupported canonical memory schema"
         items = document["items"]
         fingerprint = hashlib.sha256(
-            (category + "\\0" + title.casefold() + "\\0" + details.casefold()).encode()
+            (category + "\0" + title.casefold() + "\0" + details.casefold()).encode()
         ).hexdigest()[:20]
         record_id = "auto-" + fingerprint
         for item in items:
@@ -165,7 +165,7 @@ def memory_save_confirmed(category: str, title: str, details: str,
         }
         updated = dict(document)
         updated["items"] = [*items, record]
-        payload = (json.dumps(updated, ensure_ascii=False, indent=2) + "\\n").encode()
+        payload = (json.dumps(updated, ensure_ascii=False, indent=2) + "\n").encode()
         if len(payload) > MAX_BYTES:
             return "Rejected: canonical memory size limit"
         backup_dir = MEMORY_DIR / "backups"
