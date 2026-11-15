@@ -92,6 +92,105 @@ def memory_propose(category: str, title: str, details: str, source: str = "HA AI
         handle.write("\n")
     return json.dumps({"id": proposal_id, "status": "pending_review"}, ensure_ascii=False)
 
+
+@mcp.tool()
+def memory_save_confirmed(category: str, title: str, details: str,
+                          user_confirmation: str, source: str = "STEVORA AI") -> str:
+    """Save a confirmed project decision/implementation directly to permanent memory.
+
+    Only call after the user explicitly confirms the specific decision or that
+    the implementation works. Never use for ideas, guesses, tests or secrets.
+    The confirmation must be the user's actual statement, not invented by AI.
+    """
+    import fcntl
+    import hashlib
+    import shutil
+    import tempfile
+
+    if category not in ("decision", "implementation"):
+        return "Rejected: only confirmed decisions and implementations can auto-save"
+    if not all(isinstance(v, str) for v in (title, details, user_confirmation, source)):
+        return "Rejected: invalid text"
+    title, details, user_confirmation, source = [v.strip() for v in
+                                                 (title, details, user_confirmation, source)]
+    if not (3 <= len(title) <= 160 and 5 <= len(details) <= 4000
+            and 5 <= len(user_confirmation) <= 500 and 1 <= len(source) <= 120):
+        return "Rejected: invalid field lengths"
+    # Conservative screening: avoid storing credentials or credential-like material.
+    forbidden = re.compile(
+        r"(?i)(password|passwd|api[_ -]?key|secret|bearer\\s+|private[_ -]?key|"
+        r"access[_ -]?token|refresh[_ -]?token|парола|токен|частен ключ|"
+        r"-----BEGIN|ghp_|github_pat_|sk-[A-Za-z0-9])"
+    )
+    if forbidden.search(" ".join((title, details, user_confirmation))):
+        return "Rejected: possible secret or credential; redact and retry"
+    if MEMORY_DIR.is_symlink() or not MEMORY_DIR.is_dir():
+        return "Rejected: unsafe or missing memory directory"
+    filename = "decisions.json" if category == "decision" else "implementation.json"
+    target = MEMORY_DIR / filename
+    if not target.is_file() or target.is_symlink() or target.stat().st_size > MAX_BYTES:
+        return "Rejected: unsafe or missing canonical memory file"
+
+    lock_path = MEMORY_DIR / ".auto-memory.lock"
+    if lock_path.is_symlink():
+        return "Rejected: unsafe lock"
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        raw = target.read_bytes()
+        try:
+            document = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            return "Rejected: invalid canonical memory JSON"
+        if not isinstance(document, dict) or not isinstance(document.get("items"), list):
+            return "Rejected: unsupported canonical memory schema"
+        items = document["items"]
+        fingerprint = hashlib.sha256(
+            (category + "\\0" + title.casefold() + "\\0" + details.casefold()).encode()
+        ).hexdigest()[:20]
+        record_id = "auto-" + fingerprint
+        for item in items:
+            if isinstance(item, dict) and (
+                item.get("id") == record_id or
+                (str(item.get("title", "")).strip().casefold() == title.casefold()
+                 and item.get("category", category) == category)
+            ):
+                return json.dumps({"status": "already_exists", "id": item.get("id")})
+        now = datetime.now(timezone.utc).isoformat()
+        record = {
+            "id": record_id, "category": category, "title": title,
+            "details": details, "source": source, "created_at": now,
+            "status": "approved", "approved_at": now,
+            "approved_by": "automatic_confirmed_memory",
+            "confirmation": user_confirmation,
+        }
+        updated = dict(document)
+        updated["items"] = [*items, record]
+        payload = (json.dumps(updated, ensure_ascii=False, indent=2) + "\\n").encode()
+        if len(payload) > MAX_BYTES:
+            return "Rejected: canonical memory size limit"
+        backup_dir = MEMORY_DIR / "backups"
+        if backup_dir.is_symlink():
+            return "Rejected: unsafe backup directory"
+        backup_dir.mkdir(mode=0o700, exist_ok=True)
+        backup = backup_dir / (filename + "." + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + ".bak")
+        with open(backup, "xb") as handle:
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        fd, tmp = tempfile.mkstemp(prefix=".auto-memory-", dir=str(MEMORY_DIR))
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, target)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        return json.dumps({"status": "saved", "id": record_id, "category": category},
+                          ensure_ascii=False)
+
 @mcp.tool()
 def memory_list_proposals(limit: int = 10) -> str:
     """List pending proposal summaries; all proposals require human review."""
