@@ -1,5 +1,5 @@
 name: "STEVORA Memory MCP"
-version: "1.1.0"
+version: "1.2.0"
 slug: "stevora_memory_mcp"
 description: "Read STEVORA memory and stage proposals for human review"
 startup: services
@@ -9,6 +9,7 @@ arch:
   - aarch64
 map:
   - config:rw
+  - share:rw
 ports:
   8765/tcp: null
 ports_description:
