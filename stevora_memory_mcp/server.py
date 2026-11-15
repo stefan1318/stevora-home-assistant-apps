@@ -113,4 +113,6 @@ def memory_list_proposals(limit: int = 10) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 if __name__ == "__main__":
+    from sync_watcher import start_watcher
+    start_watcher()
     mcp.run(transport="streamable-http")
