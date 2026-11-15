@@ -1,5 +1,5 @@
 name: "STEVORA Memory MCP"
-version: "1.3.2"
+version: "1.4.0"
 slug: "stevora_memory_mcp"
 description: "STEVORA memory with private GitHub current-sync polling"
 startup: services
