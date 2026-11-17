@@ -115,7 +115,31 @@ async def ws_proposals(hass: HomeAssistant, connection, msg):
     connection.send_result(msg["id"], {"proposals": result})
 
 
+@websocket_api.websocket_command({
+    vol.Required("type"): "stevora_memory/health",
+})
+@websocket_api.async_response
+async def ws_health(hass: HomeAssistant, connection, msg):
+    if not connection.user.is_admin:
+        connection.send_error(msg["id"], "unauthorized", "Admin required")
+        return
+
+    def check():
+        accessible = ROOT.is_dir() and not ROOT.is_symlink()
+        files = []
+        if accessible:
+            for name in sorted(FILES):
+                path = ROOT / name
+                if path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_FILE:
+                    files.append(name)
+        return {"bridge": "ready", "storage_available": accessible, "files": files,
+                "read_only": True, "api_version": 1}
+
+    connection.send_result(msg["id"], await hass.async_add_executor_job(check))
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    websocket_api.async_register_command(hass, ws_health)
     websocket_api.async_register_command(hass, ws_read)
     websocket_api.async_register_command(hass, ws_search)
     websocket_api.async_register_command(hass, ws_proposals)
