@@ -7,6 +7,7 @@ Install as /config/custom_components/stevora_memory_bridge/.
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import voluptuous as vol
@@ -14,6 +15,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from .storage import decide_proposal
 
 DOMAIN = "stevora_memory_bridge"
 ROOT = Path("/config/stevora/memory")
@@ -49,10 +51,9 @@ def _proposals(limit: int) -> list[dict]:
             continue
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
-            result.append({
-                key: record.get(key)
-                for key in ("id", "category", "title", "details", "status", "created_at")
-            })
+            item = {key: record.get(key) for key in ("id", "category", "title", "details", "status", "created_at")}
+            item["revision"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            result.append(item)
         except (OSError, ValueError, TypeError):
             continue
     return result
@@ -138,7 +139,29 @@ async def ws_health(hass: HomeAssistant, connection, msg):
     connection.send_result(msg["id"], await hass.async_add_executor_job(check))
 
 
+@websocket_api.websocket_command({
+    vol.Required("type"): "stevora_memory/decide",
+    vol.Required("proposal_id"): vol.All(cv.string, vol.Length(min=8, max=100)),
+    vol.Required("action"): vol.In(("approve", "reject")),
+    vol.Required("revision"): vol.All(cv.string, vol.Length(min=64, max=64)),
+})
+@websocket_api.async_response
+async def ws_decide(hass: HomeAssistant, connection, msg):
+    if not connection.user.is_admin:
+        connection.send_error(msg["id"], "unauthorized", "Admin required")
+        return
+    try:
+        result = await hass.async_add_executor_job(
+            decide_proposal, msg["proposal_id"], msg["action"],
+            connection.user.id, msg["revision"],
+        )
+        connection.send_result(msg["id"], result)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        connection.send_error(msg["id"], "memory_decision_failed", str(exc))
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    websocket_api.async_register_command(hass, ws_decide)
     websocket_api.async_register_command(hass, ws_health)
     websocket_api.async_register_command(hass, ws_read)
     websocket_api.async_register_command(hass, ws_search)
