@@ -25,9 +25,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = True
-    await hass.http.async_register_static_paths([StaticPathConfig("/stevora_static", str(Path(__file__).parent / "frontend"), False)])
+    data = hass.data.setdefault(DOMAIN, {})
+    # Static HTTP routes outlive config-entry reloads; avoid duplicate routes.
+    if not data.get("_static_registered"):
+        await hass.http.async_register_static_paths([
+            StaticPathConfig("/stevora_static", str(Path(__file__).parent / "frontend"), False)
+        ])
+        data["_static_registered"] = True
     await async_register_panel(hass)
+    data[entry.entry_id] = True
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
 
