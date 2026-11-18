@@ -24,7 +24,9 @@
           "language": "Език",
           "auto_discovery": "Автоматично откриване",
           "voice_enabled": "Разреши гласов асистент",
-          "room_filter": "Помещения"
+          "room_filter": "Помещения",
+          "climate_entities": "Климатични устройства",
+          "lighting_entities": "Осветление"
         }
       }
     }
