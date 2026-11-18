@@ -8,7 +8,8 @@
         "data": {
           "language": "Language",
           "auto_discovery": "Automatic discovery",
-          "voice_enabled": "Enable voice assistant"
+          "voice_enabled": "Voice preference (Hey Stevora is not included)",
+          "panel_enabled": "Install STEVORA Home Panel"
         }
       }
     },
@@ -23,10 +24,11 @@
         "data": {
           "language": "Language",
           "auto_discovery": "Automatic discovery",
-          "voice_enabled": "Enable voice assistant",
+          "voice_enabled": "Voice preference (Hey Stevora is not included)",
           "room_filter": "Rooms",
           "climate_entities": "Climate devices",
-          "lighting_entities": "Lighting"
+          "lighting_entities": "Lighting",
+          "panel_enabled": "Enable STEVORA Home Panel"
         }
       }
     }
