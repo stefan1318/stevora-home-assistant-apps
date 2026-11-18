@@ -86,9 +86,10 @@ class ConfigFlowRuntimeTests(unittest.TestCase):
         keys = {item.name: item.default for item in result["data_schema"]}
         self.assertEqual(keys["language"], "bg")
         self.assertTrue(keys["auto_discovery"])
+        self.assertTrue(keys["panel_enabled"])
         self.assertFalse(keys["voice_enabled"])
 
-        values = {"language": "en", "auto_discovery": True, "voice_enabled": False}
+        values = {"language": "en", "auto_discovery": True, "panel_enabled": False, "voice_enabled": False}
         saved = asyncio.run(flow.async_step_user(values))
         self.assertEqual(saved["type"], "create_entry")
         self.assertEqual(saved["data"], values)
@@ -103,6 +104,7 @@ class ConfigFlowRuntimeTests(unittest.TestCase):
         keys = {item.name: item.default for item in result["data_schema"]}
         self.assertEqual(keys["language"], "en")
         self.assertTrue(keys["voice_enabled"])
+        self.assertTrue(keys["panel_enabled"])
         self.assertEqual(keys["room_filter"], ["kitchen"])
         self.assertIn("climate_entities", keys)
         self.assertIn("lighting_entities", keys)
