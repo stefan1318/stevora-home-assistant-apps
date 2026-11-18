@@ -13,6 +13,10 @@ SOURCE = Path(__file__).resolve().parents[2] / "custom_components/stevora/__init
 class _Entry:
     entry_id = "test-entry"
 
+    def __init__(self):
+        self.data = {}
+        self.options = {}
+
     def add_update_listener(self, fn):
         self.listener = fn
         return fn
@@ -36,6 +40,7 @@ class _Hass:
 class IntegrationLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.panel_events = []
+        self.panel_claim_allowed = True
         self.commands = []
         package = types.ModuleType("stevora_lifecycle_pkg")
         package.__path__ = [str(SOURCE.parent)]
@@ -43,6 +48,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
         async def add(hass):
             self.panel_events.append("register")
+            return self.panel_claim_allowed
 
         async def remove(hass):
             self.panel_events.append("remove")
@@ -105,6 +111,32 @@ class IntegrationLifecycleTests(unittest.TestCase):
         asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
         self.assertEqual(len(self.hass.static_paths), 1)
         self.assertEqual(self.panel_events, ["register", "remove", "register"])
+
+    def test_disabled_panel_does_not_install_or_remove_panel(self):
+        self.hass.entry.options["panel_enabled"] = False
+        asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
+        self.assertEqual(self.panel_events, [])
+        self.assertFalse(self.hass.data["stevora"][self.hass.entry.entry_id]["panel_registered"])
+        asyncio.run(self.integration.async_unload_entry(self.hass, self.hass.entry))
+        self.assertEqual(self.panel_events, [])
+
+    def test_existing_panel_conflict_does_not_remove_foreign_panel(self):
+        self.panel_claim_allowed = False
+        asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
+        state = self.hass.data["stevora"][self.hass.entry.entry_id]
+        self.assertTrue(state["panel_conflict"])
+        self.assertFalse(state["panel_registered"])
+        asyncio.run(self.integration.async_unload_entry(self.hass, self.hass.entry))
+        self.assertEqual(self.panel_events, ["register"])
+
+    def test_enabling_panel_after_disabled_options_reload(self):
+        self.hass.entry.options["panel_enabled"] = False
+        asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
+        asyncio.run(self.integration.async_unload_entry(self.hass, self.hass.entry))
+        self.hass.entry.options["panel_enabled"] = True
+        asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
+        self.assertEqual(self.panel_events, ["register"])
+        self.assertEqual(len(self.hass.static_paths), 1)
 
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
