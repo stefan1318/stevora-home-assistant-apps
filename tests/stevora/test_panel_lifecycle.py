@@ -13,6 +13,7 @@ SOURCE = Path(__file__).resolve().parents[2] / "custom_components/stevora/panel.
 class PanelLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.operations = []
+        self.panel_exists = False
         components = types.ModuleType("homeassistant.components")
         frontend = types.ModuleType("homeassistant.components.frontend")
         panel_custom = types.ModuleType("homeassistant.components.panel_custom")
@@ -24,6 +25,7 @@ class PanelLifecycleTests(unittest.TestCase):
 
         panel_custom.async_register_panel = register_panel
         frontend.async_remove_panel = remove_panel
+        frontend.async_panel_exists = lambda hass, route: self.panel_exists
         components.panel_custom = panel_custom
         components.frontend = frontend
         modules = {
@@ -43,7 +45,7 @@ class PanelLifecycleTests(unittest.TestCase):
 
     def test_panel_install_and_unload(self):
         hass = object()
-        asyncio.run(self.panel.async_register_panel(hass))
+        self.assertTrue(asyncio.run(self.panel.async_register_panel(hass)))
         self.assertEqual(self.operations[0][0], "register")
         params = self.operations[0][1]
         self.assertEqual(params["frontend_url_path"], "stevora")
@@ -54,6 +56,13 @@ class PanelLifecycleTests(unittest.TestCase):
             "frontend_url_path": "stevora",
             "warn_if_unknown": False,
         }))
+
+    def test_existing_panel_route_must_never_be_overwritten(self):
+        self.panel_exists = True
+        result = asyncio.run(self.panel.async_register_panel(object()))
+        self.assertFalse(result)
+        self.assertEqual(self.operations, [])
+
 
 
 if __name__ == "__main__":
