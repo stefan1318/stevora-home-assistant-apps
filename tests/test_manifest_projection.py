@@ -40,3 +40,17 @@ def test_stable_output_across_registry_order():
     assert project_registry(rooms, entries) == project_registry(
         list(reversed(rooms)), list(reversed(entries))
     )
+
+
+def test_device_area_inheritance_and_entity_override():
+    from types import SimpleNamespace
+    rooms, mappings = project_registry(
+        [area("living", "Living"), area("kitchen", "Kitchen")],
+        [
+            SimpleNamespace(entity_id="light.device_room", area_id=None, device_id="dev1", disabled_by=None, hidden_by=None),
+            SimpleNamespace(entity_id="sensor.explicit_room", area_id="kitchen", device_id="dev1", disabled_by=None, hidden_by=None),
+            SimpleNamespace(entity_id="sensor.hidden", area_id=None, device_id="dev1", disabled_by=None, hidden_by="user"),
+        ],
+        {"dev1": SimpleNamespace(area_id="living")},
+    )
+    assert mappings == {"kitchen": ["sensor.explicit_room"], "living": ["light.device_room"]}
