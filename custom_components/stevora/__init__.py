@@ -7,19 +7,18 @@ from pathlib import Path
 from .panel import async_register_panel, async_remove_panel
 from .const import DOMAIN
 from .discovery import build_manifest
+from .permissions import project_manifest_for_user
 
 @websocket_api.websocket_command({"type": "stevora/manifest"})
 @websocket_api.async_response
 async def websocket_manifest(hass, connection, msg):
-    """Only Home Assistant administrators may inspect the full manifest."""
-    if not connection.user.is_admin:
-        connection.send_error(msg["id"], "unauthorized", "Administrator access required")
-        return
+    """Return only entities this authenticated HA user may read/control."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
         connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
         return
-    connection.send_result(msg["id"], build_manifest(hass, entries[0]))
+    manifest = build_manifest(hass, entries[0])
+    connection.send_result(msg["id"], project_manifest_for_user(manifest, connection.user))
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
