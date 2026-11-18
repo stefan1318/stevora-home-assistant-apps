@@ -36,9 +36,6 @@ async def websocket_manifest(hass: HomeAssistant, connection, msg: dict) -> None
     for entity_ids in mappings.values():
         entity_ids.sort()
 
-    installation_id = await hass.async_add_executor_job(
-        lambda: hass.config.location_name
-    )
     # Installation identity must not be derived from the location name.
     # Use Home Assistant's internal instance UUID when available.
     from homeassistant.helpers import instance_id
