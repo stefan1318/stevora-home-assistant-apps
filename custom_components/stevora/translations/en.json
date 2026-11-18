@@ -1,0 +1,27 @@
+{
+  "title": "STEVORA Ecosystem",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up STEVORA",
+        "description": "Configure this Home Assistant installation.",
+        "data": {
+          "language": "Language"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "STEVORA is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "STEVORA settings",
+        "data": {
+          "language": "Language"
+        }
+      }
+    }
+  }
+}
