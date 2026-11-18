@@ -67,6 +67,7 @@ class StevoraHomePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     const items = this.inventory();
     const rooms = this._manifest?.rooms || [];
+    const controllable = new Set(this._manifest?.controllable_entities || []);
     if (this._selectedRoom && !rooms.some(x => x.id === this._selectedRoom)) this._selectedRoom = "";
     this.shadowRoot.innerHTML = `
       <style>
@@ -97,9 +98,9 @@ class StevoraHomePanel extends HTMLElement {
         <p class="status">${this._mode === "stevora" ? this.t("STEVORA конфигурацията е заредена","STEVORA configuration loaded") : this.t("STEVORA Manifest е недостъпен — управлението е изключено","STEVORA manifest unavailable — controls disabled")} · ${items.length} ${this.t("устройства","entities")}</p>
         <div class="grid">${items.map(item => {
           const domain = item.entity_id.split(".")[0];
-          const controls = ["light","switch","fan"].includes(domain)
+          const controls = controllable.has(item.entity_id) && ["light","switch","fan"].includes(domain)
             ? `<div class="actions"><button data-action="toggle" data-id="${this.escape(item.entity_id)}">${this.t("Вкл./Изкл.","Toggle")}</button></div>` : "";
-          const climate = domain === "climate"
+          const climate = controllable.has(item.entity_id) && domain === "climate"
             ? `<div class="actions"><button data-action="temperature-down" data-id="${this.escape(item.entity_id)}">−1°C</button><button data-action="temperature-up" data-id="${this.escape(item.entity_id)}">+1°C</button></div>` : "";
           return `<article><h2>${this.escape(item.attributes?.friendly_name || item.entity_id)}</h2><div class="state">${this.escape(item.state)} ${this.escape(item.attributes?.unit_of_measurement || "")}</div><div class="meta">${this.escape(item.entity_id)}</div>${controls}${climate}</article>`;
         }).join("")}</div>
