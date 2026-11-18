@@ -49,11 +49,14 @@ class StevoraHomePanel extends HTMLElement {
   inventory() {
     const states = Object.values(this._hass?.states || {});
     const allowed = new Set((this._manifest?.entities || []).map(x => x.entity_id));
+    if (this._mode !== "stevora" || !this._manifest) return [];
     return states.filter(x => {
       const domain = x.entity_id.split(".")[0];
       if (!["climate", "light", "switch", "cover", "sensor", "binary_sensor", "fan", "media_player"].includes(domain)) return false;
-      if (this._mode === "stevora" && !allowed.has(x.entity_id)) return false;
-      if (this._selectedRoom && this._mode === "stevora") {
+      if (!allowed.has(x.entity_id)) return false;
+      // Backlights are intentionally never controlled by STEVORA.
+      if (/backlight/i.test(x.entity_id) || /backlight/i.test(x.attributes?.friendly_name || "")) return false;
+      if (this._selectedRoom) {
         return this._manifest.entities.some(y => y.entity_id === x.entity_id && y.area_id === this._selectedRoom);
       }
       return true;
@@ -64,6 +67,7 @@ class StevoraHomePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     const items = this.inventory();
     const rooms = this._manifest?.rooms || [];
+    if (this._selectedRoom && !rooms.some(x => x.id === this._selectedRoom)) this._selectedRoom = "";
     this.shadowRoot.innerHTML = `
       <style>
         :host{display:block;min-height:100%;background:#0c111b;color:#eef3fc;font:15px system-ui,sans-serif}
@@ -90,7 +94,7 @@ class StevoraHomePanel extends HTMLElement {
           <select id="room" aria-label="Room"><option value="">${this.t("Всички помещения","All rooms")}</option>${rooms.map(x => `<option value="${this.escape(x.id)}" ${this._selectedRoom === x.id ? "selected" : ""}>${this.escape(x.name)}</option>`).join("")}</select>
           <button id="refresh">${this.t("Обнови","Refresh")}</button>
         </div></header>
-        <p class="status">${this._mode === "stevora" ? this.t("STEVORA конфигурацията е заредена","STEVORA configuration loaded") : this.t("Стандартен Home Assistant режим","Native Home Assistant mode")} · ${items.length} ${this.t("устройства","entities")}</p>
+        <p class="status">${this._mode === "stevora" ? this.t("STEVORA конфигурацията е заредена","STEVORA configuration loaded") : this.t("STEVORA Manifest е недостъпен — управлението е изключено","STEVORA manifest unavailable — controls disabled")} · ${items.length} ${this.t("устройства","entities")}</p>
         <div class="grid">${items.map(item => {
           const domain = item.entity_id.split(".")[0];
           const controls = ["light","switch","fan"].includes(domain)
