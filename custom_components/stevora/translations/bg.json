@@ -6,7 +6,9 @@
         "title": "Настройка на STEVORA",
         "description": "Конфигуриране на тази Home Assistant инсталация.",
         "data": {
-          "language": "Език"
+          "language": "Език",
+          "auto_discovery": "Автоматично откриване",
+          "voice_enabled": "Разреши гласов асистент"
         }
       }
     },
@@ -19,7 +21,10 @@
       "init": {
         "title": "Настройки на STEVORA",
         "data": {
-          "language": "Език"
+          "language": "Език",
+          "auto_discovery": "Автоматично откриване",
+          "voice_enabled": "Разреши гласов асистент",
+          "room_filter": "Помещения"
         }
       }
     }
