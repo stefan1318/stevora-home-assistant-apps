@@ -35,3 +35,8 @@ jobs:
           PY
       - name: Run contract tests
         run: python -m unittest discover -s tests/stevora -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run Home Panel JavaScript runtime tests
+        run: node tests/stevora/test_panel.mjs
