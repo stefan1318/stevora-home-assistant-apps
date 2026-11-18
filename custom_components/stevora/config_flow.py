@@ -9,6 +9,8 @@ CONF_DASHBOARD = "dashboard_path"
 CONF_VOICE = "voice_enabled"
 CONF_AUTO_DISCOVERY = "auto_discovery"
 CONF_ROOM_FILTER = "room_filter"
+CONF_CLIMATE = "climate_entities"
+CONF_LIGHTING = "lighting_entities"
 
 class StevoraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -38,4 +40,6 @@ class StevoraOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_AUTO_DISCOVERY, default=existing.get(CONF_AUTO_DISCOVERY, True)): bool,
             vol.Required(CONF_VOICE, default=existing.get(CONF_VOICE, False)): bool,
             vol.Optional(CONF_ROOM_FILTER, default=existing.get(CONF_ROOM_FILTER, [])): selector.AreaSelector(selector.AreaSelectorConfig(multiple=True)),
+            vol.Optional(CONF_CLIMATE, default=existing.get(CONF_CLIMATE, [])): selector.EntitySelector(selector.EntitySelectorConfig(domain="climate", multiple=True)),
+            vol.Optional(CONF_LIGHTING, default=existing.get(CONF_LIGHTING, [])): selector.EntitySelector(selector.EntitySelectorConfig(domain="light", multiple=True)),
         }))
