@@ -24,7 +24,9 @@
           "language": "Language",
           "auto_discovery": "Automatic discovery",
           "voice_enabled": "Enable voice assistant",
-          "room_filter": "Rooms"
+          "room_filter": "Rooms",
+          "climate_entities": "Climate devices",
+          "lighting_entities": "Lighting"
         }
       }
     }
