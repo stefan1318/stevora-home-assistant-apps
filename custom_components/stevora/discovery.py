@@ -11,7 +11,9 @@ def build_manifest(hass, entry):
     areas = area_registry.async_get(hass)
     entities = entity_registry.async_get(hass)
     devices = device_registry.async_get(hass)
-    rooms = [{"id": a.id, "name": a.name} for a in areas.async_list_areas()]
+    settings = {**entry.data, **entry.options}
+    selected_areas = set(settings.get("room_filter") or [])
+    rooms = [{"id": a.id, "name": a.name} for a in areas.async_list_areas() if not selected_areas or a.id in selected_areas]
     mappings = {name: [] for name in SUPPORTED_DOMAINS.values()}
     inventory = []
     for entity in entities.entities.values():
@@ -22,6 +24,8 @@ def build_manifest(hass, entry):
             continue
         device = devices.async_get(entity.device_id) if entity.device_id else None
         area_id = entity.area_id or (device.area_id if device else None)
+        if selected_areas and area_id not in selected_areas:
+            continue
         mappings[SUPPORTED_DOMAINS[domain]].append(entity.entity_id)
         inventory.append({
             "entity_id": entity.entity_id,
@@ -34,9 +38,10 @@ def build_manifest(hass, entry):
         "schema_version": SCHEMA_VERSION,
         "installation_id": entry.entry_id,
         "preferred_language": entry.options.get(CONF_LANGUAGE, entry.data.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)),
-        "capabilities": {key: bool(value) for key, value in mappings.items()},
+        "capabilities": {**{key: bool(value) for key, value in mappings.items()}, "voice": bool(settings.get("voice_enabled", False))},
         "rooms": sorted(rooms, key=lambda room: room["name"].casefold()),
         "mappings": {key: sorted(value) for key, value in mappings.items()},
         "entities": sorted(inventory, key=lambda item: item["entity_id"]),
         "revision": 1,
+        "configuration": {"auto_discovery": bool(settings.get("auto_discovery", True))},
     }
