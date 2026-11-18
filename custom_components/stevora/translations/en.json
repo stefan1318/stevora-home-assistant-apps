@@ -1,0 +1,36 @@
+{
+  "title": "STEVORA Ecosystem",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up STEVORA",
+        "description": "Configure this Home Assistant installation.",
+        "data": {
+          "language": "Language",
+          "auto_discovery": "Automatic discovery",
+          "voice_enabled": "Voice preference (Hey Stevora is not included)",
+          "panel_enabled": "Install STEVORA Home Panel"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "STEVORA is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "STEVORA settings",
+        "data": {
+          "language": "Language",
+          "auto_discovery": "Automatic discovery",
+          "voice_enabled": "Voice preference (Hey Stevora is not included)",
+          "room_filter": "Rooms",
+          "climate_entities": "Climate devices",
+          "lighting_entities": "Lighting",
+          "panel_enabled": "Enable STEVORA Home Panel"
+        }
+      }
+    }
+  }
+}

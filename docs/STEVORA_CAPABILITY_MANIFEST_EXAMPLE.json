@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "installation_id": "example-installation",
+  "capabilities": {
+    "panel": true,
+    "climate": true,
+    "lighting": true,
+    "voice": false
+  },
+  "preferred_language": "bg",
+  "rooms": [
+    {
+      "id": "living_room",
+      "name": "Living Room"
+    }
+  ],
+  "mappings": {
+    "climate": [
+      "climate.example"
+    ],
+    "lighting": [
+      "light.example"
+    ]
+  },
+  "revision": 1
+}

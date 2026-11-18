@@ -1,0 +1,65 @@
+# [STE-05] Home Assistant Dunav — controlled migration to STEVORA Universal Integration v1
+
+Status: **implementation in progress / experimental, not approved for production**.
+
+## Verified baseline (2026-11-18)
+- HA Core 2026.11.2 / HA OS 18.5.
+- `custom_components/stevora_manifest` detected by HA loader at 22:40 local time.
+- Existing STEVORA memory integrations and scenes must remain intact.
+- Android STEVORA Companion 2.1 has a native Connection & Ecosystem screen.
+- Authenticated legacy `stevora/manifest` WebSocket response was verified (schema 1.0, six rooms); Android independently confirmed 38 filtered entities.
+
+## Critical conflict
+Both `custom_components/stevora_manifest/__init__.py` and
+`custom_components/stevora/__init__.py` register **the same**
+`stevora/manifest` WebSocket command. Do **not** enable both
+integrations simultaneously. This may lead to duplicate-command errors or
+ambiguous responses. The legacy `stevora_manifest:` YAML entry does not
+create a config entry; absence from Settings > Integrations alone is not
+proof of failure.
+
+## Required gates before migration
+1. Create and verify a full Home Assistant backup.
+2. Verify the legacy command with an authenticated administrator WebSocket
+   client. Record whether it returns a valid result, `unknown_command`,
+   `unauthorized`, or a server error. Do not share access tokens.
+3. In a **test HA instance**, remove the legacy YAML key
+   `stevora_manifest:` and its folder; restart; confirm the old command is
+   no longer registered.
+4. Install `custom_components/stevora` in the test instance, restart,
+   configure **STEVORA Ecosystem** through Settings > Devices & services.
+5. Verify admin manifest schema 1.0, unique installation ID, room mappings,
+   role denial for non-admin, unload/reload, and no leakage between homes.
+6. Test Android native discovery and an independent HA instance; only then
+   plan a backed-up migration for Dunav.
+
+## Rollback
+Restore the prior `configuration.yaml` and
+`custom_components/stevora_manifest` from backup, remove the experimental
+`custom_components/stevora` only if newly installed, then restart HA.
+Never remove STEVORA Memory MCP, memory bridge, memory manager, scenes,
+Bluetooth integrations or existing panels as part of this migration.
+
+## Product release gates
+Android: `com.stevora.companion`, version, STEVORA branding, upgrade signing.
+iOS: STEVORA branding, physical-device IPA compatible with AltStore.
+No Home Assistant-branded PR #1 integration artifacts are STEVORA products.
+
+## Universal manifest compatibility (2026-11-18)
+- Universal `stevora/discovery.py` now returns room-ID keyed `mappings` for Android's existing `StevoraHomeProjection`, plus separate `domain_mappings` and `entities` inventory.
+- This is a source change only: it has NOT been deployed to Dunav or verified in a Home Assistant test instance.
+- The universal manifest currently filters unsupported entity domains and uses a config-entry ID as installation ID; both require explicit migration/identity compatibility tests.
+- Do not assume that 38 entities in the legacy manifest equals the universal manifest count.
+- Existing `stevora_manifest` and `stevora` register the same WebSocket command. Never activate both together.
+- Next gates: automated tests for room mappings, Home Assistant API compatibility, admin-only access, config-flow and panel lifecycle, followed by test-instance migration and rollback rehearsal.
+
+## Source-only gate update (2026-11-19)
+
+- GitHub Actions run [#44407209500](https://github.com/stefan1318/stevora-home-assistant-apps/actions/runs/44407209500) passed the original contract checks.
+- The feature branch now includes mock-executed config/options flow tests, user permission projection tests, WebSocket transport and panel setup/unload/reload tests, and JS frontend execution tests.
+- Fixed the panel removal call to use Home Assistant `frontend.async_remove_panel`, and guarded the static asset registration against repeated config-entry reloads.
+- The full manifest remains available to administrators. Authenticated non-administrators now receive a filtered read-only capability view; the frontend offers controls only for explicitly controllable entities. This **has not yet been tested in a real HA instance**.
+- `strings.json` has been aligned to the actual BG/EN setup and options fields.
+- The current source/CI tests do **not** constitute an HA installer, rollback rehearsal, or proof of real-user authorization.
+
+**Next required acceptance:** disposable HA test instance → actual config wizard → role tests → panel install/update/unload/reinstall → legacy conflict check → full backup and verified restore drill. Only after these gates should a separate, explicitly approved Dunav change be attempted.
