@@ -1,13 +1,13 @@
 # [STE-05] Home Assistant Dunav — controlled migration to STEVORA Universal Integration v1
 
-Status: **planned / experimental, not approved for production**.
+Status: **implementation in progress / experimental, not approved for production**.
 
 ## Verified baseline (2026-11-18)
 - HA Core 2026.11.2 / HA OS 18.5.
 - `custom_components/stevora_manifest` detected by HA loader at 22:40 local time.
 - Existing STEVORA memory integrations and scenes must remain intact.
 - Android STEVORA Companion 2.1 has a native Connection & Ecosystem screen.
-- No successful authenticated `stevora/manifest` response has yet been verified.
+- Authenticated legacy `stevora/manifest` WebSocket response was verified (schema 1.0, six rooms); Android independently confirmed 38 filtered entities.
 
 ## Critical conflict
 Both `custom_components/stevora_manifest/__init__.py` and
@@ -44,3 +44,11 @@ Bluetooth integrations or existing panels as part of this migration.
 Android: `com.stevora.companion`, version, STEVORA branding, upgrade signing.
 iOS: STEVORA branding, physical-device IPA compatible with AltStore.
 No Home Assistant-branded PR #1 integration artifacts are STEVORA products.
+
+## Universal manifest compatibility (2026-11-18)
+- Universal `stevora/discovery.py` now returns room-ID keyed `mappings` for Android's existing `StevoraHomeProjection`, plus separate `domain_mappings` and `entities` inventory.
+- This is a source change only: it has NOT been deployed to Dunav or verified in a Home Assistant test instance.
+- The universal manifest currently filters unsupported entity domains and uses a config-entry ID as installation ID; both require explicit migration/identity compatibility tests.
+- Do not assume that 38 entities in the legacy manifest equals the universal manifest count.
+- Existing `stevora_manifest` and `stevora` register the same WebSocket command. Never activate both together.
+- Next gates: automated tests for room mappings, Home Assistant API compatibility, admin-only access, config-flow and panel lifecycle, followed by test-instance migration and rollback rehearsal.
