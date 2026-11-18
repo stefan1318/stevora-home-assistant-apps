@@ -5,7 +5,10 @@ PANEL_URL = "/stevora"
 PANEL_NAME = "stevora-home-panel"
 PANEL_MODULE = "/stevora_static/stevora-panel.js"
 
-async def async_register_panel(hass):
+async def async_register_panel(hass) -> bool:
+    """Claim /stevora only if no other panel already owns that route."""
+    if frontend.async_panel_exists(hass, PANEL_URL.lstrip("/")):
+        return False
     await panel_custom.async_register_panel(
         hass,
         webcomponent_name=PANEL_NAME,
@@ -16,6 +19,7 @@ async def async_register_panel(hass):
         require_admin=False,
         config={},
     )
+    return True
 
 async def async_remove_panel(hass):
     frontend.async_remove_panel(hass, frontend_url_path=PANEL_URL.lstrip("/"), warn_if_unknown=False)
