@@ -1,0 +1,22 @@
+name: STEVORA Home Hub manifest contract tests
+on:
+  push:
+    branches: [feature/stevora-universal-discovery-v1]
+    paths:
+      - 'stevora_manifest_v1.py'
+      - 'tests/test_stevora_manifest_v1.py'
+      - '.github/workflows/stevora-manifest-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  manifest-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate manifest against multiple-home fixtures
+        run: python -m unittest discover -s tests -v
