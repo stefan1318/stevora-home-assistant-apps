@@ -3,6 +3,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 from .const import DOMAIN, CONF_LANGUAGE, DEFAULT_LANGUAGE
+from .modules import CONF_PANEL_ENABLED
 
 LANGUAGES = ("bg", "en")
 CONF_DASHBOARD = "dashboard_path"
@@ -23,6 +24,7 @@ class StevoraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=vol.Schema({
             vol.Required(CONF_LANGUAGE, default=DEFAULT_LANGUAGE): vol.In(LANGUAGES),
             vol.Required(CONF_AUTO_DISCOVERY, default=True): bool,
+            vol.Required(CONF_PANEL_ENABLED, default=True): bool,
             vol.Required(CONF_VOICE, default=False): bool,
         }))
 
@@ -38,6 +40,7 @@ class StevoraOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="init", data_schema=vol.Schema({
             vol.Required(CONF_LANGUAGE, default=existing.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)): vol.In(LANGUAGES),
             vol.Required(CONF_AUTO_DISCOVERY, default=existing.get(CONF_AUTO_DISCOVERY, True)): bool,
+            vol.Required(CONF_PANEL_ENABLED, default=existing.get(CONF_PANEL_ENABLED, True)): bool,
             vol.Required(CONF_VOICE, default=existing.get(CONF_VOICE, False)): bool,
             vol.Optional(CONF_ROOM_FILTER, default=existing.get(CONF_ROOM_FILTER, [])): selector.AreaSelector(selector.AreaSelectorConfig(multiple=True)),
             vol.Optional(CONF_CLIMATE, default=existing.get(CONF_CLIMATE, [])): selector.EntitySelector(selector.EntitySelectorConfig(domain="climate", multiple=True)),
