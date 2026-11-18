@@ -8,6 +8,7 @@ from .panel import async_register_panel, async_remove_panel
 from .const import DOMAIN
 from .discovery import build_manifest
 from .permissions import project_manifest_for_user
+from .modules import panel_requested
 
 @websocket_api.websocket_command({"type": "stevora/manifest"})
 @websocket_api.async_response
@@ -32,8 +33,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             StaticPathConfig("/stevora_static", str(Path(__file__).parent / "frontend"), False)
         ])
         data["_static_registered"] = True
-    await async_register_panel(hass)
-    data[entry.entry_id] = True
+    state = {"panel_registered": False, "panel_conflict": False}
+    if panel_requested(entry):
+        state["panel_registered"] = await async_register_panel(hass)
+        state["panel_conflict"] = not state["panel_registered"]
+    data[entry.entry_id] = state
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
 
@@ -41,6 +45,8 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    await async_remove_panel(hass)
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    state = hass.data.get(DOMAIN, {}).pop(entry.entry_id, {})
+    # A foreign /stevora panel must never be removed by STEVORA unload.
+    if isinstance(state, dict) and state.get("panel_registered"):
+        await async_remove_panel(hass)
     return True
