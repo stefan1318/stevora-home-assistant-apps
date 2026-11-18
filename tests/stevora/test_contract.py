@@ -1,21 +1,32 @@
-"""Dependency-free contract checks. Not a Home Assistant integration test."""
+"""Dependency-free checks; full HA runtime tests remain mandatory."""
+import ast
 import json
 import pathlib
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+COMP = ROOT / "custom_components/stevora"
 
 class ContractTests(unittest.TestCase):
     def test_manifest(self):
-        m = json.loads((ROOT / "custom_components/stevora/manifest.json").read_text())
+        m = json.loads((COMP / "manifest.json").read_text())
         self.assertEqual(m["domain"], "stevora")
         self.assertTrue(m["config_flow"])
 
     def test_translations(self):
         for language in ("bg", "en"):
-            content = json.loads((ROOT / f"custom_components/stevora/translations/{language}.json").read_text())
+            content = json.loads((COMP / f"translations/{language}.json").read_text())
             self.assertIn("config", content)
             self.assertIn("options", content)
+
+    def test_python_syntax(self):
+        for file in COMP.glob("*.py"):
+            ast.parse(file.read_text(), filename=str(file))
+
+    def test_websocket_requires_admin(self):
+        code = (COMP / "__init__.py").read_text()
+        self.assertIn("connection.user.is_admin", code)
+        self.assertIn("stevora/manifest", code)
 
     def test_sample_has_no_secrets(self):
         sample = json.loads((ROOT / "docs/STEVORA_CAPABILITY_MANIFEST_EXAMPLE.json").read_text())
