@@ -1,8 +1,9 @@
-"""Read-only device discovery. Full manifest is restricted to HA administrators."""
+"""Read-only device discovery. User scope is applied by the WS handler."""
 import json
 import zlib
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from .const import SCHEMA_VERSION, CONF_LANGUAGE, DEFAULT_LANGUAGE
+from .modules import describe_modules, panel_requested
 
 SUPPORTED_DOMAINS = {
     "climate": "climate", "light": "lighting", "switch": "switches",
@@ -45,17 +46,22 @@ def build_manifest(hass, entry):
         if chosen:
             available = set(domain_mappings[group])
             domain_mappings[group] = sorted(item for item in chosen if item in available)
-    revision_payload = json.dumps({"rooms": rooms, "mappings": mappings, "domain_mappings": domain_mappings, "settings": settings}, sort_keys=True, default=str)
+    modules = describe_modules(hass, entry)
+    revision_payload = json.dumps({"rooms": rooms, "mappings": mappings, "domain_mappings": domain_mappings, "settings": settings, "modules": modules}, sort_keys=True, default=str)
     revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
         "schema_version": SCHEMA_VERSION,
         "installation_id": entry.entry_id,
         "preferred_language": entry.options.get(CONF_LANGUAGE, entry.data.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)),
-        "capabilities": {**{key: bool(value) for key, value in domain_mappings.items()}, "voice": bool(settings.get("voice_enabled", False))},
+        "capabilities": {**{key: bool(value) for key, value in domain_mappings.items()}, "voice": modules["hey_stevora"]["status"] == "active"},
         "rooms": sorted(rooms, key=lambda room: room["name"].casefold()),
         "mappings": {key: sorted(value) for key, value in mappings.items()},
         "domain_mappings": {key: sorted(value) for key, value in domain_mappings.items()},
         "entities": sorted(inventory, key=lambda item: item["entity_id"]),
         "revision": revision,
-        "configuration": {"auto_discovery": bool(settings.get("auto_discovery", True))},
+        "modules": modules,
+        "configuration": {
+            "auto_discovery": bool(settings.get("auto_discovery", True)),
+            "panel_enabled": panel_requested(entry),
+        },
     }
