@@ -83,8 +83,12 @@ class IntegrationLifecycleTests(unittest.TestCase):
             "homeassistant.components.http": http,
         })
         self.module_patch.start()
-        spec = importlib.util.spec_from_file_location("stevora_lifecycle_pkg.integration", SOURCE)
+        # __init__.py is a package, not a nested module.
+        spec = importlib.util.spec_from_file_location(
+            "stevora_lifecycle_pkg", SOURCE, submodule_search_locations=[str(SOURCE.parent)]
+        )
         self.integration = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = self.integration
         spec.loader.exec_module(self.integration)
         self.hass = _Hass()
 
