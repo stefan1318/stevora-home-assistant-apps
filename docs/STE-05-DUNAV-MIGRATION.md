@@ -52,3 +52,14 @@ No Home Assistant-branded PR #1 integration artifacts are STEVORA products.
 - Do not assume that 38 entities in the legacy manifest equals the universal manifest count.
 - Existing `stevora_manifest` and `stevora` register the same WebSocket command. Never activate both together.
 - Next gates: automated tests for room mappings, Home Assistant API compatibility, admin-only access, config-flow and panel lifecycle, followed by test-instance migration and rollback rehearsal.
+
+## Source-only gate update (2026-11-19)
+
+- GitHub Actions run [#44407209500](https://github.com/stefan1318/stevora-home-assistant-apps/actions/runs/44407209500) passed the original contract checks.
+- The feature branch now includes mock-executed config/options flow tests, user permission projection tests, WebSocket transport and panel setup/unload/reload tests, and JS frontend execution tests.
+- Fixed the panel removal call to use Home Assistant `frontend.async_remove_panel`, and guarded the static asset registration against repeated config-entry reloads.
+- The full manifest remains available to administrators. Authenticated non-administrators now receive a filtered read-only capability view; the frontend offers controls only for explicitly controllable entities. This **has not yet been tested in a real HA instance**.
+- `strings.json` has been aligned to the actual BG/EN setup and options fields.
+- The current source/CI tests do **not** constitute an HA installer, rollback rehearsal, or proof of real-user authorization.
+
+**Next required acceptance:** disposable HA test instance → actual config wizard → role tests → panel install/update/unload/reinstall → legacy conflict check → full backup and verified restore drill. Only after these gates should a separate, explicitly approved Dunav change be attempted.
