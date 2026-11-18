@@ -48,7 +48,8 @@ async def websocket_manifest(hass: HomeAssistant, connection, msg: dict) -> None
     entities = entity_registry.async_get(hass)
     devices = device_registry.async_get(hass)
     rooms, mappings = project_registry(
-        areas.async_list_areas(), entities.entities.values(), devices.devices
+        areas.async_list_areas(), entities.entities.values(),
+        {device.id: device for device in devices.devices}
     )
 
     # Installation identity must not be derived from the location name.
