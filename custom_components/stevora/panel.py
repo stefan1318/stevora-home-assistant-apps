@@ -1,5 +1,5 @@
 """Register the STEVORA custom panel inside Home Assistant."""
-from homeassistant.components import panel_custom
+from homeassistant.components import frontend, panel_custom
 
 PANEL_URL = "/stevora"
 PANEL_NAME = "stevora-home-panel"
@@ -18,4 +18,4 @@ async def async_register_panel(hass):
     )
 
 async def async_remove_panel(hass):
-    await panel_custom.async_remove_panel(hass, frontend_url_path=PANEL_URL.lstrip("/"))
+    frontend.async_remove_panel(hass, frontend_url_path=PANEL_URL.lstrip("/"), warn_if_unknown=False)
