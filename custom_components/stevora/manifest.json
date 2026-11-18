@@ -4,7 +4,12 @@
   "version": "0.1.0",
   "documentation": "https://github.com/stefan1318/stevora-home-assistant-apps",
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "websocket_api"
+  ],
   "codeowners": [],
   "iot_class": "local_push"
 }
