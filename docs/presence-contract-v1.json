@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "product": "STEVORA Ecosystem",
+  "contract_id": "stevora.presence.v1",
+  "status": "proposed",
+  "source": "home_assistant_native",
+  "mobile_sources": [
+    "mobile_app_ios",
+    "mobile_app_android"
+  ],
+  "entities": {
+    "primary": "person",
+    "secondary": "device_tracker"
+  },
+  "scope": "per_home_assistant_instance",
+  "user_link": "verified_home_assistant_user_id_to_person",
+  "privacy": {
+    "opt_in": true,
+    "coordinates_default_visibility": "hidden",
+    "backend_permissions_required": true,
+    "shared_wall_accounts_as_person": false
+  },
+  "states": [
+    "home",
+    "not_home",
+    "zone",
+    "unknown",
+    "unavailable"
+  ],
+  "icloud_enabled": false,
+  "signed_release_required": true,
+  "versioned_migrations_required": true
+}
