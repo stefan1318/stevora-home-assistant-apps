@@ -18,6 +18,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+def project_registry(areas, entities):
+    """Deterministic registry projection; ignores disabled and unassigned entities."""
+    rooms = [
+        {"id": area.id, "name": area.name}
+        for area in sorted(areas, key=lambda area: (area.name.casefold(), area.id))
+    ]
+    mappings = {room["id"]: [] for room in rooms}
+    for entry in entities:
+        if entry.disabled_by is None and entry.area_id in mappings:
+            mappings[entry.area_id].append(entry.entity_id)
+    for entity_ids in mappings.values():
+        entity_ids.sort()
+    return rooms, mappings
+
+
 @websocket_api.websocket_command({"type": "stevora/manifest"})
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -25,16 +40,7 @@ async def websocket_manifest(hass: HomeAssistant, connection, msg: dict) -> None
     """Return areas and entities from this HA installation only."""
     areas = area_registry.async_get(hass)
     entities = entity_registry.async_get(hass)
-    rooms = [
-        {"id": area.id, "name": area.name}
-        for area in sorted(areas.async_list_areas(), key=lambda area: area.name)
-    ]
-    mappings: dict[str, list[str]] = {room["id"]: [] for room in rooms}
-    for entry in entities.entities.values():
-        if entry.disabled_by is None and entry.area_id in mappings:
-            mappings[entry.area_id].append(entry.entity_id)
-    for entity_ids in mappings.values():
-        entity_ids.sort()
+    rooms, mappings = project_registry(areas.async_list_areas(), entities.entities.values())
 
     # Installation identity must not be derived from the location name.
     # Use Home Assistant's internal instance UUID when available.
