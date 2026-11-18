@@ -23,10 +23,13 @@ class ContractTests(unittest.TestCase):
         for file in COMP.glob("*.py"):
             ast.parse(file.read_text(), filename=str(file))
 
-    def test_websocket_requires_admin(self):
+    def test_websocket_filters_by_user_permissions(self):
         code = (COMP / "__init__.py").read_text()
-        self.assertIn("connection.user.is_admin", code)
+        permissions = (COMP / "permissions.py").read_text()
+        self.assertIn("project_manifest_for_user(manifest, connection.user)", code)
         self.assertIn("stevora/manifest", code)
+        self.assertIn("POLICY_READ", permissions)
+        self.assertIn("POLICY_CONTROL", permissions)
 
     def test_universal_manifest_room_mapping_contract(self):
         code = (COMP / "discovery.py").read_text()
@@ -42,6 +45,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn('if (!allowed.has(x.entity_id)) return false;', code)
         self.assertIn('/backlight/i.test(x.entity_id)', code)
         self.assertIn('this._hass.callService(', code)
+        self.assertIn('controllable.has(item.entity_id)', code)
 
     def test_sample_has_no_secrets(self):
         sample = json.loads((ROOT / "docs/STEVORA_CAPABILITY_MANIFEST_EXAMPLE.json").read_text())
