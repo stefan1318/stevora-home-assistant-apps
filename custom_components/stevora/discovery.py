@@ -1,4 +1,6 @@
 """Read-only device discovery. Full manifest is restricted to HA administrators."""
+import json
+import zlib
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from .const import SCHEMA_VERSION, CONF_LANGUAGE, DEFAULT_LANGUAGE
 
@@ -34,6 +36,14 @@ def build_manifest(hass, entry):
             "device_id": entity.device_id,
             "name": entity.name or entity.original_name or entity.entity_id,
         })
+    # Explicit user mappings take precedence; empty selection means automatic discovery.
+    for option, group in (("climate_entities", "climate"), ("lighting_entities", "lighting")):
+        chosen = settings.get(option) or []
+        if chosen:
+            available = set(mappings[group])
+            mappings[group] = sorted(item for item in chosen if item in available)
+    revision_payload = json.dumps({"rooms": rooms, "mappings": mappings, "settings": settings}, sort_keys=True, default=str)
+    revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
         "schema_version": SCHEMA_VERSION,
         "installation_id": entry.entry_id,
@@ -42,6 +52,6 @@ def build_manifest(hass, entry):
         "rooms": sorted(rooms, key=lambda room: room["name"].casefold()),
         "mappings": {key: sorted(value) for key, value in mappings.items()},
         "entities": sorted(inventory, key=lambda item: item["entity_id"]),
-        "revision": 1,
+        "revision": revision,
         "configuration": {"auto_discovery": bool(settings.get("auto_discovery", True))},
     }
