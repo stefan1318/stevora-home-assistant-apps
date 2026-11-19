@@ -92,5 +92,44 @@ class AdminAuthorizationTests(unittest.TestCase):
             self.assertFalse(self.results)
 
 
+    def test_admin_cannot_explicitly_include_renamed_backlight(self):
+        self.connection.user.is_admin = True
+        mirror = types.SimpleNamespace(
+            entity_id="light.mirror", disabled_by=None, hidden_by=None,
+            name="Mirror", original_name="Mirror backlight",
+        )
+        self.api.entity_registry.async_get = lambda hass: types.SimpleNamespace(
+            entities={"light.mirror": mirror}
+        )
+        asyncio.run(self.api.rooms_update(self.hass, self.connection, {
+            "id": 12, "expected_revision": 1,
+            "entities": [{"entity_id": "light.mirror", "visibility": "include"}],
+        }))
+        self.assertEqual(self.errors[0][1], "invalid_entity")
+        self.assertFalse(self.results)
+
+    def test_admin_cannot_enable_controls_on_renamed_backlight(self):
+        self.connection.user.is_admin = True
+        mirror = types.SimpleNamespace(
+            entity_id="light.mirror", disabled_by=None, hidden_by=None,
+            name="Mirror", original_name="Mirror Back Light",
+        )
+        self.api.entity_registry.async_get = lambda hass: types.SimpleNamespace(
+            entities={"light.mirror": mirror}
+        )
+        self.api.area_registry.async_get = lambda hass: types.SimpleNamespace(
+            async_list_areas=lambda: []
+        )
+        async def users():
+            return []
+        self.hass.auth = types.SimpleNamespace(async_get_users=users)
+        asyncio.run(self.api.devices_update(self.hass, self.connection, {
+            "id": 13, "expected_revision": 1,
+            "profiles": {"light.mirror": {"controls": ["toggle"]}},
+        }))
+        self.assertEqual(self.errors[0][1], "invalid_profile")
+        self.assertFalse(self.results)
+
+
 if __name__ == "__main__":
     unittest.main()
