@@ -425,17 +425,22 @@ class StevoraHomePanel extends HTMLElement {
       content = `${sectionTitle(this.t("Всички устройства","All devices"),allCards.length+" "+this.t("устройства","entities"))}
         ${cardGrid(allCards,this.t("Няма открити устройства","No entities discovered"))}`;
     } else if (this._view === "scenes") {
-      content = `${sectionTitle(this.t("Сцени и автоматизации","Scenes and automations"))}
-        <div class="v7-two">
-          <section class="v7-card"><div class="v7-card-title">▷ ${this.t("Сцени","Scenes")}</div>
-            <div class="v7-banner">${this.t("Универсалният manifest все още не предоставя сцени с проверени потребителски права. Няма автоматично изпълнение на сцени.","The current manifest does not expose user-authorized scenes. No scene is executed automatically.")}</div>
-            ${isAdmin ? `<div class="v7-actions"><a class="v7-action" href="/config/scene/dashboard">${this.t("Сцени в Home Assistant","HA scene editor")}</a></div>` : ""}
-          </section>
-          <section class="v7-card"><div class="v7-card-title">⚙ ${this.t("Автоматизации","Automations")}</div>
-            <div class="v7-muted">${this.t("Редакторът използва нативните права и конфигурация на Home Assistant.","The native Home Assistant editor enforces the current user's permissions.")}</div>
-            ${isAdmin ? `<div class="v7-actions"><a class="v7-action" href="/config/automation/dashboard">${this.t("Отвори автоматизации","Open automations")}</a></div>` : ""}
-          </section>
-        </div>`;
+      content = sectionTitle(this.t("Сцени и автоматизации","Scenes and automations")) +
+        '<div class="v7-two"><section class="v7-card"><div class="v7-card-title">▷ ' +
+        this.t("Сцени","Scenes") + '</div>' +
+        (hubActive ? (hubSceneList || '<p class="v7-muted">' +
+          this.t("Няма достъпни сцени","No accessible scenes") + '</p>') :
+          '<div class="v7-banner">' + this.t("Home Hub не е активен","Home Hub not active") + '</div>') +
+        '</section><section class="v7-card"><div class="v7-card-title">⚙ ' +
+        this.t("Автоматизации и скриптове","Automations and scripts") + '</div>' +
+        (hubAutomationList || '<p class="v7-muted">' +
+          this.t("Няма достъпни автоматизации","No accessible automations") + '</p>') +
+        '<p class="v7-muted">' +
+        this.t("Промените се правят през Home Assistant с оригиналните права.","Use Home Assistant to edit with original permissions.") +
+        '</p>' +
+        (isAdmin ? '<a class="v7-action" href="/config/automation/dashboard">' +
+          this.t("Отвори редактора","Open editor") + '</a>' : '') +
+        '</section></div>';
     } else if (this._view === "insights") {
       content = `${sectionTitle(this.t("Информация и статистика","Insights and statistics"),this.t("Данни в реално време","Live data"))}
         ${stats}${sectionTitle(this.t("Сензорни показатели","Sensor readings"))}
@@ -593,6 +598,42 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-wall-toggle]").forEach(button => button.onclick = () => {
       this._wall = !this._wall;
       this.render();
+    });
+    const hubSave = this.shadowRoot.querySelector("[data-hub-save]");
+    if (hubSave) hubSave.onclick = async () => {
+      if (!this._admin || !this._hub?.settings) return;
+      const checkbox = id => !!this.shadowRoot.getElementById(id)?.checked;
+      const settings = this._hub.settings;
+      try {
+        await this._hass.callWS({
+          type:"stevora/hub/config/update",
+          expected_revision:settings.revision,
+          track_events:checkbox("hub-track"),
+          notifications_enabled:checkbox("hub-notify"),
+          notify_unavailable:checkbox("hub-unavailable"),
+          notify_recovered:checkbox("hub-recovered"),
+        });
+        await this.refresh();
+      } catch(error) {
+        this._hubError = String(error?.message || error);
+        this.render();
+      }
+    };
+    // Hub exposes no privileged device-control proxy. Scene activations
+    // are exclusively sent through the native HA service API and permissions.
+    this.shadowRoot.querySelectorAll("[data-hub-scene]").forEach(button => button.onclick = async () => {
+      const entity = button.dataset.hubScene;
+      const scene = this._hub?.scenes?.items?.find(x => x.entity_id === entity);
+      if (!scene || scene.domain !== "scene" || !scene.action_allowed ||
+          !this._hass?.states?.[entity] ||
+          ["unavailable","unknown"].includes(this._hass.states[entity].state)) return;
+      try {
+        await this._hass.callService("scene", "turn_on", {entity_id:entity});
+        this._error = "";
+      } catch(error) {
+        this._error = String(error?.message || error);
+        this.render();
+      }
     });
     const canModifyLight = (id, control) => (
       this._mode === "stevora" &&
