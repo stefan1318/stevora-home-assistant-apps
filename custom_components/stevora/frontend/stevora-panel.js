@@ -6,6 +6,10 @@ class StevoraHomePanel extends HTMLElement {
     this._hass = null;
     this._manifest = null;
     this._panelModel = null;
+    this._hub = null;
+    this._hubError = "";
+    this._hubLastUpdated = "";
+    this._hubRefreshing = false;
     this._stateSignature = null;
     this._busy = false;
     this._error = "";
@@ -31,6 +35,10 @@ class StevoraHomePanel extends HTMLElement {
       // Never render a previous home's manifest against the new home's states.
       this._manifest = null;
       this._panelModel = null;
+      this._hub = null;
+      this._hubError = "";
+      this._hubLastUpdated = "";
+      this._hubRefreshing = false;
       this._admin = null;
       this._selectedRoom = "";
       this._stateSignature = null;
@@ -90,9 +98,36 @@ class StevoraHomePanel extends HTMLElement {
         const message = String(error?.message || error);
         this._adminError = /unauthorized|administrator permission/i.test(message) ? "" : message;
       }
+      // Home Hub is optional; failing to load it never re-enables old controls.
+      // Always verify this request still belongs to the same HA session.
+      this._hub = null;
+      this._hubError = "";
+      if (manifest.modules?.home_hub?.status === "active") {
+        try {
+          const [status, history, scenes] = await Promise.all([
+            this._hass.callWS({type:"stevora/hub/status"}),
+            this._hass.callWS({type:"stevora/hub/events",limit:50}),
+            this._hass.callWS({type:"stevora/hub/scenes"}),
+          ]);
+          if (sessionChanged()) { this._refreshQueued = true; return; }
+          if ([status, history, scenes].some(item => item.installation_id !== manifest.installation_id))
+            throw new Error("Home Hub belongs to another installation");
+          let settings = null;
+          if (this._admin) {
+            settings = await this._hass.callWS({type:"stevora/hub/config/get"});
+            if (sessionChanged()) { this._refreshQueued = true; return; }
+          }
+          this._hub = {status, history, scenes, settings};
+          this._hubLastUpdated = new Date().toLocaleTimeString(this._language === "bg" ? "bg-BG" : "en-GB");
+        } catch (error) {
+          this._hubError = String(error?.message || error);
+          this._hubLastUpdated = "";
+        }
+      }
     } catch (error) {
       this._manifest = null;
       this._panelModel = null;
+      this._hub = null;
       this._admin = null;
       this._mode = "native";
       this._error = String(error?.message || "");
@@ -203,6 +238,7 @@ class StevoraHomePanel extends HTMLElement {
       ["insights", "Статистика", "Insights", "⌁"],
       ["ai", "AI център", "AI center", "✦"],
       ["system", "Система", "System", "▥"],
+      ["hub", "Home Hub", "Home Hub", "◇"],
       ["memory", "Памет", "Memory", "◇"],
       ["settings", "Настройки", "Settings", "⚙"],
     ];
@@ -322,6 +358,62 @@ class StevoraHomePanel extends HTMLElement {
       ${metric(this.t("Включени светлини","Lights on"),String(lightOn),lightCards.length+" "+this.t("общо","total"))}
       ${metric(this.t("Недостъпни","Unavailable"),String(offline),this.t("Текущо състояние","Current state"))}
     </div>`;
+
+    const hubStatus = this._hub?.status;
+    const hubActive = hubStatus?.status === "active";
+    const hubMetrics = hubStatus?.metrics || {};
+    const hubHistory = this._hub?.history?.events || [];
+    const hubAlerts = this._hub?.history?.notifications || [];
+    const hubScenes = this._hub?.scenes?.items || [];
+    const hubConfig = this._hub?.settings;
+    const hubEventList = hubHistory.length
+      ? '<div class="v7-hub-events">' + hubHistory.slice(-30).reverse().map(event =>
+          '<div class="v7-mini-pair"><span class="v7-muted">' + this.escape(event.kind) +
+          '</span><strong>' + this.escape(event.entity_id) +
+          '</strong><span class="v7-muted">' + this.escape(event.at) + '</span></div>').join("") + '</div>'
+      : '<div class="v7-empty">' + this.t("Няма регистрирани събития","No events recorded") + '</div>';
+    const hubAlertList = hubAlerts.length
+      ? '<div class="v7-hub-events">' + hubAlerts.slice(-6).reverse().map(event =>
+          '<div class="v7-mini-pair"><span class="v7-muted">' + this.escape(event.kind) +
+          '</span><strong>' + this.escape(event.entity_id) + '</strong></div>').join("") + '</div>'
+      : '<p class="v7-muted">' + this.t("Няма локални предупреждения","No local alerts") + '</p>';
+    const hubCard = '<section class="v7-card"><div class="v7-card-title">◇ STEVORA HOME HUB</div>' +
+      '<div class="v7-mini-pair"><span>Status</span><strong>' +
+      this.escape(hubStatus?.status || this._manifest?.modules?.home_hub?.status || "unavailable") + '</strong></div>' +
+      '<div class="v7-mini-pair"><span>Version</span><strong>' + this.escape(hubStatus?.hub_version || "—") + '</strong></div>' +
+      '<div class="v7-mini-pair"><span>Entities</span><strong>' + this.escape(hubMetrics.visible_entities ?? "—") + '</strong></div>' +
+      '<div class="v7-mini-pair"><span>Unavailable</span><strong>' + this.escape(hubMetrics.unavailable_entities ?? "—") + '</strong></div>' +
+      '<div class="v7-mini-pair"><span>Alerts</span><strong>' + this.escape(hubMetrics.notifications ?? "—") + '</strong></div>' +
+      '<div class="v7-mini-pair"><span>' + this.t("Обновено","Last updated") +
+      '</span><strong>' + this.escape(this._hubLastUpdated || "—") + '</strong></div>' +
+      '<div class="v7-actions">' +
+      (this._view === "hub"
+        ? '<button type="button" class="v7-action subtle" data-hub-refresh="1" ' +
+          (this._hubRefreshing ? 'disabled' : '') + '>' +
+          (this._hubRefreshing
+            ? this.t("Обновяване…","Refreshing…")
+            : this.t("Обнови данните","Refresh Hub data")) + '</button>'
+        : '<button type="button" class="v7-action subtle" data-view="hub">' +
+          this.t("Отвори Home Hub","Open Home Hub") + '</button>') +
+      '</div>' +
+      (this._hubError ? '<div class="v7-banner">' + this.escape(this._hubError) + '</div>' : '') + '</section>';
+    const hubOptions = isAdmin && hubConfig
+      ? '<section class="v7-card"><div class="v7-card-title">⚙ Home Hub settings</div>' +
+        [["hub-track","track_events","Track events"],["hub-notify","notifications_enabled","Local alerts"],
+         ["hub-unavailable","notify_unavailable","Unavailable alerts"],["hub-recovered","notify_recovered","Recovered alerts"]]
+          .map(([id,key,label]) => '<label class="v7-hub-option"><input type="checkbox" id="' + id + '" ' +
+            (hubConfig[key] ? "checked" : "") + '/> ' + label + '</label>').join("") +
+        '<div class="v7-actions"><button data-hub-save="1" class="v7-action">' +
+        this.t("Запази","Save") + '</button></div></section>'
+      : '';
+    const hubSceneList = hubScenes.filter(item => item.domain === "scene").map(item =>
+        '<div class="v7-mini-pair"><span>' + this.escape(item.name) + '</span>' +
+        (item.action_allowed && !["unavailable","unknown"].includes(item.state)
+          ? '<button class="v7-action subtle" data-hub-scene="' + this.escape(item.entity_id) + '">' +
+            this.t("Активирай","Activate") + '</button>' : '') + '</div>').join("");
+    const hubAutomationList = hubScenes.filter(item => item.domain !== "scene").map(item =>
+        '<div class="v7-mini-pair"><span>' + this.escape(item.name) +
+        '</span><strong>' + this.escape(item.state) + '</strong></div>').join("");
     let content = "";
     if (this._view === "home") {
       content = `<section class="v7-hero">
@@ -349,22 +441,39 @@ class StevoraHomePanel extends HTMLElement {
       content = `${sectionTitle(this.t("Всички устройства","All devices"),allCards.length+" "+this.t("устройства","entities"))}
         ${cardGrid(allCards,this.t("Няма открити устройства","No entities discovered"))}`;
     } else if (this._view === "scenes") {
-      content = `${sectionTitle(this.t("Сцени и автоматизации","Scenes and automations"))}
-        <div class="v7-two">
-          <section class="v7-card"><div class="v7-card-title">▷ ${this.t("Сцени","Scenes")}</div>
-            <div class="v7-banner">${this.t("Универсалният manifest все още не предоставя сцени с проверени потребителски права. Няма автоматично изпълнение на сцени.","The current manifest does not expose user-authorized scenes. No scene is executed automatically.")}</div>
-            ${isAdmin ? `<div class="v7-actions"><a class="v7-action" href="/config/scene/dashboard">${this.t("Сцени в Home Assistant","HA scene editor")}</a></div>` : ""}
-          </section>
-          <section class="v7-card"><div class="v7-card-title">⚙ ${this.t("Автоматизации","Automations")}</div>
-            <div class="v7-muted">${this.t("Редакторът използва нативните права и конфигурация на Home Assistant.","The native Home Assistant editor enforces the current user's permissions.")}</div>
-            ${isAdmin ? `<div class="v7-actions"><a class="v7-action" href="/config/automation/dashboard">${this.t("Отвори автоматизации","Open automations")}</a></div>` : ""}
-          </section>
-        </div>`;
+      content = sectionTitle(this.t("Сцени и автоматизации","Scenes and automations")) +
+        '<div class="v7-two"><section class="v7-card"><div class="v7-card-title">▷ ' +
+        this.t("Сцени","Scenes") + '</div>' +
+        (hubActive ? (hubSceneList || '<p class="v7-muted">' +
+          this.t("Няма достъпни сцени","No accessible scenes") + '</p>') :
+          '<div class="v7-banner">' + this.t("Home Hub не е активен","Home Hub not active") + '</div>') +
+        '</section><section class="v7-card"><div class="v7-card-title">⚙ ' +
+        this.t("Автоматизации и скриптове","Automations and scripts") + '</div>' +
+        (hubAutomationList || '<p class="v7-muted">' +
+          this.t("Няма достъпни автоматизации","No accessible automations") + '</p>') +
+        '<p class="v7-muted">' +
+        this.t("Промените се правят през Home Assistant с оригиналните права.","Use Home Assistant to edit with original permissions.") +
+        '</p>' +
+        (isAdmin ? '<a class="v7-action" href="/config/automation/dashboard">' +
+          this.t("Отвори редактора","Open editor") + '</a>' : '') +
+        '</section></div>';
     } else if (this._view === "insights") {
       content = `${sectionTitle(this.t("Информация и статистика","Insights and statistics"),this.t("Данни в реално време","Live data"))}
         ${stats}${sectionTitle(this.t("Сензорни показатели","Sensor readings"))}
         ${cardGrid(statusCards, this.t("Няма видими сензори","No visible sensors"))}
+        ${hubActive ? sectionTitle(this.t("Последни събития","Recent events")) + hubEventList : ""}
         <div class="v7-banner ok">${this.t("Историческите графики изискват отделно Recorder разрешение; тук не се показват измислени измервания.","Historical charts require verified Recorder access; no synthetic measurements are shown.")}</div>`;
+    } else if (this._view === "hub") {
+      content = sectionTitle(this.t("STEVORA Home Hub","STEVORA Home Hub"),"1.0.0 beta") +
+        '<div class="v7-two">' + hubCard +
+        '<section class="v7-card"><div class="v7-card-title">⚠ ' +
+        this.t("Локални известия","Local alerts") + '</div>' + hubAlertList + '</section></div>' +
+        sectionTitle(this.t("Журнал на събитията","Recent event history")) +
+        (hubActive ? hubEventList : '<div class="v7-banner">' +
+          this.t("Home Hub е изключен или недостъпен","Home Hub is disabled or unavailable") + '</div>') +
+        hubOptions + '<div class="v7-banner ok">' +
+        this.t("Данните и известията са локални. Push известия и автоматично управление не се инсталират.",
+          "Data and alerts are local. No push notifications or automatic device actions are installed.") + '</div>';
     } else if (this._view === "memory") {
       const module = this._manifest?.modules?.memory_sync;
       content = `${sectionTitle(this.t("STEVORA Memory Manager","STEVORA Memory Manager"))}
@@ -394,13 +503,14 @@ class StevoraHomePanel extends HTMLElement {
           <div class="v7-mini-pair"><span>Installation</span><strong>${this.escape(this._manifest?.installation_id || "—")}</strong></div>
         </section><section class="v7-card"><div class="v7-card-title">▦ ${this.t("Модули","Modules")}</div>
           ${modules.length ? modules.map(([key,val]) => `<div class="v7-mini-pair"><span>${this.escape(key.replaceAll("_"," "))}</span><strong>${this.escape(val.status||"unknown")}</strong></div>`).join("") : `<p class="v7-muted">${this.t("Няма данни за модулите","No module data")}</p>`}
-        </section></div>${isAdmin ? auditText : ""}`;
+        </section></div><div class="v7-two">${hubCard}<section class="v7-card"><div class="v7-card-title">⚠ ${this.t("Системни известия","System alerts")}</div>${hubAlertList}</section></div>${isAdmin ? auditText : ""}`;
     } else {
       content = `${sectionTitle(this.t("Настройки и мениджъри","Settings and managers"))}
         <div class="v7-filter">
           <button data-view="scenes">${this.t("Сцени","Scenes")}</button>
           <button data-view="insights">${this.t("Статистика","Insights")}</button>
           <button data-view="memory">${this.t("Памет","Memory")}</button>
+           <button data-view="hub">HOME HUB</button>
           <button data-view="ai">AI Center</button>
         </div>
         <section class="v7-card"><div class="v7-card-title">⚙ ${this.t("Предпочитания","Preferences")}</div>
@@ -412,7 +522,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-hub2");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
@@ -489,7 +599,7 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this._view = "rooms"; this.render(); };
     this.shadowRoot.querySelectorAll("[data-view]").forEach(button => button.onclick = () => {
       const view = button.dataset.view;
-      if (["home","rooms","climate","lighting","devices","scenes","insights","ai","system","memory","settings"].includes(view)) {
+      if (["home","rooms","climate","lighting","devices","scenes","insights","ai","system","hub","memory","settings"].includes(view)) {
         this._view = view;
         this.render();
       }
@@ -505,6 +615,53 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-wall-toggle]").forEach(button => button.onclick = () => {
       this._wall = !this._wall;
       this.render();
+    });
+    this.shadowRoot.querySelectorAll("[data-hub-refresh]").forEach(button => button.onclick = async () => {
+      if (this._busy || this._hubRefreshing) return;
+      this._hubRefreshing = true;
+      this.render();
+      try {
+        await this.refresh();
+      } finally {
+        this._hubRefreshing = false;
+        this.render();
+      }
+    });
+    const hubSave = this.shadowRoot.querySelector("[data-hub-save]");
+    if (hubSave) hubSave.onclick = async () => {
+      if (!this._admin || !this._hub?.settings) return;
+      const checkbox = id => !!this.shadowRoot.getElementById(id)?.checked;
+      const settings = this._hub.settings;
+      try {
+        await this._hass.callWS({
+          type:"stevora/hub/config/update",
+          expected_revision:settings.revision,
+          track_events:checkbox("hub-track"),
+          notifications_enabled:checkbox("hub-notify"),
+          notify_unavailable:checkbox("hub-unavailable"),
+          notify_recovered:checkbox("hub-recovered"),
+        });
+        await this.refresh();
+      } catch(error) {
+        this._hubError = String(error?.message || error);
+        this.render();
+      }
+    };
+    // Hub exposes no privileged device-control proxy. Scene activations
+    // are exclusively sent through the native HA service API and permissions.
+    this.shadowRoot.querySelectorAll("[data-hub-scene]").forEach(button => button.onclick = async () => {
+      const entity = button.dataset.hubScene;
+      const scene = this._hub?.scenes?.items?.find(x => x.entity_id === entity);
+      if (!scene || scene.domain !== "scene" || !scene.action_allowed ||
+          !this._hass?.states?.[entity] ||
+          ["unavailable","unknown"].includes(this._hass.states[entity].state)) return;
+      try {
+        await this._hass.callService("scene", "turn_on", {entity_id:entity});
+        this._error = "";
+      } catch(error) {
+        this._error = String(error?.message || error);
+        this.render();
+      }
     });
     const canModifyLight = (id, control) => (
       this._mode === "stevora" &&

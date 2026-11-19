@@ -1,17 +1,24 @@
 """Module selection and honest capability reporting for independent homes.
 
-Only the STEVORA Core and the initial Home Panel are bundled. Describing a
+STEVORA Core, Home Panel, and local Home Hub are bundled. Describing a
 planned module never installs it, starts a service, or enables device control.
 """
 from .const import DOMAIN
 
 CONF_PANEL_ENABLED = "panel_enabled"
+CONF_HOME_HUB_ENABLED = "home_hub_enabled"
 
 
 def panel_requested(entry) -> bool:
     """Keep existing experimental installs' default panel behavior."""
     settings = {**entry.data, **entry.options}
     return bool(settings.get(CONF_PANEL_ENABLED, True))
+
+
+def home_hub_requested(entry) -> bool:
+    """A modular installation ships Home Hub but can opt out explicitly."""
+    settings = {**entry.data, **entry.options}
+    return bool(settings.get(CONF_HOME_HUB_ENABLED, True))
 
 
 def describe_modules(hass, entry) -> dict:
@@ -29,6 +36,12 @@ def describe_modules(hass, entry) -> dict:
     else:
         panel_status = "pending"
 
+    hub_enabled = home_hub_requested(entry)
+    hub = running.get("hub")
+    hub_status = ("disabled" if not hub_enabled else
+                  "active" if hub is not None and getattr(hub, "active", False) else
+                  running.get("hub_status", "pending"))
+
     return {
         "core": {"bundled": True, "enabled": True, "status": "active"},
         "home_panel": {
@@ -36,7 +49,7 @@ def describe_modules(hass, entry) -> dict:
             "enabled": requested,
             "status": panel_status,
         },
-        "home_hub": {"bundled": False, "enabled": False, "status": "not_included"},
+        "home_hub": {"bundled": True, "enabled": hub_enabled, "status": hub_status},
         "hey_stevora": {"bundled": False, "enabled": False, "status": "not_included"},
         "memory_sync": {"bundled": False, "enabled": False, "status": "not_included"},
     }

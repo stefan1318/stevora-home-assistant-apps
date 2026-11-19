@@ -10,7 +10,8 @@
           "auto_discovery": "Automatic discovery",
           "voice_enabled": "Voice preference (Hey Stevora is not included)",
           "panel_enabled": "Install STEVORA Home Panel",
-          "include_unassigned": "Include entities without an assigned room"
+          "include_unassigned": "Include entities without an assigned room",
+          "home_hub_enabled": "Enable STEVORA Home Hub (local coordinator)"
         }
       }
     },
@@ -30,7 +31,8 @@
           "climate_entities": "Climate devices",
           "lighting_entities": "Lighting",
           "panel_enabled": "Enable STEVORA Home Panel",
-          "include_unassigned": "Include entities without an assigned room"
+          "include_unassigned": "Include entities without an assigned room",
+          "home_hub_enabled": "Enable STEVORA Home Hub (local coordinator)"
         }
       }
     }

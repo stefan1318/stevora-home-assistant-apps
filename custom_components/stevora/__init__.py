@@ -1,4 +1,5 @@
-"""STEVORA integration with authenticated read-only capability discovery."""
+"""STEVORA integration: capability discovery, premium panel and local Home Hub."""
+import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
@@ -11,7 +12,11 @@ from .discovery import build_manifest
 from .permissions import project_manifest_for_user
 from .panel_generator import generate_panel
 from .localization import localized_manifest
-from .modules import panel_requested
+from .modules import panel_requested, home_hub_requested
+from .home_hub import HomeHub
+from .hub_api import register as register_hub_commands
+
+_LOGGER = logging.getLogger(__name__)
 from .admin_managers import AdminManagers
 from .admin_api import register as register_admin_commands
 
@@ -43,6 +48,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
     websocket_api.async_register_command(hass, websocket_panel_generate)
     register_admin_commands(hass)
+    register_hub_commands(hass)
     manager = AdminManagers(hass)
     await manager.load()
     hass.data.setdefault(DOMAIN, {})["_admin_managers"] = manager
@@ -61,6 +67,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         state["panel_registered"] = await async_register_panel(hass)
         state["panel_conflict"] = not state["panel_registered"]
     data[entry.entry_id] = state
+    if home_hub_requested(entry):
+        hub = HomeHub(hass, entry)
+        try:
+            await hub.async_start()
+        except Exception:
+            _LOGGER.exception("STEVORA Home Hub startup failed; controls remain in HA")
+            state["hub_status"] = "error"
+        else:
+            state["hub"] = hub
+            state["hub_status"] = "active"
+    else:
+        state["hub_status"] = "disabled"
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     return True
 
@@ -69,6 +87,9 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     state = hass.data.get(DOMAIN, {}).pop(entry.entry_id, {})
+    hub = state.get("hub") if isinstance(state, dict) else None
+    if hub is not None:
+        await hub.async_stop()
     # A foreign /stevora panel must never be removed by STEVORA unload.
     if isinstance(state, dict) and state.get("panel_registered"):
         await async_remove_panel(hass)

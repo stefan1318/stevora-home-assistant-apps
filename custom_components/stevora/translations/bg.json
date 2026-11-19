@@ -10,7 +10,8 @@
           "auto_discovery": "Автоматично откриване",
           "voice_enabled": "Предпочитание за гласови функции (Hey Stevora не е включен)",
           "panel_enabled": "Инсталирай STEVORA Home Panel",
-          "include_unassigned": "Включване на устройства без зададено помещение"
+          "include_unassigned": "Включване на устройства без зададено помещение",
+          "home_hub_enabled": "Активирай STEVORA Home Hub (локален координатор)"
         }
       }
     },
@@ -30,7 +31,8 @@
           "climate_entities": "Климатични устройства",
           "lighting_entities": "Осветление",
           "panel_enabled": "Активирай STEVORA Home Panel",
-          "include_unassigned": "Включване на устройства без зададено помещение"
+          "include_unassigned": "Включване на устройства без зададено помещение",
+          "home_hub_enabled": "Активирай STEVORA Home Hub (локален координатор)"
         }
       }
     }

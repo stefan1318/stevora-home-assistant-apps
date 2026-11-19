@@ -1,44 +1,83 @@
-# STEVORA Home Assistant Integration — 0.2.0-rc.2
+# STEVORA Ecosystem — Universal Integration 0.3.0-beta.2
 
-**Release candidate for final tests only; NOT approved for production or Dunav.**
+**Status:** Home Hub major test candidate for an independent Home Assistant installation.
+**NOT production approved, NOT deployed to Home Assistant Dunav.**
+Built on Home Panel 7.1.1 Premium and the earlier integration 0.2.0-rc.2.
 
-The `/stevora` frontend uses the premium v7.1.1 responsive shell, independent-home room/device discovery, climate center, live lighting/RGB controls, scoped managers, and mobile/wall views. The historical static Dunav panel source is **not** copied verbatim because it contains hardcoded entity IDs and unrelated optional modules.
-GitHub Actions packages `custom_components/stevora/` into a checksum-pinned ZIP
-only after Python and JavaScript contract tests pass. For test steps and
-limitations see `docs/STE-05-UNIVERSAL-INTEGRATION-0.2-RC1-ACCEPTANCE-BG.md`.
+## Bundled modules
 
+- **STEVORA Core:** authenticated per-installation discovery, room/device mapping,
+  user-scoped manifest projections, BG/EN localization and administrator customization.
+- **STEVORA Home Panel 7.1.1 Premium:** dynamic dark responsive panel at `/stevora`,
+  Rooms, Climate, Lighting/RGB, Devices, Scenes, Insights, AI, System,
+  Home Hub, Memory and Settings. All device actions pass through native HA.
+- **STEVORA Home Hub 1.0.0-beta.1:** optional (enabled by default) local
+  event coordinator. Listens to `state_changed`, keeps a bounded 250-item
+  volatile event journal, reports local unavailable/recovered alerts, provides
+  system metrics and permission-filtered scene/automation directory and
+  persists administrator preferences per config entry.
 
-**Status: feature branch / not released / NOT approved for Home Assistant Dunav.**
+`Hey Stevora`, `Memory & Sync`, standalone `Home Hub add-on`, remote
+module installer, and mobile APK/IPA are **not included** in this package.
+No separate cloud service, push gateway, autonomous scene runner or AI engine
+is installed. They must never be reported as bundled or active.
 
-## Current implementation
-- HA graphical config flow and BG/EN options for automatic discovery, optional Home Panel, voice preference, room selection, and climate/lighting entity selection.
-- Authenticated `stevora/manifest` WebSocket discovery (schema 1.0).
-- Administrator receives complete manifest; other authenticated users receive only entities they can **read**. Control affordances are provided only for entities they may **control**. HA service permissions remain authoritative.
-- Native `/stevora` custom frontend panel with live entity states, simple climate and light/fan controls, room filtering and exclusion of backlights.
-- Panel registration is optional (`panel_enabled`). An occupied `/stevora` path is treated as a conflict rather than overwritten. Unload removes the panel only if this integration registered it.
-- The additive `modules` manifest section identifies bundled Core and starter Panel; Home Hub, Hey Stevora and Memory Sync are explicitly marked not included. The voice preference alone does not enable a voice engine.
-- Panel removal uses `frontend.async_remove_panel`; static frontend route is registered once across config-entry reloads.
-- Local Python contract and mock-based lifecycle/permissions/config-flow tests, plus execution of Home Panel JS tests in CI.
+## Hub WebSocket contract
 
-## How to test safely
-1. Use an **independent disposable HA test instance**. This is not a production installer.
-2. Copy `custom_components/stevora` into that instance's custom components directory.
-3. Restart HA, open Settings → Devices & services → Add integration → **STEVORA Ecosystem**.
-4. Check setup form, options, `/stevora` and an authenticated `stevora/manifest` request.
-5. Repeat with an administrator, a read-only user and a user with limited control permission.
-6. On the disposable test instance, repeat setup with `panel_enabled=false` and with a conflicting `/stevora` route; verify no foreign panels are removed.
-7. Test options reload, unload/reload, removal, restart and installation to a second independent HA instance.
+All commands require an authenticated HA WebSocket connection:
 
-## Critical incompatibility and rollback
-Do **not** activate the older `stevora_manifest` integration and this `stevora` integration simultaneously. Both register the `stevora/manifest` command; this can cause a conflict. Never remove a working installation without a verified backup.
+| Command | Access | Purpose |
+| --- | --- | --- |
+| `stevora/hub/status` | authenticated user | Installation ID, running module status and user's visible entity counts |
+| `stevora/hub/events` | authenticated user | Bounded, scoped recent event list and local alerts |
+| `stevora/hub/scenes` | authenticated user | Read-permission scoped scenes/scripts/automations; HA control permission marked for scene affordances |
+| `stevora/hub/config/get` | administrator | Read persisted local Hub preferences and revision |
+| `stevora/hub/config/update` | administrator | Compare-and-swap revision update of Hub preferences |
 
-The universal integration has **not** been installed on Dunav. See `docs/STE-05-DUNAV-MIGRATION.md` for the backup, isolated test, migration and rollback gates, and `docs/STE-05-MODULAR-INSTALLER-PHASE-1.md` for the modular installer scope.
+No Hub API performs privileged HA entity service actions. The Panel
+uses the authenticated native `hass.callService` for allowed scenes.
+`home_hub_enabled` is available in HA config/options; a disabled
+Hub is **disabled**, not `not_included`.
 
-## Release blockers
-- Actual Home Assistant runtime installation tests (including version compatibility), not merely mocks.
-- Confirmation that the panel works for the intended admin/user roles on real HA.
-- Safe upgrade/removal when an existing dashboard or custom panel already claims `/stevora`.
-- Android/iOS real-device OAuth, multi-home and permission/controls acceptance tests.
-- Verified Dunav full backup, migration dry-run and rollback rehearsal.
+## Local persistence and privacy
 
-Do not treat passing CI as final product acceptance.
+Hub options use HA `Store` at `.storage/stevora.home_hub.<entry_id>`.
+Events are memory-only and cleared at unload/restart. Only entity IDs,
+previous-to-new state classification, new state, timestamp and event
+kind are retained; no tokens, device attributes, API credentials or HA
+user information are serialized to the event journal. Events and entity
+counts are filtered per invoking user's HA read permissions AND
+STEVORA's manifest visibility policy.
+
+## Acceptance and installation
+
+Read the mandatory Bulgarian test plan:
+[STE-00-05-HOME-HUB-0.3-BETA-ACCEPTANCE-BG.md](../../docs/STE-00-05-HOME-HUB-0.3-BETA-ACCEPTANCE-BG.md).
+
+Use the pinned ZIP produced by an **entirely successful** GitHub Actions
+run of `feature/stevora-home-hub-v1-20261119`; verify
+`SHA256SUMS.txt`. Install `custom_components/stevora/` on a separate
+test Home Assistant. Always take a full backup and a copy of the old
+integration directory before replacing files. Restart HA and verify
+`0.3.0-beta.2` and the Home Hub module's `active` status.
+
+**Do not install legacy `stevora_manifest` together with `stevora`**:
+both register the same WebSocket route. Do not modify existing memory
+bridge, voice assistants, BLE integrations or scenes during migration.
+
+## Beta.2 UI hotfix
+
+When a user is already on Home Hub, the primary card now shows
+**Refresh Hub data** instead of the non-functional **Open Home Hub** link.
+The button invokes the authenticated manifest/Hub API refresh, shows a
+refresh-in-progress state, and displays **Last updated** after successful
+synchronization. In System it still navigates to the Home Hub view.
+
+## Outstanding release gates
+
+GitHub CI uses Python/JS unit tests with Home Assistant stubs; it does
+**not** validate compatibility with the real HA Core runtime. Actual
+HA acceptance must test scene permissions, event bus, module on/off,
+config persistence, independent homes, mobile clients and reliable
+backup/restore. Require explicit owner acceptance before any production
+merge or Dunav installation.

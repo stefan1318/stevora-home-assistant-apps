@@ -61,3 +61,12 @@
 .v7-climate-summary .v7-action{padding:10px 13px}
 .v7-system-id{overflow-wrap:anywhere}
 @media(max-width:680px){.v7-manager .auditlist{max-height:unset}.v7-manager input{width:100%;max-width:100%}}
+
+/* STEVORA Home Hub — events, configuration and touch-friendly compact rows */
+.v7-hub-events{display:grid;gap:6px;max-height:500px;overflow-y:auto;overscroll-behavior:contain}
+.v7-hub-events .v7-mini-pair{gap:12px;flex-wrap:wrap;font-size:12px;min-width:0}
+.v7-hub-events .v7-mini-pair strong{overflow-wrap:anywhere;font-weight:650}
+.v7-hub-option{display:flex;gap:10px;align-items:center;padding:10px 0;color:var(--v7-text);cursor:pointer}
+.v7-hub-option input{width:18px;height:18px;accent-color:var(--v7-blue);cursor:pointer}
+.v7-event-kind.warning{color:#f9c084}
+@media(max-width:650px){.v7-hub-events .v7-mini-pair{font-size:11px}}

@@ -87,6 +87,7 @@ class ConfigFlowRuntimeTests(unittest.TestCase):
         self.assertEqual(keys["language"], "bg")
         self.assertTrue(keys["auto_discovery"])
         self.assertTrue(keys["panel_enabled"])
+        self.assertTrue(keys["home_hub_enabled"])
         self.assertFalse(keys["voice_enabled"])
 
         values = {"language": "en", "auto_discovery": True, "panel_enabled": False, "voice_enabled": False}
@@ -105,6 +106,7 @@ class ConfigFlowRuntimeTests(unittest.TestCase):
         self.assertEqual(keys["language"], "en")
         self.assertTrue(keys["voice_enabled"])
         self.assertTrue(keys["panel_enabled"])
+        self.assertTrue(keys["home_hub_enabled"])
         self.assertEqual(keys["room_filter"], ["kitchen"])
         self.assertIn("climate_entities", keys)
         self.assertIn("lighting_entities", keys)
