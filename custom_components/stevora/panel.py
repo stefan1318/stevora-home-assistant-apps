@@ -3,7 +3,7 @@ from homeassistant.components import frontend, panel_custom
 
 PANEL_URL = "/stevora"
 PANEL_NAME = "stevora-home-panel"
-PANEL_MODULE = "/stevora_static/stevora-panel.js"
+PANEL_MODULE = "/stevora_static/stevora-panel.js?v=7.1.1-rc2"
 
 async def async_register_panel(hass) -> bool:
     """Claim /stevora only if no other panel already owns that route."""
