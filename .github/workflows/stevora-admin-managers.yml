@@ -1,0 +1,25 @@
+name: STEVORA Admin Managers CI
+on:
+  push:
+    branches: [feature/stevora-admin-managers-integrated]
+    paths:
+      - 'custom_components/stevora/**'
+      - 'tests/stevora/**'
+      - '.github/workflows/stevora-admin-managers.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax-and-discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile integration Python
+        run: python -m compileall -q custom_components/stevora
+      - name: Validate integration manifest
+        run: python -m json.tool custom_components/stevora/manifest.json >/dev/null
+      - name: Verify project room discovery regressions
+        run: python -m unittest discover -s tests/stevora -v
