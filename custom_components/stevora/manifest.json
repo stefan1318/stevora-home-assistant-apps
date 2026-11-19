@@ -1,7 +1,7 @@
 {
   "domain": "stevora",
   "name": "STEVORA Ecosystem",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "documentation": "https://github.com/stefan1318/stevora-home-assistant-apps",
   "config_flow": true,
   "dependencies": [
