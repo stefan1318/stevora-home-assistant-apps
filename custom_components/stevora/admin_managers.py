@@ -1,0 +1,38 @@
+"""Server-authoritative STEVORA admin configuration persistence.
+
+No account role is accepted from a mobile client. Each command verifies the
+authenticated Home Assistant user is currently an administrator.
+"""
+from __future__ import annotations
+
+from homeassistant.helpers.storage import Store
+
+from .const import DOMAIN
+
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}.admin_managers"
+
+
+class AdminManagers:
+    def __init__(self, hass):
+        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self.data = {"revision": 1, "visibility": {}, "assistants": {"default_pipeline": None, "user_pipelines": {}}}
+
+    async def load(self):
+        saved = await self._store.async_load()
+        if isinstance(saved, dict):
+            self.data.update({
+                "revision": saved.get("revision", 1),
+                "visibility": saved.get("visibility", {}),
+                "assistants": saved.get("assistants", {"default_pipeline": None, "user_pipelines": {}}),
+            })
+
+    async def save(self):
+        await self._store.async_save(self.data)
+
+
+def require_admin(connection, msg):
+    if not bool(getattr(connection.user, "is_admin", False)):
+        connection.send_error(msg["id"], "unauthorized", "Administrator permission required")
+        return False
+    return True
