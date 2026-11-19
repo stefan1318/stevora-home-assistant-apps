@@ -126,15 +126,11 @@ async def assistants_get(hass, connection, msg):
 async def assistants_update(hass, connection, msg):
     if not require_admin(connection, msg):
         return
-    manager = _manager(hass)
-    if msg["expected_revision"] != manager.data["revision"]:
-        connection.send_error(msg["id"], "conflict", "Configuration revision changed")
-        return
-    # Do not trust arbitrary pipeline identifiers or user identities.
-    # Configuration becomes effective only after HA verifies valid providers
-    # and eligible user IDs in a future server-side selection resolver.
-    connection.send_error(msg["id"], "not_implemented", "Assistant routing validation is not yet available")
-    return
+    # Fail closed until server validates real HA Assist pipelines and applies
+    # these preferences to effective conversation routing.
+    connection.send_error(
+        msg["id"], "not_implemented", "Assistant routing validation is not yet available"
+    )
 
 
 def register(hass):
