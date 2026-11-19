@@ -179,4 +179,41 @@ panel.render();
 assert.match(panel.shadowRoot.innerHTML, /v7-shell v7-wall/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-visibility=/);
 
+
+// The historical v7 navigation remains accessible without bypassing HA permissions.
+for (const view of ["scenes","insights","memory","ai","system","settings"]) {
+  panel._view = view;
+  panel.render();
+  assert.match(panel.shadowRoot.innerHTML, /v7-shell/);
+}
+panel._view = "memory";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /not_included/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
+
+// A completely unrelated independent installation must not inherit old room
+// names, controls or any historical Dunav hardcoded references.
+panel._manifest = {
+  installation_id:"home-independent", preferred_language:"en",
+  rooms:[{id:"bath",name:"Bathroom"}],
+  entities:[{entity_id:"fan.exhaust",area_id:"bath"}],
+  controllable_entities:[],
+};
+panel._hass.states = {
+  "fan.exhaust":{entity_id:"fan.exhaust",state:"off",attributes:{}},
+};
+panel._panelModel = {
+  panel_version:"7.1.1",installation_id:"home-independent",
+  sections:[{id:"bath",name:"Bathroom",cards:[{
+    entity_id:"fan.exhaust",name:"Exhaust fan",domain:"fan",
+    icon:"mdi:fan",layout:"compact",controls:[],
+  }]}],
+};
+panel._selectedRoom = "";
+panel._view = "home";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /Exhaust fan|Bathroom/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /Kitchen light|Bedroom climate/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
+
 console.log("STEVORA panel runtime: PASS");
