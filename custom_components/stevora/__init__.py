@@ -25,7 +25,7 @@ async def websocket_manifest(hass, connection, msg):
         return
     manifest = build_manifest(hass, entries[0])
     scoped = project_manifest_for_user(manifest, connection.user)
-    connection.send_result(msg["id"], localized_manifest(scoped, msg.get("language") or scoped["preferred_language"]))
+    connection.send_result(msg["id"], localized_manifest(scoped, msg.get("language") or scoped.get("preferred_language", "en")))
 
 @websocket_api.websocket_command({"type": "stevora/panel/generate", vol.Optional("language"): vol.In(("bg", "en"))})
 @websocket_api.async_response
@@ -36,7 +36,7 @@ async def websocket_panel_generate(hass, connection, msg):
         connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
         return
     manifest = project_manifest_for_user(build_manifest(hass, entries[0]), connection.user)
-    connection.send_result(msg["id"], generate_panel(localized_manifest(manifest, msg.get("language") or manifest["preferred_language"])))
+    connection.send_result(msg["id"], generate_panel(localized_manifest(manifest, msg.get("language") or manifest.get("preferred_language", "en"))))
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
