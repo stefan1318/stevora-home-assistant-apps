@@ -103,4 +103,55 @@ assert.equal(switched._panelModel, null);
 assert.equal(switched.inventory().length, 0);
 assert.doesNotMatch(switched.shadowRoot.innerHTML, /data-action="toggle"/);
 
+
+const theme = readFileSync("custom_components/stevora/frontend/stevora-premium.css", "utf8");
+assert.match(theme, /\.v7-shell/);
+assert.match(theme, /\.v7-bottom/);
+assert.match(theme, /\.v7-climate/);
+assert.match(theme, /prefers-reduced-motion/);
+assert.doesNotMatch(source, /sensor\.realna_temperatura_homepod|light\.living_room_switch_1/);
+
+// v7.1.1 premium visual shell must render dynamic rooms and navigation.
+panel._view = "home";
+panel._selectedRoom = "";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /STEVORA · HOME PANEL 7\.1\.1/);
+assert.match(panel.shadowRoot.innerHTML, /v7-side/);
+assert.match(panel.shadowRoot.innerHTML, /v7-bottom/);
+assert.match(panel.shadowRoot.innerHTML, /data-view="rooms"/);
+assert.match(panel.shadowRoot.innerHTML, /data-room="k"/);
+
+// A dedicated climate center can expose only actions explicitly projected by HA.
+panel._manifest.controllable_entities.push("climate.bedroom");
+panel._panelModel.sections[1].cards[0].controls = ["temperature"];
+panel._panelModel.sections[1].cards[0].layout = "compact";
+panel._view = "climate";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /data-action="temperature-up"/);
+assert.match(panel.shadowRoot.innerHTML, /data-action="temperature-down"/);
+
+// RGB controls appear only for a controllable light supporting RGB and brightness.
+panel._hass.states["light.kitchen"].attributes = {
+  rgb_color:[20,40,60], brightness:128, supported_color_modes:["rgb"],
+};
+panel._panelModel.sections[0].cards[0].controls = ["toggle","color","brightness"];
+panel._view = "lighting";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
+assert.match(panel.shadowRoot.innerHTML, /data-lightcolor="light.kitchen"/);
+panel._manifest.controllable_entities = ["climate.bedroom"];
+panel.render();
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightcolor="light.kitchen"/);
+
+// Tab rendering never changes installation identity or impersonates optional modules.
+panel._view = "system";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /STEVORA CORE/);
+panel._view = "settings";
+panel._wall = true;
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /v7-shell v7-wall/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-visibility=/);
+
 console.log("STEVORA panel runtime: PASS");
