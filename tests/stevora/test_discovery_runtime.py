@@ -113,7 +113,7 @@ class DiscoveryRuntimeTests(unittest.TestCase):
         entry = types.SimpleNamespace(entry_id="only", data={"panel_enabled": True},
                                           options={"room_filter": ["kitchen"]})
         result = self.discovery.build_manifest(hass, entry)
-        self.assertEqual(result["rooms"], [{"id": "kitchen", "name": "Kitchen"}])
+        self.assertEqual(result["rooms"], [{"id": "kitchen", "name": "Kitchen", "source_name": "Kitchen", "translations": {}}])
         self.assertEqual([x["entity_id"] for x in result["entities"]], ["light.kitchen"])
 
     def test_unassigned_report_and_opt_in(self):
