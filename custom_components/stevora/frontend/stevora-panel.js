@@ -440,6 +440,138 @@ class StevoraHomePanel extends HTMLElement {
       '</p></section>';
   }
 
+
+  nativeStateLabel(state, domain) {
+    if (!state || ["unknown","unavailable"].includes(state.state))
+      return this.t("Недостъпно","Unavailable");
+    const raw = state.state;
+    const localized = {
+      on:["Включено","On"],off:["Изключено","Off"],
+      open:["Отворено","Open"],closed:["Затворено","Closed"],
+      opening:["Отваря се","Opening"],closing:["Затваря се","Closing"],
+      locked:["Заключено","Locked"],unlocked:["Отключено","Unlocked"],
+      heat:["Отопление","Heating"],cool:["Охлаждане","Cooling"],
+      auto:["Автоматично","Auto"],idle:["В готовност","Idle"],
+      playing:["Възпроизвежда","Playing"],paused:["Пауза","Paused"],
+      home:["Вкъщи","Home"],away:["Извън дома","Away"],
+    };
+    const unit = String(state.attributes?.unit_of_measurement || "");
+    if (domain === "sensor" && unit) return String(raw) + " " + unit;
+    return localized[raw] ? this.t(...localized[raw]) : String(raw);
+  }
+
+  renderNativeCard(card, controllable, expandedControls = false) {
+    const state = this._hass?.states?.[card.entity_id];
+    if (!state) return "";
+    const domain = card.domain;
+    const e = value => this.escape(value);
+    const icon = this.safeIcon(card.icon, ({
+      light:"mdi:lightbulb",switch:"mdi:toggle-switch",fan:"mdi:fan",
+      climate:"mdi:thermostat",cover:"mdi:window-shutter",media_player:"mdi:play-circle",
+      sensor:"mdi:gauge",binary_sensor:"mdi:checkbox-marked-circle-outline",
+      lock:"mdi:lock"})[domain] || "mdi:devices");
+    const offline = ["unavailable","unknown"].includes(state.state);
+    const allowed = !offline && controllable.has(card.entity_id) && card.layout !== "info"
+      ? (card.controls || []) : [];
+    const has = key => allowed.includes(key);
+    const id = e(card.entity_id);
+    const smallButton = (action, iconName, caption) =>
+      '<button type="button" class="v7-device-action" data-action="' + action +
+      '" data-id="' + id + '" aria-label="' + e(caption) + '">' +
+      '<ha-icon icon="mdi:' + iconName + '"></ha-icon><span>' + e(caption) + '</span></button>';
+    const actions = [];
+    if (has("toggle") && ["light","switch","fan"].includes(domain))
+      actions.push(smallButton("toggle",state.state === "on" ? "power" : "power-standby",
+        state.state === "on" ? this.t("Изключи","Turn off") : this.t("Включи","Turn on")));
+    if (has("temperature") && domain === "climate") {
+      actions.push(smallButton("temperature-down","minus",this.t("−1°C","−1°C")));
+      actions.push(smallButton("temperature-up","plus",this.t("+1°C","+1°C")));
+    }
+    if (domain === "cover") for (const [key,mdi,bg,en] of [
+      ["open","arrow-up-bold","Отвори","Open"],
+      ["stop","stop","Спри","Stop"],
+      ["close","arrow-down-bold","Затвори","Close"],
+    ]) if (has(key)) actions.push(smallButton(key,mdi,this.t(bg,en)));
+    if (domain === "media_player" && has("play_pause"))
+      actions.push(smallButton("play_pause",state.state === "playing" ? "pause" : "play",
+        state.state === "playing" ? this.t("Пауза","Pause") : this.t("Пусни","Play")));
+    // Locks have sensitive native controls; open HA More Info rather than
+    // creating an easy-to-tap unlock action.
+    const details = smallButton("details","tune-variant",
+      this.t("Подробности","More details"));
+    const attrs = state.attributes || {};
+    const number = key => attrs[key] === null || attrs[key] === undefined ?
+      null : Number.isFinite(Number(attrs[key])) ? Number(attrs[key]) : null;
+    let center = '<div class="v7-device-state">' + e(this.nativeStateLabel(state,domain)) + '</div>';
+    if (domain === "climate") {
+      const now = number("current_temperature");
+      const target = number("temperature");
+      center = '<div class="v7-device-thermo"><div class="v7-device-temp">' +
+        (now === null ? "—" : e(now.toFixed(1))) +
+        '<small>°C</small></div><div class="v7-device-target">' +
+        this.t("Цел","Target") + ' · ' +
+        (target === null ? "—" : e(target.toFixed(0)) + "°C") +
+        '</div></div>';
+    } else if (domain === "light" && Array.isArray(attrs.rgb_color) &&
+      attrs.rgb_color.length === 3 && attrs.rgb_color.every(v => Number.isInteger(v) && v >= 0 && v <= 255)) {
+      const hex = "#" + attrs.rgb_color.map(v => v.toString(16).padStart(2,"0")).join("");
+      center = '<div class="v7-device-light-state"><span class="v7-color-dot" style="background:' +
+        hex + '"></span><strong>' + e(this.nativeStateLabel(state,domain)) + '</strong></div>';
+    } else if (domain === "binary_sensor") {
+      center = '<div class="v7-device-state v7-device-binary"><span class="v7-state-dot ' +
+        (state.state === "on" ? "on" : "") + '"></span>' +
+        e(this.nativeStateLabel(state,domain)) + '</div>';
+    }
+    const sliders = [];
+    const full = expandedControls || card.layout === "expanded";
+    if (domain === "light" && full) {
+      const bright = number("brightness");
+      if (has("brightness") && bright !== null) {
+        const pct = Math.round(bright * 100 / 255);
+        sliders.push('<div class="v7-device-slider"><label>' +
+          this.t("Яркост","Brightness") + ' <strong>' + pct + '%</strong></label>' +
+          '<input type="range" class="v7-slider" min="1" max="100" value="' + pct +
+          '" data-lightbrightness="' + id + '"/></div>');
+      }
+      const modes = attrs.supported_color_modes || [];
+      if (has("color") && Array.isArray(modes) &&
+          modes.some(x => ["rgb","rgbw","rgbww","hs","xy"].includes(x))) {
+        const valid = Array.isArray(attrs.rgb_color) && attrs.rgb_color.length === 3 &&
+          attrs.rgb_color.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
+        const hex = valid ? "#" + attrs.rgb_color.map(x => x.toString(16).padStart(2,"0")).join("") : "#8fc4ff";
+        sliders.push('<div class="v7-device-slider v7-device-color"><label>' +
+          this.t("Цвят","Color") + '</label><input type="color" value="' + hex +
+          '" data-lightcolor="' + id + '" aria-label="' + this.t("Избери цвят","Choose color") +
+          '"/></div>');
+      }
+    }
+    if (domain === "fan" && full && has("percentage") && number("percentage") !== null) {
+      sliders.push('<div class="v7-device-slider"><label>' +
+        this.t("Скорост на вентилатора","Fan speed") +
+        '</label><input type="range" min="0" max="100" step="5" value="' +
+        Math.round(number("percentage")) + '" data-fanpercentage="' + id +
+        '" aria-label="' + this.t("Скорост","Speed") + '"/></div>');
+    }
+    const status = offline ? this.t("Офлайн","Offline") :
+      state.state === "on" || state.state === "playing"
+        ? this.t("Активно","Active") : this.t("На линия","Available");
+    const allActions = actions.concat(details);
+    return '<article class="v7-card v7-device v7-device-' + e(domain) +
+      (offline ? ' is-offline' : '') + (card.layout === "info" ? ' is-info' : '') + '">' +
+      '<div class="v7-device-head"><span class="v7-device-glyph"><ha-icon icon="' +
+      e(icon) + '"></ha-icon></span><span class="v7-device-heading"><strong>' +
+      e(card.name) + '</strong><small>' + e(this.t(
+        ({light:"Осветление",climate:"Климат",fan:"Вентилатор",cover:"Щори",
+          switch:"Превключвател",media_player:"Медия",lock:"Сигурност",
+          sensor:"Сензор",binary_sensor:"Състояние"})[domain] || "Устройство",
+        ({light:"Lighting",climate:"Climate",fan:"Fan",cover:"Cover",
+          switch:"Switch",media_player:"Media",lock:"Security",
+          sensor:"Sensor",binary_sensor:"Status"})[domain] || "Device"
+      )) + '</small></span><span class="v7-device-chip">' + status + '</span></div>' +
+      center + (sliders.length ? '<div class="v7-device-sliders">' + sliders.join("") + '</div>' : '') +
+      '<div class="v7-device-actions">' + allActions.join("") + '</div></article>';
+  }
+
   inventory() {
     const states = Object.values(this._hass?.states || {});
     const allowed = new Set((this._panelModel?.sections || []).flatMap(s => s.cards.map(x => x.entity_id)));
@@ -542,27 +674,7 @@ class StevoraHomePanel extends HTMLElement {
     };
     const metric = (label, value, foot) => `<div class="v7-card"><div class="v7-stat-label">${this.escape(label)}</div><div class="v7-stat-val">${this.escape(value)}</div><div class="v7-stat-foot">${this.escape(foot)}</div></div>`;
     const sectionTitle = (name, sub = "") => `<div class="v7-section-head"><h2>${this.escape(name)}</h2><span>${this.escape(sub)}</span></div>`;
-    const oneCard = card => {
-      const state = ent(card);
-      if (!state) return "";
-      const icons = {light:"✧",switch:"⏼",fan:"◈",climate:"◉",sensor:"◫",
-        binary_sensor:"◫",lock:"⌑",media_player:"▷",cover:"▤"};
-      const allowed = online(card) && controllable.has(card.entity_id) ? card.controls || [] : [];
-      const actions = [];
-      if (allowed.includes("toggle") && ["light","switch","fan"].includes(card.domain))
-        actions.push(`<button class="v7-action" data-action="toggle" data-id="${this.escape(card.entity_id)}">${this.t("Включи / изключи", "Toggle")}</button>`);
-      if (allowed.includes("temperature") && card.domain === "climate")
-        actions.push(`<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1°C</button><button class="v7-action" data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1°C</button>`);
-      if (allowed.some(x => !["toggle","temperature"].includes(x)))
-        actions.push(`<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Контроли", "Controls")}</button>`);
-      return `<article class="v7-card v7-entity ${card.layout === "info" ? "info" : ""}">
-        <div class="v7-entity-icon">${icons[card.domain] || "◫"}</div>
-        <h3>${this.escape(card.name)}</h3>
-        <div class="v7-entity-value">${friendlyState(card)}</div>
-        <div class="v7-entity-identifier">${this.escape(card.entity_id)}</div>
-        ${actions.length ? `<div class="v7-actions">${actions.join("")}</div>` : ""}
-      </article>`;
-    };
+    const oneCard = card => this.renderNativeCard(card, controllable);
     const cardGrid = (cards, emptyLabel) => cards.length
       ? `<div class="v7-grid">${cards.map(oneCard).join("")}</div>`
       : `<div class="v7-empty">${this.escape(emptyLabel)}</div>`;
@@ -607,27 +719,7 @@ class StevoraHomePanel extends HTMLElement {
       }).join("") : `<div class="v7-empty">${this.t("Няма осветление", "No lighting")}</div>`}
       <div class="v7-actions"><button class="v7-action subtle" data-view="lighting">${this.t("Всички светлини", "All lighting")}</button></div>
     </section>`;
-    const lightingWidget = card => {
-      const state = ent(card);
-      const rgb = state?.attributes?.rgb_color;
-      const rgbValid = Array.isArray(rgb) && rgb.length === 3 && rgb.every(v => Number.isInteger(v) && v>=0 && v<=255);
-      const hex = rgbValid ? "#" + rgb.map(v=>v.toString(16).padStart(2,"0")).join("") : "#8fc4ff";
-      const brightness = Number(state?.attributes?.brightness);
-      const pct = Number.isFinite(brightness) ? Math.round(brightness * 100 / 255) : 0;
-      const on = state?.state === "on";
-      const modes = state?.attributes?.supported_color_modes || [];
-      const rgbSupported = modes.some(m=>["rgb","rgbw","rgbww","hs","xy"].includes(m));
-      return `<section class="v7-card">
-        <div class="v7-card-title">✧ ${this.escape(card.name)}</div>
-        <div class="v7-rgb"><span class="v7-color-dot" style="background:${hex}"></span><div><strong>${this.escape(on ? this.t("Включена","On") : this.t("Изключена","Off"))}</strong><div class="v7-muted">${this.escape(card.entity_id)}</div></div></div>
-        <div class="v7-actions">
-          ${can(card,"toggle") ? `<button class="v7-action" data-action="toggle" data-id="${this.escape(card.entity_id)}">${this.t("Включи / изключи","Toggle")}</button>` : ""}
-          ${online(card) && controllable.has(card.entity_id) && (card.controls||[]).length ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Повече","More")}</button>` : ""}
-        </div>
-        ${can(card,"brightness") && "brightness" in (state?.attributes||{}) ? `<div class="v7-control-item"><label>${this.t("Яркост","Brightness")}: ${pct}%</label><input class="v7-slider" type="range" min="1" max="100" value="${pct}" data-lightbrightness="${this.escape(card.entity_id)}" aria-label="${this.t("Яркост","Brightness")}"></div>` : ""}
-        ${can(card,"color") && rgbSupported ? `<div class="v7-control-item"><label>${this.t("RGB цвят","RGB color")}</label><input class="v7-color-input" type="color" value="${hex}" data-lightcolor="${this.escape(card.entity_id)}" aria-label="${this.t("Цвят","Color")}"></div>` : ""}
-      </section>`;
-    };
+    const lightingWidget = card => this.renderNativeCard(card, controllable, true);
     const runSections = roomsToDisplay => roomsToDisplay.map(room =>
       `${sectionTitle(room.name, room.cards.length + " " + this.t("устройства","entities"))}${cardGrid(room.cards,this.t("Няма устройства в стаята","No entities in room"))}`
     ).join("");
