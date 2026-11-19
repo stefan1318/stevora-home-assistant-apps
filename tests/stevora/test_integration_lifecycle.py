@@ -75,6 +75,8 @@ class IntegrationLifecycleTests(unittest.TestCase):
         helpers = types.ModuleType("homeassistant.helpers")
         helpers.storage = storage
         helpers.entity_registry = entity_registry
+        area_registry = types.ModuleType("homeassistant.helpers.area_registry")
+        helpers.area_registry = area_registry
         assist_pipeline = types.ModuleType("homeassistant.components.assist_pipeline")
         assist_pipeline.async_get_pipelines = lambda hass: []
         websocket = types.ModuleType("homeassistant.components.websocket_api")
@@ -107,6 +109,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
             "homeassistant.helpers": helpers,
             "homeassistant.helpers.storage": storage,
             "homeassistant.helpers.entity_registry": entity_registry,
+            "homeassistant.helpers.area_registry": area_registry,
         })
         self.module_patch.start()
         # __init__.py is a package, not a nested module.
