@@ -171,7 +171,9 @@ class IntegrationLifecycleTests(unittest.TestCase):
             send_error=lambda *args: self.fail("unexpected error"),
         )
         asyncio.run(self.commands[0](self.hass, connection, {"id": 7}))
-        self.assertEqual(response["payload"], {"installation_id": "test-entry", "role": "regular"})
+        self.assertEqual(response["payload"]["installation_id"], "test-entry")
+        self.assertEqual(response["payload"]["role"], "regular")
+        self.assertEqual(response["payload"]["preferred_language"], "en")
 
     def test_missing_config_entry_rejected(self):
         self.hass.config_entries.async_entries = lambda domain: []
