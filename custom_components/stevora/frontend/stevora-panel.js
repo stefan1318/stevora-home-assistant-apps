@@ -10,6 +10,8 @@ class StevoraHomePanel extends HTMLElement {
     this._mode = "auto";
     this._selectedRoom = "";
     this._language = "bg";
+    this._admin = null;
+    this._adminError = "";
   }
 
   set hass(value) {
@@ -29,8 +31,20 @@ class StevoraHomePanel extends HTMLElement {
       this._language = this._manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
       this._mode = "stevora";
+      try {
+        const [rooms, assistants] = await Promise.all([
+          this._hass.callWS({type:"stevora/admin/rooms/get"}),
+          this._hass.callWS({type:"stevora/admin/assistants/get"})
+        ]);
+        this._admin = {rooms, assistants};
+        this._adminError = "";
+      } catch (error) {
+        this._admin = null;
+        this._adminError = String(error?.message || error);
+      }
     } catch (error) {
       this._manifest = null;
+      this._admin = null;
       this._mode = "native";
       this._error = String(error?.message || "");
     } finally {
@@ -70,6 +84,17 @@ class StevoraHomePanel extends HTMLElement {
     const controllable = new Set(this._manifest?.controllable_entities || []);
     const audit = this._manifest?.discovery_diagnostics || null;
     const reasons = audit?.counts || {};
+    const admin = this._admin;
+    const adminPanel = admin ? `<details class="audit"><summary>${this.t("STEVORA администраторски мениджъри", "STEVORA administrator managers")}</summary>
+      <h3>${this.t("Основен асистент", "Default assistant")}</h3>
+      <select id="admin-assistant"><option value="">${this.t("Без избор", "No selection")}</option>${(admin.assistants.pipelines || []).map(p => `<option value="${this.escape(p.id)}" ${admin.assistants.settings?.default_pipeline === p.id ? "selected" : ""}>${this.escape(p.name)}</option>`).join("")}</select>
+      <button id="save-assistant">${this.t("Запази", "Save")}</button>
+      <h3>${this.t("Видимост на устройствата", "Device visibility")}</h3>
+      <div class="auditlist" style="max-height:330px">${(admin.rooms.entities || []).map(e => `<div style="padding:6px 0"><span>${this.escape(e.name)} — ${this.escape(e.entity_id)}</span>
+        <select data-visibility="${this.escape(e.entity_id)}" ${e.disabled || e.hidden ? "disabled" : ""}>
+        ${["default","include","exclude"].map(v => `<option value="${v}" ${(admin.rooms.visibility?.[e.entity_id] || "default") === v ? "selected" : ""}>${this.escape(v)}</option>`).join("")}</select></div>`).join("")}</div>
+      <p class="muted">${this.t("Промените се прилагат към сървърния Manifest.", "Changes are applied to the server manifest.")}</p>
+      </details>` : "";
     const auditText = audit
       ? `<details class="audit"><summary>${this.t("Диагностика на откриването", "Discovery diagnostics")}</summary>
           <p>${this.t("Разпознати", "Included")}: ${Number(reasons.included || 0)} ·
@@ -116,6 +141,8 @@ class StevoraHomePanel extends HTMLElement {
         </div></header>
         <p class="status">${this._mode === "stevora" ? this.t("STEVORA конфигурацията е заредена","STEVORA configuration loaded") : this.t("STEVORA Manifest е недостъпен — управлението е изключено","STEVORA manifest unavailable — controls disabled")} · ${items.length} ${this.t("устройства","entities")}</p>
         ${auditText}
+        ${adminPanel}
+        ${this._adminError ? `<p class="status">${this.escape(this._adminError)}</p>` : ""}
         <div class="grid">${items.map(item => {
           const domain = item.entity_id.split(".")[0];
           const controls = controllable.has(item.entity_id) && ["light","switch","fan"].includes(domain)
@@ -126,6 +153,24 @@ class StevoraHomePanel extends HTMLElement {
         }).join("")}</div>
       </main>`;
     this.shadowRoot.getElementById("refresh").onclick = () => this.refresh();
+    const assistantSave = this.shadowRoot.getElementById("save-assistant");
+    if (assistantSave) assistantSave.onclick = async () => {
+      try {
+        await this._hass.callWS({type:"stevora/admin/assistants/update",
+          expected_revision:this._admin.assistants.revision,
+          default_pipeline:this.shadowRoot.getElementById("admin-assistant").value || null,
+          user_pipelines:this._admin.assistants.settings?.user_pipelines || {}});
+        await this.refresh();
+      } catch(error) { this._adminError = String(error?.message || error); this.render(); }
+    };
+    this.shadowRoot.querySelectorAll("[data-visibility]").forEach(select => select.onchange = async () => {
+      try {
+        await this._hass.callWS({type:"stevora/admin/rooms/update",
+          expected_revision:this._admin.rooms.revision,
+          entities:[{entity_id:select.dataset.visibility, visibility:select.value}]});
+        await this.refresh();
+      } catch(error) { this._adminError = String(error?.message || error); this.render(); }
+    });
     this.shadowRoot.getElementById("language").onchange = e => { this._language = e.target.value; this.render(); };
     this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this.render(); };
     this.shadowRoot.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
