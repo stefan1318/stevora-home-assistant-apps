@@ -50,7 +50,7 @@ jobs:
           mkdir -p dist
           zip -q -r dist/stevora-universal-integration-0.2.0-rc.2.zip custom_components/stevora
           unzip -l dist/stevora-universal-integration-0.2.0-rc.2.zip | grep 'custom_components/stevora/manifest.json'
-          (cd dist && sha256sum stevor*-rc.1.zip > SHA256SUMS.txt)
+          (cd dist && sha256sum stevora-universal-integration-0.2.0-rc.2.zip > SHA256SUMS.txt)
       - name: Upload independent-HA test candidate
         uses: actions/upload-artifact@v4
         with:
