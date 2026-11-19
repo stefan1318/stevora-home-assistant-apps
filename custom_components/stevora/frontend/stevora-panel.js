@@ -22,6 +22,14 @@ class StevoraHomePanel extends HTMLElement {
     this._refreshQueued = false;
     this._view = "home";
     this._wall = false;
+    this._renderedView = null;
+    this._renderedInstallation = null;
+    this._renderedUser = null;
+    this._resetEditorValues = false;
+    this._chatMessages = [];
+    this._chatConversationId = null;
+    this._chatBusy = false;
+    this._chatError = "";
   }
 
   set hass(value) {
@@ -39,6 +47,10 @@ class StevoraHomePanel extends HTMLElement {
       this._hubError = "";
       this._hubLastUpdated = "";
       this._hubRefreshing = false;
+      this._chatMessages = [];
+      this._chatConversationId = null;
+      this._chatBusy = false;
+      this._chatError = "";
       this._admin = null;
       this._selectedRoom = "";
       this._stateSignature = null;
@@ -50,13 +62,19 @@ class StevoraHomePanel extends HTMLElement {
     }
     if (!old && value) void this.refresh();
     else if (value && this.isConnected) {
-      // HA may update state once per second; do not erase active admin edits.
-      const focused = this.shadowRoot?.activeElement;
-      if (focused && ["INPUT", "SELECT", "TEXTAREA"].includes(focused.tagName)) return;
       const signature = Object.keys(value.states || {}).sort().join("|");
-      if (this._stateSignature !== null && signature !== this._stateSignature) this.refresh();
-      else this.render();
+      const inventoryChanged = this._stateSignature !== null &&
+        signature !== this._stateSignature;
       this._stateSignature = signature;
+      // HA publishes state updates frequently. Settings and chat are workspaces:
+      // never destroy open editors, unsaved choices, chat input or scroll.
+      if (this._view === "settings" && this._mode === "stevora") {
+        if (inventoryChanged) void this.refresh();
+        return;
+      }
+      if (this._view === "ai" && this._mode === "stevora") return;
+      if (inventoryChanged) void this.refresh();
+      else this.render();
     }
   }
 
@@ -147,6 +165,45 @@ class StevoraHomePanel extends HTMLElement {
     })[ch]);
   }
 
+  // Preserve expanded accordions, user form edits and scroll across explicit
+  // refreshes; keep this state in RAM only and never restore across HA sessions.
+  captureUiState() {
+    const root = this.shadowRoot;
+    const identity = this._manifest?.installation_id || null;
+    const user = this._hass?.user?.id || null;
+    if (this._renderedView !== this._view ||
+        this._renderedInstallation !== identity ||
+        this._renderedUser !== user) return null;
+    const opened = [...root.querySelectorAll("details[data-editor-key][open]")]
+      .map(x => x.getAttribute("data-editor-key"));
+    const fields = [...root.querySelectorAll(".v7-manager input, .v7-manager select, .v7-manager textarea")]
+      .map(x => ({value: x.value, checked: !!x.checked, tag: x.tagName, type: x.type}));
+    const panels = [...root.querySelectorAll(".v7-manager .auditlist")]
+      .map(x => x.scrollTop || 0);
+    return {opened, fields, panels};
+  }
+
+  restoreUiState(saved) {
+    if (!saved) return;
+    const opened = new Set(saved.opened);
+    this.shadowRoot.querySelectorAll("details[data-editor-key]").forEach(x => {
+      if (opened.has(x.getAttribute("data-editor-key"))) x.open = true;
+    });
+    if (!this._resetEditorValues) {
+      const controls = [...this.shadowRoot.querySelectorAll(".v7-manager input, .v7-manager select, .v7-manager textarea")];
+      if (controls.length === saved.fields.length)
+        controls.forEach((x, index) => {
+          const old = saved.fields[index];
+          if (old.tag !== x.tagName || old.type !== x.type) return;
+          if (x.type === "checkbox" || x.type === "radio") x.checked = old.checked;
+          else x.value = old.value;
+        });
+    }
+    this.shadowRoot.querySelectorAll(".v7-manager .auditlist").forEach((x, index) => {
+      x.scrollTop = saved.panels[index] || 0;
+    });
+  }
+
   inventory() {
     const states = Object.values(this._hass?.states || {});
     const allowed = new Set((this._panelModel?.sections || []).flatMap(s => s.cards.map(x => x.entity_id)));
@@ -165,20 +222,21 @@ class StevoraHomePanel extends HTMLElement {
 
   render() {
     if (!this.shadowRoot) return;
+    const uiSnapshot = this.captureUiState();
     const items = this.inventory();
     const rooms = (this._panelModel?.sections || []).map(({id, name}) => ({id, name}));
     const controllable = new Set(this._manifest?.controllable_entities || []);
     const audit = this._manifest?.discovery_diagnostics || null;
     const reasons = audit?.counts || {};
     const admin = this._admin;
-    const adminPanel = admin ? `<details class="audit"><summary>${this.t("STEVORA администраторски мениджъри", "STEVORA administrator managers")}</summary>
+    const adminPanel = admin ? `<details class="audit" data-editor-key="manager"><summary>${this.t("STEVORA администраторски мениджъри", "STEVORA administrator managers")}</summary>
       <h3>${this.t("Основен асистент", "Default assistant")}</h3>
       <select id="admin-assistant"><option value="">${this.t("Без избор", "No selection")}</option>${(admin.assistants.pipelines || []).map(p => `<option value="${this.escape(p.id)}" ${admin.assistants.settings?.default_pipeline === p.id ? "selected" : ""}>${this.escape(p.name)}</option>`).join("")}</select>
       <button id="save-assistant">${this.t("Запази", "Save")}</button>
       <h3>${this.t("Двуезични имена BG/EN", "Bilingual BG/EN names")}</h3>
       <div class="auditlist">${admin.rooms.rooms.map(room => `<div><strong>${this.escape(room.name)}</strong><input data-translation-room-bg="${this.escape(room.id)}" placeholder="Български" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.bg || "")}"/><input data-translation-room-en="${this.escape(room.id)}" placeholder="English" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.en || "")}"/><button data-translation-save-room="${this.escape(room.id)}">Save BG/EN</button></div>`).join("")}</div>
       <h3>${this.t("Персонализация на устройствата", "Device customization")}</h3>
-      <div class="auditlist" style="max-height:380px">${(admin.rooms.entities || []).map(e => { const p = admin.rooms.device_profiles?.[e.entity_id] || {}; return `<details><summary>${this.escape(e.name)} (${this.escape(e.entity_id)})</summary>
+      <div class="auditlist" style="max-height:380px">${(admin.rooms.entities || []).map(e => { const p = admin.rooms.device_profiles?.[e.entity_id] || {}; return `<details data-editor-key="device:${this.escape(e.entity_id)}"><summary>${this.escape(e.name)} (${this.escape(e.entity_id)})</summary>
         <input data-translation-entity-bg="${this.escape(e.entity_id)}" placeholder="Име на български" value="${this.escape(admin.rooms.translations?.entities?.[e.entity_id]?.bg || "")}"/>
         <input data-translation-entity-en="${this.escape(e.entity_id)}" placeholder="Name in English" value="${this.escape(admin.rooms.translations?.entities?.[e.entity_id]?.en || "")}"/>
         <button data-translation-save-entity="${this.escape(e.entity_id)}">Save BG/EN</button>
@@ -546,6 +604,11 @@ class StevoraHomePanel extends HTMLElement {
         </div></main>
         <nav class="v7-bottom" aria-label="STEVORA navigation">${bottomNav.map(n=>`<button data-view="${n[0]}" class="${this._view === n[0] ? "active" : ""}"><span>${n[3]}</span><span>${this.t(n[1],n[2])}</span></button>`).join("")}</nav>
       </div>`;
+    this.restoreUiState(uiSnapshot);
+    this._renderedView = this._view;
+    this._renderedInstallation = this._manifest?.installation_id || null;
+    this._renderedUser = this._hass?.user?.id || null;
+    this._resetEditorValues = false;
     this.shadowRoot.getElementById("refresh").onclick = () => this.refresh();
     const assistantSave = this.shadowRoot.getElementById("save-assistant");
     if (assistantSave) assistantSave.onclick = async () => {
