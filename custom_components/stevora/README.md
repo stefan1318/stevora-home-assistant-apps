@@ -1,4 +1,10 @@
-# STEVORA Home Assistant Integration — 0.1.0 experimental
+# STEVORA Home Assistant Integration — 0.2.0-rc.1
+
+**Release candidate for final tests only; NOT approved for production or Dunav.**
+GitHub Actions packages `custom_components/stevora/` into a checksum-pinned ZIP
+only after Python and JavaScript contract tests pass. For test steps and
+limitations see `docs/STE-05-UNIVERSAL-INTEGRATION-0.2-RC1-ACCEPTANCE-BG.md`.
+
 
 **Status: feature branch / not released / NOT approved for Home Assistant Dunav.**
 
