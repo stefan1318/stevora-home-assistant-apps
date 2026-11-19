@@ -759,10 +759,61 @@ class StevoraHomePanel extends HTMLElement {
             expected_revision:this._admin.rooms.revision,
             rooms:kind === "room" ? {[id]:{bg:read("bg"),en:read("en")}} : {},
             entities:kind === "entity" ? {[id]:{bg:read("bg"),en:read("en")}} : {}});
+          this._resetEditorValues = true;
           await this.refresh();
         } catch(error) {this._adminError=String(error?.message || error);this.render();}
       });
     }
+
+    // Searchable local gallery: user picks actual MDI icons visually, no code.
+    this.shadowRoot.querySelectorAll("[data-icon-open]").forEach(button => button.onclick = () => {
+      const id = button.dataset.iconOpen;
+      const root = this.shadowRoot;
+      const panel = root.querySelector('[data-icon-panel="' + CSS.escape(id) + '"]');
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      if (panel.hidden) return;
+      const grid = panel.querySelector("[data-icon-grid]");
+      const field = root.querySelector('[data-profile-icon="' + CSS.escape(id) + '"]');
+      if (!grid || !field) return;
+      if (!grid.dataset.ready) {
+        grid.innerHTML = this.iconGallery().map(([icon,bg,en]) =>
+          '<button type="button" class="v7-icon-option" data-icon-option="' + this.escape(icon) +
+          '" data-icon-label="' + this.escape(bg + ' ' + en + ' ' + icon) +
+          '" aria-label="' + this.escape(this.t(bg,en)) + '"' +
+          (field.value === icon ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' +
+          '<ha-icon icon="' + this.escape(icon) + '"></ha-icon>' +
+          '<span>' + this.escape(this.t(bg,en)) + '</span></button>'
+        ).join("");
+        grid.dataset.ready = "true";
+        grid.querySelectorAll("[data-icon-option]").forEach(iconButton => {
+          iconButton.onclick = () => {
+            field.value = iconButton.dataset.iconOption;
+            const preview = button.querySelector("ha-icon");
+            if (preview) preview.setAttribute("icon", field.value);
+            grid.querySelectorAll("[data-icon-option]").forEach(other =>
+              other.setAttribute("aria-pressed", String(other === iconButton)));
+            panel.hidden = true;
+          };
+        });
+      }
+    });
+    this.shadowRoot.querySelectorAll("[data-icon-search]").forEach(input => {
+      input.oninput = () => {
+        const panel = this.shadowRoot.querySelector('[data-icon-panel="' +
+          CSS.escape(input.dataset.iconSearch) + '"]');
+        const needle = input.value.trim().toLocaleLowerCase();
+        panel?.querySelectorAll("[data-icon-option]").forEach(item => {
+          item.hidden = !String(item.dataset.iconLabel || "").toLocaleLowerCase().includes(needle);
+        });
+      };
+    });
+    this.shadowRoot.querySelectorAll("[data-profile-control-mode]").forEach(select => {
+      const grid = this.shadowRoot.querySelector('[data-control-grid="' +
+        CSS.escape(select.dataset.profileControlMode) + '"]');
+      select.onchange = () => { if (grid) grid.hidden = select.value !== "custom"; };
+      select.onchange();
+    });
     this.shadowRoot.querySelectorAll("[data-profile-save]").forEach(button => button.onclick = async () => {
       const id = button.dataset.profileSave;
       const field = key => this.shadowRoot.querySelector('[data-profile-' + key + '="' + CSS.escape(id) + '"]')?.value || "";
@@ -771,12 +822,18 @@ class StevoraHomePanel extends HTMLElement {
         area_id:field("area") || null,
         user_ids:field("users").split(",").map(x=>x.trim()).filter(Boolean),
       };
-      const controls = field("controls").split(",").map(x=>x.trim()).filter(Boolean);
-      // Blank controls means native defaults; use Info layout for info-only.
-      if (controls.length) profile.controls = controls;
+      const mode = field("control-mode") || "auto";
+      // Auto uses domain defaults; view-only is an explicit empty control set.
+      if (mode === "info") profile.controls = [];
+      if (mode === "custom") {
+        profile.controls = [...this.shadowRoot.querySelectorAll(
+          '[data-control-for="' + CSS.escape(id) + '"]:checked'
+        )].map(x => x.value).filter(x => this.domainControls(id.split(".")[0]).includes(x));
+      }
       try {
         await this._hass.callWS({type:"stevora/admin/devices/update",
           expected_revision:this._admin.rooms.revision,profiles:{[id]:profile}});
+        this._resetEditorValues = true;
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
     });
@@ -785,6 +842,7 @@ class StevoraHomePanel extends HTMLElement {
         await this._hass.callWS({type:"stevora/admin/rooms/update",
           expected_revision:this._admin.rooms.revision,
           entities:[{entity_id:select.dataset.visibility, visibility:select.value}]});
+        this._resetEditorValues = true;
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
     });
