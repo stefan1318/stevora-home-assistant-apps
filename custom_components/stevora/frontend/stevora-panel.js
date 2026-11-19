@@ -6,6 +6,8 @@ class StevoraHomePanel extends HTMLElement {
     this._hass = null;
     this._manifest = null;
     this._panelModel = null;
+    this._hub = null;
+    this._hubError = "";
     this._stateSignature = null;
     this._busy = false;
     this._error = "";
@@ -31,6 +33,8 @@ class StevoraHomePanel extends HTMLElement {
       // Never render a previous home's manifest against the new home's states.
       this._manifest = null;
       this._panelModel = null;
+      this._hub = null;
+      this._hubError = "";
       this._admin = null;
       this._selectedRoom = "";
       this._stateSignature = null;
@@ -90,9 +94,34 @@ class StevoraHomePanel extends HTMLElement {
         const message = String(error?.message || error);
         this._adminError = /unauthorized|administrator permission/i.test(message) ? "" : message;
       }
+      // Home Hub is optional; failing to load it never re-enables old controls.
+      // Always verify this request still belongs to the same HA session.
+      this._hub = null;
+      this._hubError = "";
+      if (manifest.modules?.home_hub?.status === "active") {
+        try {
+          const [status, history, scenes] = await Promise.all([
+            this._hass.callWS({type:"stevora/hub/status"}),
+            this._hass.callWS({type:"stevora/hub/events",limit:50}),
+            this._hass.callWS({type:"stevora/hub/scenes"}),
+          ]);
+          if (sessionChanged()) { this._refreshQueued = true; return; }
+          if ([status, history, scenes].some(item => item.installation_id !== manifest.installation_id))
+            throw new Error("Home Hub belongs to another installation");
+          let settings = null;
+          if (this._admin) {
+            settings = await this._hass.callWS({type:"stevora/hub/config/get"});
+            if (sessionChanged()) { this._refreshQueued = true; return; }
+          }
+          this._hub = {status, history, scenes, settings};
+        } catch (error) {
+          this._hubError = String(error?.message || error);
+        }
+      }
     } catch (error) {
       this._manifest = null;
       this._panelModel = null;
+      this._hub = null;
       this._admin = null;
       this._mode = "native";
       this._error = String(error?.message || "");
@@ -203,6 +232,7 @@ class StevoraHomePanel extends HTMLElement {
       ["insights", "Статистика", "Insights", "⌁"],
       ["ai", "AI център", "AI center", "✦"],
       ["system", "Система", "System", "▥"],
+      ["hub", "Home Hub", "Home Hub", "◇"],
       ["memory", "Памет", "Memory", "◇"],
       ["settings", "Настройки", "Settings", "⚙"],
     ];
@@ -412,7 +442,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-hub1");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
@@ -489,7 +519,7 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this._view = "rooms"; this.render(); };
     this.shadowRoot.querySelectorAll("[data-view]").forEach(button => button.onclick = () => {
       const view = button.dataset.view;
-      if (["home","rooms","climate","lighting","devices","scenes","insights","ai","system","memory","settings"].includes(view)) {
+      if (["home","rooms","climate","lighting","devices","scenes","insights","ai","system","hub","memory","settings"].includes(view)) {
         this._view = view;
         this.render();
       }
