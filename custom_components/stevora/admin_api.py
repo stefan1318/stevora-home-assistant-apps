@@ -91,17 +91,17 @@ async def rooms_update(hass, connection, msg):
     if any(item["visibility"] == "include" and (registry.entities[item["entity_id"]].disabled_by is not None or registry.entities[item["entity_id"]].hidden_by is not None) for item in patches):
         connection.send_error(msg["id"], "invalid_entity", "Cannot expose disabled or hidden HA entities")
         return
-    updates = dict(manager.data["visibility"])
-    for item in patches:
-        entity_id, mode = item["entity_id"], item["visibility"]
-        if mode == "default":
-            updates.pop(entity_id, None)
-        else:
-            updates[entity_id] = mode
     async with manager.lock:
         if msg["expected_revision"] != manager.data["revision"]:
             connection.send_error(msg["id"], "conflict", "Configuration revision changed")
             return
+        updates = dict(manager.data["visibility"])
+        for item in patches:
+            entity_id, mode = item["entity_id"], item["visibility"]
+            if mode == "default":
+                updates.pop(entity_id, None)
+            else:
+                updates[entity_id] = mode
         new_state = dict(manager.data)
         new_state["visibility"] = updates
         new_state["revision"] = manager.data["revision"] + 1
