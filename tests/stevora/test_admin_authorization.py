@@ -131,5 +131,41 @@ class AdminAuthorizationTests(unittest.TestCase):
         self.assertFalse(self.results)
 
 
+    def test_simultaneous_admin_edits_use_revision_compare_and_swap(self):
+        self.connection.user.is_admin = True
+        self.api.area_registry.async_get = lambda hass: types.SimpleNamespace(
+            async_list_areas=lambda: [],
+        )
+        self.api.entity_registry.async_get = lambda hass: types.SimpleNamespace(
+            entities={},
+        )
+        manager = self.hass.data["stevora"]["_admin_managers"]
+        manager.data.update({"room_aliases": {}, "entity_aliases": {}})
+        manager.lock = asyncio.Lock()
+
+        async def save_state(state):
+            manager.data = state
+
+        manager.save_state = save_state
+
+        async def simultaneous():
+            await asyncio.gather(
+                self.api.room_aliases_update(self.hass, self.connection, {
+                    "id": 51, "expected_revision": 1,
+                    "room_aliases": {}, "entity_aliases": {},
+                }),
+                self.api.room_aliases_update(self.hass, self.connection, {
+                    "id": 52, "expected_revision": 1,
+                    "room_aliases": {}, "entity_aliases": {},
+                }),
+            )
+
+        asyncio.run(simultaneous())
+        self.assertEqual(manager.data["revision"], 2)
+        self.assertEqual(len(self.results), 1)
+        self.assertEqual(len(self.errors), 1)
+        self.assertEqual(self.errors[0][1], "conflict")
+
+
 if __name__ == "__main__":
     unittest.main()
