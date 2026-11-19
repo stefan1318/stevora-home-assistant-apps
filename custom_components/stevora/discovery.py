@@ -25,6 +25,7 @@ def build_manifest(hass, entry):
     admin_manager = hass.data.get("stevora", {}).get("_admin_managers")
     visibility = admin_manager.data.get("visibility", {}) if admin_manager else {}
     room_aliases = admin_manager.data.get("room_aliases", {}) if admin_manager else {}
+    room_order = admin_manager.data.get("room_order", []) if admin_manager else []
     entity_aliases = admin_manager.data.get("entity_aliases", {}) if admin_manager else {}
     selected_areas = set(settings.get("room_filter") or [])
     rooms = [
@@ -107,7 +108,7 @@ def build_manifest(hass, entry):
         "rooms": rooms, "mappings": mappings,
         "domain_mappings": domain_mappings, "settings": settings, "modules": modules,
         "diagnostic_counts": counts, "visibility": visibility,
-        "room_aliases": room_aliases, "entity_aliases": entity_aliases,
+        "room_aliases": room_aliases, "room_order": room_order, "entity_aliases": entity_aliases,
     }, sort_keys=True, default=str)
     revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
@@ -120,7 +121,7 @@ def build_manifest(hass, entry):
             **{key: bool(value) for key, value in domain_mappings.items()},
             "voice": modules["hey_stevora"]["status"] == "active",
         },
-        "rooms": sorted(rooms, key=lambda room: room["name"].casefold()),
+        "rooms": sorted(rooms, key=lambda room: (room_order.index(room["id"]) if room["id"] in room_order else len(room_order), room["name"].casefold())),
         "mappings": {key: sorted(value) for key, value in mappings.items()},
         "domain_mappings": {key: sorted(value) for key, value in domain_mappings.items()},
         "entities": sorted(inventory, key=lambda item: item["entity_id"]),
