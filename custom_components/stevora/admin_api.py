@@ -161,7 +161,9 @@ async def assistants_get(hass, connection, msg):
         return
     manager = _manager(hass)
     pipelines = available_pipelines(hass)
+    users = await hass.auth.async_get_users()
     connection.send_result(msg["id"], {
+        "users": sorted([{"id": user.id, "name": user.name or user.id} for user in users if user.is_active], key=lambda item: item["name"].casefold()),
         "revision": manager.data["revision"],
         "settings": manager.data["assistants"],
         "pipelines": pipelines,
