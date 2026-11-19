@@ -53,11 +53,24 @@ panel._manifest = {
   ],
   controllable_entities: ["light.kitchen"],
 };
+panel._panelModel = {
+  panel_version: "7.1.1",
+  sections: [
+    { id: "k", name: "Kitchen", cards: [
+      {entity_id:"light.kitchen", name:"Kitchen light", icon:"mdi:lightbulb", layout:"compact", domain:"light", controls:["toggle"]}
+    ]},
+    { id: "b", name: "Bedroom", cards: [
+      {entity_id:"climate.bedroom", name:"Bedroom climate", icon:"mdi:thermostat", layout:"info", domain:"climate", controls:[]}
+    ]}
+  ]
+};
 panel._mode = "stevora";
 assert.deepEqual([...panel.inventory()].map((x) => x.entity_id),
   ["light.kitchen", "climate.bedroom"]);
 panel.render();
 assert.match(panel.shadowRoot.innerHTML, /data-id="light.kitchen"/);
+assert.match(panel.shadowRoot.innerHTML, /data-room="k"/);
+assert.match(panel.shadowRoot.innerHTML, /Kitchen light/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-id="climate.bedroom"/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-id="light.kitchen_backlight"/);
 panel._selectedRoom = "b";
@@ -66,6 +79,7 @@ assert.deepEqual([...panel.inventory()].map((x) => x.entity_id), ["climate.bedro
 // A missing manifest must fail closed and expose no device controls.
 panel._mode = "native";
 panel._manifest = null;
+panel._panelModel = null;
 assert.equal(panel.inventory().length, 0);
 panel.render();
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
