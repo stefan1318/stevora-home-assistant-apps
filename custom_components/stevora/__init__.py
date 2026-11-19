@@ -8,6 +8,7 @@ from .panel import async_register_panel, async_remove_panel
 from .const import DOMAIN
 from .discovery import build_manifest
 from .permissions import project_manifest_for_user
+from .panel_generator import generate_panel
 from .modules import panel_requested
 from .admin_managers import AdminManagers
 from .admin_api import register as register_admin_commands
@@ -23,8 +24,21 @@ async def websocket_manifest(hass, connection, msg):
     manifest = build_manifest(hass, entries[0])
     connection.send_result(msg["id"], project_manifest_for_user(manifest, connection.user))
 
+@websocket_api.websocket_command({"type": "stevora/panel/generate"})
+@websocket_api.async_response
+async def websocket_panel_generate(hass, connection, msg):
+    """Generate a fresh v7.1.1 panel for this user's visible HA entities."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
+        return
+    manifest = project_manifest_for_user(build_manifest(hass, entries[0]), connection.user)
+    connection.send_result(msg["id"], generate_panel(manifest))
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
+    websocket_api.async_register_command(hass, websocket_panel_generate)
     register_admin_commands(hass)
     manager = AdminManagers(hass)
     await manager.load()
