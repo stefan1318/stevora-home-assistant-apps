@@ -35,5 +35,19 @@ class LocalizationTests(unittest.TestCase):
         self.assertEqual(source["rooms"][0]["name"], "Kitchen")
 
 
+    def test_known_compound_room_device_labels_in_both_directions(self):
+        self.assertEqual(
+            loc.localize_name("Kitchen Ceiling Light", "bg"),
+            "Кухня Таванно осветление",
+        )
+        self.assertEqual(
+            loc.localize_name("Баня Вентилатор", "en"),
+            "Bathroom Fan",
+        )
+        self.assertEqual(
+            loc.localize_name("My Kitchen Light", "bg"), "My Kitchen Light",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
