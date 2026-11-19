@@ -29,9 +29,10 @@ def build_manifest(hass, entry):
     room_order = admin_manager.data.get("room_order", []) if admin_manager else []
     entity_aliases = admin_manager.data.get("entity_aliases", {}) if admin_manager else {}
     device_profiles = admin_manager.data.get("device_profiles", {}) if admin_manager else {}
+    translations = admin_manager.data.get("translations", {}) if admin_manager else {}
     selected_areas = set(settings.get("room_filter") or [])
     rooms = [
-        {"id": a.id, "name": room_aliases.get(a.id, a.name)}
+        {"id": a.id, "name": room_aliases.get(a.id, a.name), "source_name": room_aliases.get(a.id, a.name), "translations": translations.get("rooms", {}).get(a.id, {})}
         for a in areas.async_list_areas()
         if not selected_areas or a.id in selected_areas
     ]
@@ -97,6 +98,8 @@ def build_manifest(hass, entry):
             "area_id": area_id,
             "device_id": entity.device_id,
             "name": profile.get("name") or entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
+            "source_name": profile.get("name") or entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
+            "translations": translations.get("entities", {}).get(entity.entity_id, {}),
             "icon": profile.get("icon", ""),
             "layout": profile.get("layout", "compact"),
             "controls": [item for item in profile["controls"] if item in permitted_controls(entity.entity_id)] if "controls" in profile else None,
@@ -117,7 +120,7 @@ def build_manifest(hass, entry):
         "domain_mappings": domain_mappings, "settings": settings, "modules": modules,
         "diagnostic_counts": counts, "visibility": visibility,
         "room_aliases": room_aliases, "room_order": room_order, "entity_aliases": entity_aliases,
-        "device_profiles": device_profiles,
+        "device_profiles": device_profiles, "translations": translations,
     }, sort_keys=True, default=str)
     revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
