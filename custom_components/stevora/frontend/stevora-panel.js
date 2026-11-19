@@ -204,6 +204,147 @@ class StevoraHomePanel extends HTMLElement {
     });
   }
 
+
+  safeIcon(icon, fallback = "mdi:devices") {
+    return typeof icon === "string" && /^mdi:[a-z0-9-]{1,60}$/.test(icon) ? icon : fallback;
+  }
+
+  iconGallery() {
+    return [
+      ["mdi:home","Дом","Home"],["mdi:sofa","Диван","Sofa"],
+      ["mdi:bed","Спалня","Bedroom"],["mdi:shower","Баня","Bathroom"],
+      ["mdi:lightbulb","Лампа","Lamp"],["mdi:led-strip-variant","LED лента","LED strip"],
+      ["mdi:ceiling-light","Таванна лампа","Ceiling light"],["mdi:floor-lamp","Лампион","Floor lamp"],
+      ["mdi:fan","Вентилатор","Fan"],["mdi:air-conditioner","Климатик","Air conditioner"],
+      ["mdi:thermostat","Термостат","Thermostat"],["mdi:thermometer","Температура","Temperature"],
+      ["mdi:water-percent","Влажност","Humidity"],["mdi:water","Вода","Water"],
+      ["mdi:power-socket-eu","Контакт","Socket"],["mdi:toggle-switch","Ключ","Switch"],
+      ["mdi:television","Телевизор","TV"],["mdi:speaker","Колона","Speaker"],
+      ["mdi:robot-vacuum","Робот","Robot"],["mdi:cat","Домашен любимец","Pet"],
+      ["mdi:door","Врата","Door"],["mdi:window-shutter","Щора","Cover"],
+      ["mdi:lock","Ключалка","Lock"],["mdi:shield-home","Сигурност","Security"],
+      ["mdi:motion-sensor","Движение","Motion"],["mdi:camera","Камера","Camera"],
+      ["mdi:wifi","Мрежа","Network"],["mdi:router-wireless","Рутер","Router"],
+      ["mdi:printer","Принтер","Printer"],["mdi:flash","Енергия","Energy"],
+      ["mdi:weather-sunny","Слънце","Sun"],["mdi:weather-night","Нощ","Night"],
+    ];
+  }
+
+  domainControls(domain) {
+    return ({
+      light:["toggle","brightness","color","color_temp","effect"],
+      switch:["toggle"], fan:["toggle","percentage","preset_mode","oscillate","direction"],
+      climate:["temperature","hvac_mode","fan_mode","preset_mode","swing_mode"],
+      cover:["open","close","stop","position","tilt"],
+      media_player:["play_pause","volume","source"], lock:["lock","unlock"],
+      sensor:[], binary_sensor:[],
+    })[domain] || [];
+  }
+
+  controlLabel(key) {
+    const known = {
+      toggle:["Включване","Power"], brightness:["Яркост","Brightness"],
+      color:["RGB цвят","RGB color"], color_temp:["Бяла светлина","White temperature"],
+      effect:["Ефекти","Effects"], temperature:["Температура","Temperature"],
+      hvac_mode:["Режим климатик","Climate mode"], fan_mode:["Скорост вентилатор","Fan speed"],
+      preset_mode:["Готов режим","Preset"], swing_mode:["Посока въздух","Swing"],
+      percentage:["Скорост","Speed"], oscillate:["Осцилация","Oscillation"],
+      direction:["Посока","Direction"], open:["Отвори","Open"],
+      close:["Затвори","Close"], stop:["Спри","Stop"],
+      position:["Позиция","Position"], tilt:["Наклон","Tilt"],
+      play_pause:["Пускане / пауза","Play / pause"],
+      volume:["Сила на звука","Volume"], source:["Източник","Source"],
+      lock:["Заключване","Lock"], unlock:["Отключване","Unlock"],
+    };
+    return known[key] ? this.t(known[key][0], known[key][1]) : key;
+  }
+
+  deviceEditors(config) {
+    const entities = config?.entities || [];
+    const profiles = config?.device_profiles || {};
+    const labels = config?.translations?.entities || {};
+    const rooms = config?.rooms || [];
+    const e = value => this.escape(value);
+    const title = '<h3>' + this.t("Устройства и персонализация","Devices and personalization") + '</h3>' +
+      '<p class="v7-editor-intro">' +
+      this.t("Избери устройство, икона и управление без писане на код. Промените засягат само STEVORA.",
+        "Choose devices, icons and controls without code. Changes affect STEVORA only.") +
+      '</p>';
+    return title + '<div class="auditlist v7-editor-list">' + entities.map(entity => {
+      const id = e(entity.entity_id);
+      const profile = profiles[entity.entity_id] || {};
+      const domain = entity.entity_id.split(".")[0];
+      const choices = this.domainControls(domain);
+      const mode = !Array.isArray(profile.controls) ? "auto" :
+        profile.controls.length ? "custom" : "info";
+      const icon = this.safeIcon(profile.icon, this.safeIcon(entity.icon,
+        ({light:"mdi:lightbulb",switch:"mdi:toggle-switch",fan:"mdi:fan",
+          climate:"mdi:thermostat",cover:"mdi:window-shutter",
+          media_player:"mdi:play-circle",sensor:"mdi:gauge",lock:"mdi:lock"})[domain] || "mdi:devices"));
+      const option = (value, text, current) => '<option value="' + e(value) + '"' +
+        (current === value ? " selected" : "") + '>' + e(text) + '</option>';
+      const showLabel = this.t("Персонализирай устройството","Customize device");
+      const translations = labels[entity.entity_id] || {};
+      return '<details class="v7-device-editor" data-editor-key="device:' + id + '">' +
+        '<summary><span class="v7-editor-device-icon"><ha-icon icon="' + e(icon) + '"></ha-icon></span>' +
+        '<span class="v7-editor-title"><strong>' + e(entity.name) + '</strong><small>' +
+        showLabel + '</small></span><span class="v7-editor-chevron">⌄</span></summary>' +
+        '<div class="v7-editor-body">' +
+        '<div class="v7-editor-field"><label>' + this.t("Име в STEVORA","Display name") + '</label>' +
+        '<input data-profile-name="' + id + '" value="' + e(profile.name || "") + '" placeholder="' +
+        e(entity.name) + '"/></div>' +
+        '<div class="v7-editor-field"><label>' + this.t("Икона","Icon") + '</label>' +
+        '<input type="hidden" data-profile-icon="' + id + '" value="' + e(profile.icon || "") + '"/>' +
+        '<button type="button" class="v7-icon-trigger" data-icon-open="' + id + '">' +
+        '<ha-icon icon="' + e(icon) + '"></ha-icon><span>' +
+        this.t("Избери икона","Choose an icon") + '</span><span>⌄</span></button>' +
+        '<div class="v7-icon-picker" data-icon-panel="' + id + '" hidden>' +
+        '<input type="search" data-icon-search="' + id + '" placeholder="' +
+        this.t("Търси лампа, вентилатор, климатик...","Find lamp, fan, climate...") + '"/>' +
+        '<div class="v7-icon-grid" data-icon-grid="' + id + '"></div></div></div>' +
+        '<div class="v7-editor-columns">' +
+        '<div class="v7-editor-field"><label>' + this.t("Стил на картата","Card style") + '</label>' +
+        '<select data-profile-layout="' + id + '">' +
+        option("compact",this.t("Компактен","Compact"),profile.layout || "compact") +
+        option("expanded",this.t("Разширен","Expanded"),profile.layout || "compact") +
+        option("info",this.t("Само информация","Information only"),profile.layout || "compact") +
+        '</select></div>' +
+        '<div class="v7-editor-field"><label>' + this.t("Помещение","Room") + '</label>' +
+        '<select data-profile-area="' + id + '">' +
+        option("",this.t("Автоматично","Automatic"),profile.area_id || "") +
+        rooms.map(room => option(room.id,room.name,profile.area_id)).join("") +
+        '</select></div></div>' +
+        '<div class="v7-editor-field"><label>' + this.t("Контроли","Controls") + '</label>' +
+        '<select data-profile-control-mode="' + id + '">' +
+        option("auto",this.t("Автоматични според устройството","Automatic for device"),mode) +
+        option("info",this.t("Без управление","View only"),mode) +
+        option("custom",this.t("Избери ръчно","Choose controls"),mode) +
+        '</select>' +
+        '<div class="v7-editor-controls" data-control-grid="' + id + '"' +
+        (mode !== "custom" ? " hidden" : "") + '>' +
+        choices.map(key => '<label class="v7-toggle-pill"><input type="checkbox" value="' + key +
+          '" data-control-for="' + id + '"' +
+          ((profile.controls || []).includes(key) ? " checked" : "") +
+          '/><span>' + e(this.controlLabel(key)) + '</span></label>').join("") +
+        '</div></div>' +
+        '<details class="v7-editor-advanced" data-editor-key="advanced:' + id + '">' +
+        '<summary>' + this.t("Разширени настройки","Advanced options") + '</summary>' +
+        '<div class="v7-editor-field"><label>' +
+        this.t("Ограничи до HA потребители (ID)","Restrict to HA user IDs") + '</label>' +
+        '<input data-profile-users="' + id + '" value="' +
+        e((profile.user_ids || []).join(",")) + '"/></div>' +
+        '<div class="v7-editor-field"><label>' + this.t("Име на български","Bulgarian name") + '</label>' +
+        '<input data-translation-entity-bg="' + id + '" value="' + e(translations.bg || "") + '"/></div>' +
+        '<div class="v7-editor-field"><label>' + this.t("Име на английски","English name") + '</label>' +
+        '<input data-translation-entity-en="' + id + '" value="' + e(translations.en || "") + '"/></div>' +
+        '<button type="button" class="v7-action subtle" data-translation-save-entity="' + id + '">' +
+        this.t("Запази BG/EN","Save BG/EN") + '</button>' +
+        '<small class="v7-editor-id">' + id + '</small></details>' +
+        '<button type="button" class="v7-action v7-editor-save" data-profile-save="' + id + '">' +
+        this.t("Запази устройството","Save device") + '</button></div></details>';
+    }).join("") + '</div>';
+  }
+
   inventory() {
     const states = Object.values(this._hass?.states || {});
     const allowed = new Set((this._panelModel?.sections || []).flatMap(s => s.cards.map(x => x.entity_id)));
@@ -235,18 +376,7 @@ class StevoraHomePanel extends HTMLElement {
       <button id="save-assistant">${this.t("Запази", "Save")}</button>
       <h3>${this.t("Двуезични имена BG/EN", "Bilingual BG/EN names")}</h3>
       <div class="auditlist">${admin.rooms.rooms.map(room => `<div><strong>${this.escape(room.name)}</strong><input data-translation-room-bg="${this.escape(room.id)}" placeholder="Български" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.bg || "")}"/><input data-translation-room-en="${this.escape(room.id)}" placeholder="English" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.en || "")}"/><button data-translation-save-room="${this.escape(room.id)}">Save BG/EN</button></div>`).join("")}</div>
-      <h3>${this.t("Персонализация на устройствата", "Device customization")}</h3>
-      <div class="auditlist" style="max-height:380px">${(admin.rooms.entities || []).map(e => { const p = admin.rooms.device_profiles?.[e.entity_id] || {}; return `<details data-editor-key="device:${this.escape(e.entity_id)}"><summary>${this.escape(e.name)} (${this.escape(e.entity_id)})</summary>
-        <input data-translation-entity-bg="${this.escape(e.entity_id)}" placeholder="Име на български" value="${this.escape(admin.rooms.translations?.entities?.[e.entity_id]?.bg || "")}"/>
-        <input data-translation-entity-en="${this.escape(e.entity_id)}" placeholder="Name in English" value="${this.escape(admin.rooms.translations?.entities?.[e.entity_id]?.en || "")}"/>
-        <button data-translation-save-entity="${this.escape(e.entity_id)}">Save BG/EN</button>
-        <input data-profile-name="${this.escape(e.entity_id)}" placeholder="Display name" value="${this.escape(p.name || "")}"/>
-        <input data-profile-icon="${this.escape(e.entity_id)}" placeholder="mdi:lightbulb" value="${this.escape(p.icon || "")}"/>
-        <select data-profile-layout="${this.escape(e.entity_id)}">${["info","compact","expanded"].map(v => `<option value="${v}" ${p.layout === v ? "selected" : ""}>${v}</option>`).join("")}</select>
-        <select data-profile-area="${this.escape(e.entity_id)}"><option value="">${this.t("Автоматична стая", "Automatic room")}</option>${admin.rooms.rooms.map(room => `<option value="${this.escape(room.id)}" ${p.area_id === room.id ? "selected" : ""}>${this.escape(room.name)}</option>`).join("")}</select>
-        <input data-profile-users="${this.escape(e.entity_id)}" placeholder="HA user IDs (comma separated)" value="${this.escape((p.user_ids || []).join(","))}"/>
-        <input data-profile-controls="${this.escape(e.entity_id)}" placeholder="Controls (comma separated)" value="${this.escape((p.controls || []).join(","))}"/>
-        <button data-profile-save="${this.escape(e.entity_id)}">${this.t("Запази устройството", "Save device")}</button></details>`; }).join("")}</div>
+      ${this.deviceEditors(admin.rooms)}
       <h3>${this.t("Видимост на устройствата", "Device visibility")}</h3>
       <div class="auditlist" style="max-height:330px">${(admin.rooms.entities || []).map(e => `<div style="padding:6px 0"><span>${this.escape(e.name)} — ${this.escape(e.entity_id)} · ${this.escape(e.reason || (e.included ? "included" : "unknown"))} ${e.area_id ? "· " + this.escape(e.area_id) : ""}</span>
         <select data-visibility="${this.escape(e.entity_id)}" ${e.disabled || e.hidden ? "disabled" : ""}>
