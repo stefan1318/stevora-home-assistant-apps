@@ -492,8 +492,8 @@ class StevoraHomePanel extends HTMLElement {
       actions.push(smallButton("toggle",state.state === "on" ? "power" : "power-standby",
         state.state === "on" ? this.t("Изключи","Turn off") : this.t("Включи","Turn on")));
     if (has("temperature") && domain === "climate") {
-      actions.push(smallButton("temperature-down","minus",this.t("−1°C","−1°C")));
-      actions.push(smallButton("temperature-up","plus",this.t("+1°C","+1°C")));
+      actions.push(smallButton("temperature-down","minus","−1" + this.temperatureUnit()));
+      actions.push(smallButton("temperature-up","plus","+1" + this.temperatureUnit()));
     }
     if (domain === "cover") for (const [key,mdi,bg,en] of [
       ["open","arrow-up-bold","Отвори","Open"],
@@ -1037,6 +1037,7 @@ class StevoraHomePanel extends HTMLElement {
           detail.hidden = !(label + " " + key).toLocaleLowerCase().includes(needle);
         });
       };
+      search.oninput();
     });
     // Searchable local gallery: user picks actual MDI icons visually, no code.
     this.shadowRoot.querySelectorAll("[data-icon-open]").forEach(button => button.onclick = () => {
