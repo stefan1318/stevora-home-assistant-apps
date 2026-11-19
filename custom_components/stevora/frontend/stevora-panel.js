@@ -5,6 +5,7 @@ class StevoraHomePanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._manifest = null;
+    this._panelModel = null;
     this._busy = false;
     this._error = "";
     this._mode = "auto";
@@ -28,6 +29,7 @@ class StevoraHomePanel extends HTMLElement {
     this._busy = true;
     try {
       this._manifest = await this._hass.callWS({ type: "stevora/manifest" });
+      this._panelModel = await this._hass.callWS({ type: "stevora/panel/generate" });
       this._language = this._manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
       this._mode = "stevora";
@@ -44,6 +46,7 @@ class StevoraHomePanel extends HTMLElement {
       }
     } catch (error) {
       this._manifest = null;
+      this._panelModel = null;
       this._admin = null;
       this._mode = "native";
       this._error = String(error?.message || "");
@@ -62,7 +65,7 @@ class StevoraHomePanel extends HTMLElement {
 
   inventory() {
     const states = Object.values(this._hass?.states || {});
-    const allowed = new Set((this._manifest?.entities || []).map(x => x.entity_id));
+    const allowed = new Set((this._panelModel?.sections || []).flatMap(s => s.cards.map(x => x.entity_id)));
     if (this._mode !== "stevora" || !this._manifest) return [];
     return states.filter(x => {
       const domain = x.entity_id.split(".")[0];
@@ -80,7 +83,9 @@ class StevoraHomePanel extends HTMLElement {
   render() {
     if (!this.shadowRoot) return;
     const items = this.inventory();
-    const rooms = this._manifest?.rooms || [];
+    const rooms = (this._panelModel?.sections || []).map(({id, name}) => ({id, name}));
+    const cards = (this._panelModel?.sections || []).flatMap(s => s.cards);
+    const byId = new Map(cards.map(card => [card.entity_id, card]));
     const controllable = new Set(this._manifest?.controllable_entities || []);
     const audit = this._manifest?.discovery_diagnostics || null;
     const reasons = audit?.counts || {};
@@ -125,9 +130,13 @@ class StevoraHomePanel extends HTMLElement {
         header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:22px}
         h1{font-size:26px;letter-spacing:2px;margin:0}small,.muted{color:#a6b3c8}
         .tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-        button,select{background:#1a2536;color:#eef3fc;border:1px solid #33465f;border-radius:10px;padding:10px 13px;font:inherit}
+        button,select,input{background:#1a2536;color:#eef3fc;border:1px solid #33465f;border-radius:10px;padding:10px 13px;font:inherit}
         button{cursor:pointer}button:focus-visible,select:focus-visible{outline:2px solid #6bb6ff}
         .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+        .room-section{margin:24px 0 30px}.room-title{font-size:18px;font-weight:650;margin:0 0 14px}
+        article[data-layout="expanded"]{grid-column:span 2}article[data-layout="info"]{background:#101825}
+        .device-icon{font-size:12px;color:#78b8ff;margin-bottom:9px}
+        @media(max-width:600px){article[data-layout="expanded"]{grid-column:span 1}}
         article{background:#141d2b;border:1px solid #2b3a50;border-radius:17px;padding:18px;min-width:0}
         article h2{font-size:15px;margin:0 0 12px;overflow-wrap:anywhere}
         .state{font-size:22px;font-weight:650;overflow-wrap:anywhere}
@@ -152,17 +161,29 @@ class StevoraHomePanel extends HTMLElement {
         ${auditText}
         ${adminPanel}
         ${this._adminError ? `<p class="status">${this.escape(this._adminError)}</p>` : ""}
-        <div class="grid">${items.map(item => {
-          const domain = item.entity_id.split(".")[0];
-          const display = this._manifest?.entities?.find(e=>e.entity_id===item.entity_id) || {};
-          const enabledControls = display.controls || [];
-          const hasProfile = Boolean(this._admin?.rooms?.device_profiles?.[item.entity_id]);
-          const controls = controllable.has(item.entity_id) && ["light","switch","fan"].includes(domain) && (!hasProfile || enabledControls.includes("toggle"))
-            ? `<div class="actions"><button data-action="toggle" data-id="${this.escape(item.entity_id)}">${this.t("Вкл./Изкл.","Toggle")}</button></div>` : "";
-          const climate = controllable.has(item.entity_id) && domain === "climate" && (!hasProfile || enabledControls.includes("temperature"))
-            ? `<div class="actions"><button data-action="temperature-down" data-id="${this.escape(item.entity_id)}">−1°C</button><button data-action="temperature-up" data-id="${this.escape(item.entity_id)}">+1°C</button></div>` : "";
-          return `<article><h2>${this.escape(display.name || item.attributes?.friendly_name || item.entity_id)}</h2><div class="state">${this.escape(item.state)} ${this.escape(item.attributes?.unit_of_measurement || "")}</div><div class="meta">${this.escape(item.entity_id)}</div>${controls}${climate}</article>`;
-        }).join("")}</div>
+        ${(this._panelModel?.sections || []).filter(section => !this._selectedRoom || section.id === this._selectedRoom).map(section => {
+          const visibleCards = section.cards.filter(card => items.some(item => item.entity_id === card.entity_id));
+          if (!visibleCards.length) return "";
+          return `<section class="room-section" data-room="${this.escape(section.id)}"><h2 class="room-title">${this.escape(section.name)}</h2><div class="grid">${visibleCards.map(card => {
+            const item = this._hass?.states?.[card.entity_id];
+            if (!item) return "";
+            const canControl = controllable.has(card.entity_id);
+            const allowedControls = canControl ? card.controls || [] : [];
+            const buttons = [];
+            if (allowedControls.includes("toggle") && ["light","switch","fan"].includes(card.domain)) {
+              buttons.push(`<button data-action="toggle" data-id="${this.escape(card.entity_id)}">${this.t("Вкл./Изкл.","Toggle")}</button>`);
+            }
+            if (allowedControls.includes("temperature") && card.domain === "climate") {
+              buttons.push(`<button data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1°C</button><button data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1°C</button>`);
+            }
+            // Other capability-specific actions open the HA more-info control,
+            // preserving native supported-feature validation and HA permissions.
+            if (allowedControls.some(x => !["toggle","temperature"].includes(x))) {
+              buttons.push(`<button data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Контроли","Controls")}</button>`);
+            }
+            return `<article data-layout="${this.escape(card.layout)}"><div class="device-icon">${this.escape(card.icon)}</div><h2>${this.escape(card.name)}</h2><div class="state">${this.escape(item.state)} ${this.escape(item.attributes?.unit_of_measurement || "")}</div><div class="meta">${this.escape(card.entity_id)}</div>${buttons.length ? `<div class="actions">${buttons.join("")}</div>` : ""}</article>`;
+          }).join("")}</div></section>`;
+        }).join("")}
       </main>`;
     this.shadowRoot.getElementById("refresh").onclick = () => this.refresh();
     const assistantSave = this.shadowRoot.getElementById("save-assistant");
@@ -206,7 +227,9 @@ class StevoraHomePanel extends HTMLElement {
       if (!state) return;
       const domain = entity.split(".")[0];
       try {
-        if (button.dataset.action === "toggle") {
+        if (button.dataset.action === "details") {
+          this.dispatchEvent(new CustomEvent("hass-more-info", {detail:{entityId:entity}, bubbles:true, composed:true}));
+        } else if (button.dataset.action === "toggle") {
           await this._hass.callService(domain, "toggle", { entity_id: entity });
         } else if (domain === "climate") {
           const current = Number(state.attributes.temperature);
