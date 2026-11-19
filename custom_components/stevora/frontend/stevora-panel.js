@@ -6,6 +6,7 @@ class StevoraHomePanel extends HTMLElement {
     this._hass = null;
     this._manifest = null;
     this._panelModel = null;
+    this._stateSignature = null;
     this._busy = false;
     this._error = "";
     this._mode = "auto";
@@ -19,7 +20,12 @@ class StevoraHomePanel extends HTMLElement {
     const old = this._hass;
     this._hass = value;
     if (!old && value) this.refresh();
-    else if (value && this.isConnected) this.render();
+    else if (value && this.isConnected) {
+      const signature = Object.keys(value.states || {}).sort().join("|");
+      if (this._stateSignature !== null && signature !== this._stateSignature) this.refresh();
+      else this.render();
+      this._stateSignature = signature;
+    }
   }
 
   connectedCallback() { this.render(); }
@@ -30,6 +36,7 @@ class StevoraHomePanel extends HTMLElement {
     try {
       this._manifest = await this._hass.callWS({ type: "stevora/manifest" });
       this._panelModel = await this._hass.callWS({ type: "stevora/panel/generate" });
+      if (this._panelModel?.installation_id !== this._manifest?.installation_id) throw new Error("Panel installation mismatch");
       this._language = this._manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
       this._mode = "stevora";
@@ -69,7 +76,7 @@ class StevoraHomePanel extends HTMLElement {
     if (this._mode !== "stevora" || !this._manifest) return [];
     return states.filter(x => {
       const domain = x.entity_id.split(".")[0];
-      if (!["climate", "light", "switch", "cover", "sensor", "binary_sensor", "fan", "media_player"].includes(domain)) return false;
+      if (!["climate", "light", "switch", "cover", "sensor", "binary_sensor", "fan", "media_player", "lock"].includes(domain)) return false;
       if (!allowed.has(x.entity_id)) return false;
       // Backlights are intentionally never controlled by STEVORA.
       if (/backlight/i.test(x.entity_id) || /backlight/i.test(x.attributes?.friendly_name || "")) return false;
@@ -84,8 +91,6 @@ class StevoraHomePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     const items = this.inventory();
     const rooms = (this._panelModel?.sections || []).map(({id, name}) => ({id, name}));
-    const cards = (this._panelModel?.sections || []).flatMap(s => s.cards);
-    const byId = new Map(cards.map(card => [card.entity_id, card]));
     const controllable = new Set(this._manifest?.controllable_entities || []);
     const audit = this._manifest?.discovery_diagnostics || null;
     const reasons = audit?.counts || {};
@@ -151,7 +156,7 @@ class StevoraHomePanel extends HTMLElement {
         @media(max-width:600px){main{padding:14px}h1{font-size:22px}}
       </style>
       <main>
-        <header><div><h1>STEVORA</h1><small>HOME PANEL</small></div>
+        <header><div><h1>STEVORA</h1><small>HOME PANEL v7.1.1 · AUTO</small></div>
         <div class="tools">
           <select id="language" aria-label="Language"><option value="bg" ${this._language === "bg" ? "selected" : ""}>BG</option><option value="en" ${this._language === "en" ? "selected" : ""}>EN</option></select>
           <select id="room" aria-label="Room"><option value="">${this.t("Всички помещения","All rooms")}</option>${rooms.map(x => `<option value="${this.escape(x.id)}" ${this._selectedRoom === x.id ? "selected" : ""}>${this.escape(x.name)}</option>`).join("")}</select>
