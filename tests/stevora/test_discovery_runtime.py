@@ -116,6 +116,29 @@ class DiscoveryRuntimeTests(unittest.TestCase):
         self.assertEqual(result["rooms"], [{"id": "kitchen", "name": "Kitchen"}])
         self.assertEqual([x["entity_id"] for x in result["entities"]], ["light.kitchen"])
 
+    def test_unassigned_report_and_opt_in(self):
+        hass = _Hass(
+            [("living", "Living")],
+            [("light.no_area", None), ("light.living", "living")],
+            "room-test", True,
+        )
+        off = types.SimpleNamespace(
+            entry_id="room-test", data={"include_unassigned": False}, options={},
+        )
+        omitted = self.discovery.build_manifest(hass, off)
+        self.assertEqual(omitted["discovery_diagnostics"]["counts"]["unassigned"], 1)
+        self.assertEqual(len(omitted["entities"]), 1)
+        on = types.SimpleNamespace(
+            entry_id="room-test", data={"include_unassigned": True}, options={},
+        )
+        included = self.discovery.build_manifest(hass, on)
+        self.assertIn("__stevora_unassigned__", included["mappings"])
+        self.assertEqual(
+            included["mappings"]["__stevora_unassigned__"], ["light.no_area"],
+        )
+        self.assertEqual(included["discovery_diagnostics"]["counts"]["unassigned"], 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()
