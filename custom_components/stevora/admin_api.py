@@ -6,6 +6,7 @@ from homeassistant.components import websocket_api
 from homeassistant.helpers import entity_registry
 
 from .admin_managers import require_admin
+from .assistant_manager import available_pipelines, validate_assistant_settings, resolve_pipeline
 from .discovery import build_manifest
 
 
@@ -25,7 +26,7 @@ async def capabilities(hass, connection, msg):
         return
     connection.send_result(msg["id"], {
         "room_manager": True,
-        "assistant_manager": False,
+        "assistant_manager": True,
         "schema_version": "1.0",
     })
 
@@ -114,30 +115,66 @@ async def assistants_get(hass, connection, msg):
     if not require_admin(connection, msg):
         return
     manager = _manager(hass)
-    # Pipeline inventory is obtained from HA's native Assist pipeline API by the client.
+    pipelines = available_pipelines(hass)
     connection.send_result(msg["id"], {
         "revision": manager.data["revision"],
         "settings": manager.data["assistants"],
+        "pipelines": pipelines,
     })
 
 
 @websocket_api.websocket_command({
     "type": "stevora/admin/assistants/update",
     vol.Required("expected_revision"): vol.Coerce(int),
-    vol.Optional("default_pipeline", default=None): vol.Any(str, None),
-    vol.Optional("user_pipelines", default={}): {str: str},
+    vol.Required("default_pipeline"): vol.Any(str, None),
+    vol.Required("user_pipelines"): {str: str},
 })
 @websocket_api.async_response
 async def assistants_update(hass, connection, msg):
     if not require_admin(connection, msg):
         return
-    # Fail closed until server validates real HA Assist pipelines and applies
-    # these preferences to effective conversation routing.
-    connection.send_error(
-        msg["id"], "not_implemented", "Assistant routing validation is not yet available"
+    manager = _manager(hass)
+    settings = {
+        "default_pipeline": msg["default_pipeline"],
+        "user_pipelines": msg["user_pipelines"],
+    }
+    async with manager.lock:
+        if msg["expected_revision"] != manager.data["revision"]:
+            connection.send_error(msg["id"], "conflict", "Configuration revision changed")
+            return
+        pipeline_ids = {item["id"] for item in available_pipelines(hass)}
+        users = await hass.auth.async_get_users()
+        user_ids = {user.id for user in users if user.is_active}
+        error = validate_assistant_settings(settings, pipeline_ids, user_ids)
+        if error:
+            connection.send_error(msg["id"], "invalid_assistant", error)
+            return
+        new_state = dict(manager.data)
+        new_state["assistants"] = settings
+        new_state["revision"] = manager.data["revision"] + 1
+        await manager.save_state(new_state)
+    connection.send_result(msg["id"], {"revision": manager.data["revision"]})
+
+
+@websocket_api.websocket_command({"type": "stevora/assistants/resolve"})
+@websocket_api.async_response
+async def assistants_resolve(hass, connection, msg):
+    """Resolve only the invoking user's preference, never expose other users."""
+    if _entry(hass) is None:
+        connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
+        return
+    manager = _manager(hass)
+    pipelines = available_pipelines(hass)
+    selected = resolve_pipeline(
+        manager.data["assistants"], connection.user.id,
+        {item["id"] for item in pipelines},
     )
+    connection.send_result(msg["id"], {
+        "pipeline_id": selected,
+        "source": "stevora" if selected else "home_assistant_default",
+    })
 
 
 def register(hass):
-    for command in (capabilities, rooms_get, rooms_update, assistants_get, assistants_update):
+    for command in (capabilities, rooms_get, rooms_update, assistants_get, assistants_update, assistants_resolve):
         websocket_api.async_register_command(hass, command)
