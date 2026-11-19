@@ -15,13 +15,34 @@ class StevoraHomePanel extends HTMLElement {
     this._languageOverride = null;
     this._admin = null;
     this._adminError = "";
+    this._refreshQueued = false;
   }
 
   set hass(value) {
     const old = this._hass;
     this._hass = value;
-    if (!old && value) this.refresh();
+    const sessionChanged = !!(old && value && (
+      (old.connection && value.connection && old.connection !== value.connection) ||
+      (old.user?.id && value.user?.id && old.user.id !== value.user.id)
+    ));
+    if (sessionChanged) {
+      // Never render a previous home's manifest against the new home's states.
+      this._manifest = null;
+      this._panelModel = null;
+      this._admin = null;
+      this._selectedRoom = "";
+      this._stateSignature = null;
+      this._mode = "native";
+      if (this._busy) this._refreshQueued = true;
+      else void this.refresh();
+      this.render();
+      return;
+    }
+    if (!old && value) void this.refresh();
     else if (value && this.isConnected) {
+      // HA may update state once per second; do not erase active admin edits.
+      const focused = this.shadowRoot?.activeElement;
+      if (focused && ["INPUT", "SELECT", "TEXTAREA"].includes(focused.tagName)) return;
       const signature = Object.keys(value.states || {}).sort().join("|");
       if (this._stateSignature !== null && signature !== this._stateSignature) this.refresh();
       else this.render();
@@ -34,12 +55,24 @@ class StevoraHomePanel extends HTMLElement {
   async refresh() {
     if (!this._hass || this._busy) return;
     this._busy = true;
+    const connection = this._hass.connection;
+    const userId = this._hass.user?.id;
+    const sessionChanged = () => (
+      this._hass?.connection !== connection || this._hass?.user?.id !== userId
+    );
     try {
       const locale = this._languageOverride || (this._hass?.language?.startsWith("bg") ? "bg" : "en");
-      this._manifest = await this._hass.callWS({ type: "stevora/manifest", language: locale });
-      this._panelModel = await this._hass.callWS({ type: "stevora/panel/generate", language: locale });
-      if (this._panelModel?.installation_id !== this._manifest?.installation_id) throw new Error("Panel installation mismatch");
-      this._language = this._manifest.preferred_language === "en" ? "en" : "bg";
+      const manifest = await this._hass.callWS({ type: "stevora/manifest", language: locale });
+      if (sessionChanged()) { this._refreshQueued = true; return; }
+      const model = await this._hass.callWS({ type: "stevora/panel/generate", language: locale });
+      if (sessionChanged()) { this._refreshQueued = true; return; }
+      if (model?.installation_id !== manifest?.installation_id ||
+          model?.revision !== manifest?.revision) {
+        throw new Error("Panel manifest changed during refresh");
+      }
+      this._manifest = manifest;
+      this._panelModel = model;
+      this._language = manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
       this._mode = "stevora";
       try {
@@ -47,11 +80,13 @@ class StevoraHomePanel extends HTMLElement {
           this._hass.callWS({type:"stevora/admin/rooms/get"}),
           this._hass.callWS({type:"stevora/admin/assistants/get"})
         ]);
+        if (sessionChanged()) { this._refreshQueued = true; return; }
         this._admin = {rooms, assistants};
         this._adminError = "";
       } catch (error) {
         this._admin = null;
-        this._adminError = String(error?.message || error);
+        const message = String(error?.message || error);
+        this._adminError = /unauthorized|administrator permission/i.test(message) ? "" : message;
       }
     } catch (error) {
       this._manifest = null;
@@ -61,7 +96,10 @@ class StevoraHomePanel extends HTMLElement {
       this._error = String(error?.message || "");
     } finally {
       this._busy = false;
+      const queued = this._refreshQueued;
+      this._refreshQueued = false;
       this.render();
+      if (queued) void this.refresh();
     }
   }
 
@@ -81,7 +119,7 @@ class StevoraHomePanel extends HTMLElement {
       if (!["climate", "light", "switch", "cover", "sensor", "binary_sensor", "fan", "media_player", "lock"].includes(domain)) return false;
       if (!allowed.has(x.entity_id)) return false;
       // Backlights are intentionally never controlled by STEVORA.
-      if (/backlight/i.test(x.entity_id) || /backlight/i.test(x.attributes?.friendly_name || "")) return false;
+      if (/back[ _-]?light|подсвет/i.test(x.entity_id) || /back[ _-]?light|подсвет/i.test(x.attributes?.friendly_name || "")) return false;
       if (this._selectedRoom) {
         return this._manifest.entities.some(y => y.entity_id === x.entity_id && y.area_id === this._selectedRoom);
       }
@@ -170,6 +208,7 @@ class StevoraHomePanel extends HTMLElement {
           <button id="refresh">${this.t("Обнови","Refresh")}</button>
         </div></header>
         <p class="status">${this._mode === "stevora" ? this.t("STEVORA конфигурацията е заредена","STEVORA configuration loaded") : this.t("STEVORA Manifest е недостъпен — управлението е изключено","STEVORA manifest unavailable — controls disabled")} · ${items.length} ${this.t("устройства","entities")}</p>
+        ${this._error ? `<p class="status">${this.escape(this._error)}</p>` : ""}
         ${auditText}
         ${adminPanel}
         ${this._adminError ? `<p class="status">${this.escape(this._adminError)}</p>` : ""}
@@ -228,8 +267,10 @@ class StevoraHomePanel extends HTMLElement {
         name:field("name"), icon:field("icon"), layout:field("layout") || "compact",
         area_id:field("area") || null,
         user_ids:field("users").split(",").map(x=>x.trim()).filter(Boolean),
-        controls:field("controls").split(",").map(x=>x.trim()).filter(Boolean)
       };
+      const controls = field("controls").split(",").map(x=>x.trim()).filter(Boolean);
+      // Blank controls means native defaults; use Info layout for info-only.
+      if (controls.length) profile.controls = controls;
       try {
         await this._hass.callWS({type:"stevora/admin/devices/update",
           expected_revision:this._admin.rooms.revision,profiles:{[id]:profile}});
@@ -264,6 +305,7 @@ class StevoraHomePanel extends HTMLElement {
         }
       } catch (error) {
         this._error = String(error?.message || error);
+        this.render();
       }
     });
   }

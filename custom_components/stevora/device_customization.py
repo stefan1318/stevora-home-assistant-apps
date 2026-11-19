@@ -5,6 +5,8 @@ Backlight controls are forbidden irrespective of client input.
 """
 from __future__ import annotations
 
+import re
+
 ALLOWED_LAYOUTS = frozenset({"info", "compact", "expanded"})
 ALLOWED_CONTROLS = {
     "light": frozenset({"toggle", "brightness", "color", "color_temp", "effect"}),
@@ -18,16 +20,25 @@ ALLOWED_CONTROLS = {
     "binary_sensor": frozenset(),
 }
 # User policy: all lamp backlights remain ON and must never be exposed as controls.
-FORBIDDEN_CONTROL_TERMS = ("backlight", "back_light", "back-light", "подсвет")
+FORBIDDEN_CONTROL_TERMS = ("backlight", "back light", "подсвет")
 
 
-def permitted_controls(entity_id, supported_features=0, attributes=None):
+def is_backlight_entity(*names) -> bool:
+    """Identify backlights by original names as well as entity IDs."""
+    for name in names:
+        normalized = re.sub(r"[\s_-]+", " ", str(name or "").casefold())
+        if any(term in normalized for term in FORBIDDEN_CONTROL_TERMS):
+            return True
+    return False
+
+
+def permitted_controls(entity_id, supported_features=0, attributes=None, source_name=None):
     """Conservative domain-level options; HA enforces capabilities at action time.
 
     Features and attributes can further narrow controls in the client; never
     treat this list as authorization to execute a service.
     """
-    if any(term in entity_id.casefold() for term in FORBIDDEN_CONTROL_TERMS):
+    if is_backlight_entity(entity_id, source_name):
         return []
     domain = entity_id.split(".", 1)[0]
     return sorted(ALLOWED_CONTROLS.get(domain, frozenset()))
@@ -62,11 +73,14 @@ def validate_profile(entity_id, profile, valid_areas):
 
 
 def normalize_profile(profile):
-    return {
+    result = {
         "name": profile.get("name", "").strip(),
         "icon": profile.get("icon", "").strip(),
         "layout": profile.get("layout", "compact"),
-        "controls": list(profile.get("controls", [])),
         "area_id": profile.get("area_id"),
         "user_ids": list(profile.get("user_ids", [])),
     }
+    # Absent controls uses defaults; an explicit [] remains information-only.
+    if "controls" in profile:
+        result["controls"] = list(profile["controls"])
+    return result

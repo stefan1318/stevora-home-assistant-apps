@@ -167,5 +167,88 @@ class DiscoveryRuntimeTests(unittest.TestCase):
 
 
 
+    def test_manual_and_selected_devices_when_auto_discovery_disabled(self):
+        hass = _Hass(
+            [("living", "Living Room")],
+            [("light.selected", "living"), ("fan.manual", "living"),
+             ("climate.profiled", "living"), ("switch.ignored", "living")],
+            "manual", True,
+        )
+        hass.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {"fan.manual": "include"},
+            "room_aliases": {}, "room_order": [], "entity_aliases": {},
+            "device_profiles": {"climate.profiled": {"name": "Aircon"}},
+            "translations": {},
+        })
+        entry = types.SimpleNamespace(entry_id="manual", data={
+            "auto_discovery": False, "lighting_entities": ["light.selected"],
+        }, options={})
+        manifest = self.discovery.build_manifest(hass, entry)
+        self.assertEqual(
+            [item["entity_id"] for item in manifest["entities"]],
+            ["climate.profiled", "fan.manual", "light.selected"],
+        )
+        self.assertEqual(
+            manifest["discovery_diagnostics"]["counts"]["auto_discovery_disabled"], 1,
+        )
+
+    def test_diagnostics_default_excluded_and_explicitly_included(self):
+        hass = _Hass([("bath", "Bathroom")], [
+            ("sensor.air", "bath"), ("sensor.diagnostic", "bath")
+        ], "categories", True)
+        hass.test_entities["sensor.diagnostic"].entity_category = "diagnostic"
+        entry = types.SimpleNamespace(entry_id="categories", data={}, options={})
+        original = self.discovery.build_manifest(hass, entry)
+        self.assertEqual([item["entity_id"] for item in original["entities"]], ["sensor.air"])
+        self.assertEqual(original["discovery_diagnostics"]["counts"]["categorized"], 1)
+        hass.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {"sensor.diagnostic": "include"},
+            "room_aliases": {}, "room_order": [], "entity_aliases": {},
+            "device_profiles": {}, "translations": {},
+        })
+        overridden = self.discovery.build_manifest(hass, entry)
+        self.assertEqual(len(overridden["entities"]), 2)
+
+    def test_backlight_rename_cannot_override_safety(self):
+        hass = _Hass([("bath", "Bathroom")], [
+            ("light.vanity", "bath"), ("light.mirror", "bath")
+        ], "backlight", True)
+        hass.test_entities["light.mirror"].original_name = "Mirror Back Light"
+        hass.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {"light.mirror": "include"},
+            "room_aliases": {}, "room_order": [], "entity_aliases": {},
+            "device_profiles": {"light.mirror": {"name": "Mirror"}},
+            "translations": {},
+        })
+        entry = types.SimpleNamespace(entry_id="backlight", data={}, options={})
+        manifest = self.discovery.build_manifest(hass, entry)
+        self.assertEqual([item["entity_id"] for item in manifest["entities"]], ["light.vanity"])
+        self.assertEqual(manifest["discovery_diagnostics"]["counts"]["backlight"], 1)
+
+    def test_revision_changes_when_original_ha_name_changes(self):
+        hass = _Hass([("bath", "Bathroom")], [("fan.bath", "bath")],
+                     "rename", True)
+        entry = types.SimpleNamespace(entry_id="rename", data={}, options={})
+        before = self.discovery.build_manifest(hass, entry)
+        hass.test_entities["fan.bath"].name = "Exhaust Fan"
+        after = self.discovery.build_manifest(hass, entry)
+        self.assertNotEqual(before["revision"], after["revision"])
+
+    def test_manual_room_override_survives_without_automatic_discovery(self):
+        hass = _Hass([("bath", "Bathroom")], [("fan.unassigned", None)],
+                     "manual-room", True)
+        hass.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {}, "room_aliases": {}, "room_order": [],
+            "entity_aliases": {},
+            "device_profiles": {"fan.unassigned": {"area_id": "bath", "name": "Vent"}},
+            "translations": {},
+        })
+        entry = types.SimpleNamespace(entry_id="manual-room",
+                                      data={"auto_discovery": False}, options={})
+        manifest = self.discovery.build_manifest(hass, entry)
+        self.assertEqual(manifest["mappings"]["bath"], ["fan.unassigned"])
+
+
+
 if __name__ == "__main__":
     unittest.main()

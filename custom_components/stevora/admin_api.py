@@ -8,7 +8,7 @@ from homeassistant.helpers import entity_registry, area_registry
 from .admin_managers import require_admin
 from .assistant_manager import available_pipelines, validate_assistant_settings, resolve_pipeline
 from .discovery import build_manifest
-from .device_customization import validate_profile, normalize_profile
+from .device_customization import validate_profile, normalize_profile, is_backlight_entity
 
 
 def _manager(hass):
@@ -98,7 +98,15 @@ async def rooms_update(hass, connection, msg):
         connection.send_error(msg["id"], "invalid_entity", "Entity is unknown or request is too large")
         return
     # A disabled/hidden HA entity cannot be made visible through STEVORA.
-    if any(item["visibility"] == "include" and (registry.entities[item["entity_id"]].disabled_by is not None or registry.entities[item["entity_id"]].hidden_by is not None) for item in patches):
+    if any(item["visibility"] == "include" and (
+        registry.entities[item["entity_id"]].disabled_by is not None
+        or registry.entities[item["entity_id"]].hidden_by is not None
+        or is_backlight_entity(
+            item["entity_id"],
+            registry.entities[item["entity_id"]].name,
+            registry.entities[item["entity_id"]].original_name,
+        )
+    ) for item in patches):
         connection.send_error(msg["id"], "invalid_entity", "Cannot expose disabled or hidden HA entities")
         return
     async with manager.lock:
@@ -185,6 +193,11 @@ async def devices_update(hass, connection, msg):
         if profile is None:
             continue
         error = validate_profile(entity_id, profile, valid_areas)
+        original = registry.entities[entity_id]
+        if profile.get("controls") and is_backlight_entity(
+            entity_id, original.name, original.original_name
+        ):
+            error = "Cannot enable backlight controls"
         if error or any(user not in user_ids for user in profile.get("user_ids", [])):
             connection.send_error(msg["id"], "invalid_profile", error or "Unknown user")
             return

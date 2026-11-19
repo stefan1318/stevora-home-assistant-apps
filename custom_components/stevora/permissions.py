@@ -56,7 +56,6 @@ def project_manifest_for_user(manifest: dict, user) -> dict:
         "entities": entities,
         "capabilities": capabilities,
         "controllable_entities": controllable,
-        "entities": entities,
     }
     # Prevent clients from conflating different users' manifest revisions.
     scope = {

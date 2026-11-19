@@ -56,5 +56,15 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(next(x for x in cards if x["entity_id"] == "fan.room")["controls"], ["toggle"])
 
 
+    def test_backlight_source_name_cannot_be_hidden_by_alias(self):
+        result = generator.generate_panel(manifest(
+            [{"id": "bath", "name": "Bathroom"}],
+            [{"entity_id": "light.ambient", "area_id": "bath",
+              "name": "Mirror", "original_name": "Mirror back-light"}],
+            ["light.ambient"],
+        ))
+        self.assertEqual(result["total_cards"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

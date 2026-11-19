@@ -4,7 +4,6 @@ Explicit per-language labels win. A conservative phrase dictionary handles
 common HA labels; unknown/proper names are retained rather than mistranslated.
 """
 from __future__ import annotations
-import re
 
 PHRASES = {
     "living room": "Всекидневна", "lounge": "Всекидневна", "bathroom": "Баня",
@@ -53,13 +52,24 @@ def localize_name(name: str, locale: str, overrides=None) -> str:
     exact = dictionary.get(key)
     if exact:
         return exact
-    # Only translate fully recognized multi-word expressions.
-    tokens = re.split(r"(\s+)", name.strip())
-    word_map = WORDS if locale == "bg" else BACK_WORDS
-    meaningful = [token for token in tokens if not token.isspace()]
-    if meaningful and all(token.casefold() in word_map for token in meaningful):
-        return " ".join(word_map[token.casefold()] for token in meaningful)
-    return name
+    # Translate multiword labels only if *every* phrase is recognized.
+    # Longest-match preserves combined terms such as "Ceiling Light".
+    lexicon = {**(WORDS if locale == "bg" else BACK_WORDS), **dictionary}
+    tokens = name.strip().split()
+    translated = []
+    index = 0
+    while index < len(tokens):
+        match = None
+        for size in range(min(4, len(tokens) - index), 0, -1):
+            phrase = " ".join(tokens[index:index + size]).casefold()
+            if phrase in lexicon:
+                match = (size, lexicon[phrase])
+                break
+        if match is None:
+            return name  # Unknown proper names remain unchanged.
+        translated.append(match[1])
+        index += match[0]
+    return " ".join(translated)
 
 
 def localized_manifest(manifest: dict, locale: str) -> dict:

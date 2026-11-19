@@ -38,5 +38,19 @@ class DeviceCustomizationTests(unittest.TestCase):
             "light.main", {"admin": True}, {"living"}))
 
 
+    def test_blank_customization_keeps_native_controls(self):
+        result = module.normalize_profile({"name": "Mirror Light", "area_id": "bath"})
+        self.assertNotIn("controls", result)
+        self.assertEqual(module.normalize_profile({"controls": []})["controls"], [])
+
+    def test_forbidden_backlight_aliases_and_source_names(self):
+        self.assertTrue(module.is_backlight_entity("light.mirror", "Mirror Back-Light"))
+        self.assertTrue(module.is_backlight_entity("light.mirror", "Огледало Подсветка"))
+        self.assertEqual(
+            module.permitted_controls("light.mirror", source_name="Back light"),
+            [],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
