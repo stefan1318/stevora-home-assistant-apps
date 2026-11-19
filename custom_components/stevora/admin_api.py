@@ -66,6 +66,7 @@ async def rooms_get(hass, connection, msg):
         "room_order": manager.data.get("room_order", []),
         "entity_aliases": manager.data.get("entity_aliases", {}),
         "device_profiles": manager.data.get("device_profiles", {}),
+        "translations": manager.data.get("translations", {"rooms": {}, "entities": {}}),
     })
 
 
@@ -202,6 +203,58 @@ async def devices_update(hass, connection, msg):
     connection.send_result(msg["id"], {"revision": manager.data["revision"]})
 
 
+@websocket_api.websocket_command({
+    "type": "stevora/admin/translations/update",
+    vol.Required("expected_revision"): vol.Coerce(int),
+    vol.Required("rooms"): {str: {vol.Optional("bg"): str, vol.Optional("en"): str}},
+    vol.Required("entities"): {str: {vol.Optional("bg"): str, vol.Optional("en"): str}},
+})
+@websocket_api.async_response
+async def translations_update(hass, connection, msg):
+    if not require_admin(connection, msg):
+        return
+    room_ids = {area.id for area in area_registry.async_get(hass).async_list_areas()}
+    entity_ids = set(entity_registry.async_get(hass).entities)
+    patches = {"rooms": msg["rooms"], "entities": msg["entities"]}
+    if len(patches["rooms"]) > 200 or len(patches["entities"]) > 1000:
+        connection.send_error(msg["id"], "invalid_translation", "Too many translations")
+        return
+    for category, known in (("rooms", room_ids), ("entities", entity_ids)):
+        for key, labels in patches[category].items():
+            if key not in known or any(
+                not isinstance(value, str) or len(value.strip()) > 80
+                for value in labels.values()
+            ):
+                connection.send_error(msg["id"], "invalid_translation", "Invalid localized name")
+                return
+    manager = _manager(hass)
+    async with manager.lock:
+        if msg["expected_revision"] != manager.data["revision"]:
+            connection.send_error(msg["id"], "conflict", "Configuration revision changed")
+            return
+        translations = {
+            kind: dict(manager.data.get("translations", {}).get(kind, {}))
+            for kind in ("rooms", "entities")
+        }
+        for kind in ("rooms", "entities"):
+            for key, labels in patches[kind].items():
+                merged = dict(translations[kind].get(key, {}))
+                for locale, value in labels.items():
+                    if value.strip():
+                        merged[locale] = value.strip()
+                    else:
+                        merged.pop(locale, None)
+                if merged:
+                    translations[kind][key] = merged
+                else:
+                    translations[kind].pop(key, None)
+        new_state = dict(manager.data)
+        new_state["translations"] = translations
+        new_state["revision"] = manager.data["revision"] + 1
+        await manager.save_state(new_state)
+    connection.send_result(msg["id"], {"revision": manager.data["revision"]})
+
+
 @websocket_api.websocket_command({"type": "stevora/admin/assistants/get"})
 @websocket_api.async_response
 async def assistants_get(hass, connection, msg):
@@ -271,5 +324,5 @@ async def assistants_resolve(hass, connection, msg):
 
 
 def register(hass):
-    for command in (capabilities, rooms_get, rooms_update, room_aliases_update, devices_update, assistants_get, assistants_update, assistants_resolve):
+    for command in (capabilities, rooms_get, rooms_update, room_aliases_update, devices_update, translations_update, assistants_get, assistants_update, assistants_resolve):
         websocket_api.async_register_command(hass, command)
