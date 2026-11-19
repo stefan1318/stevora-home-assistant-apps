@@ -50,6 +50,7 @@ def build_manifest(hass, entry):
         "unassigned": 0,
         "outside_selected_rooms": 0,
         "categorized": 0,
+        "explicitly_excluded": 0,
     }
     excluded = []
 
@@ -63,6 +64,7 @@ def build_manifest(hass, entry):
             skip(entity, "disabled" if entity.disabled_by is not None else "hidden")
             continue
         if visibility.get(entity.entity_id) == "exclude":
+            skip(entity, "explicitly_excluded")
             continue
         domain = entity.entity_id.split(".", 1)[0]
         if domain not in SUPPORTED_DOMAINS:
