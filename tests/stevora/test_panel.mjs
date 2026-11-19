@@ -221,7 +221,7 @@ assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
 // An unavailable device is still readable but must never render live controls.
 panel._manifest.controllable_entities = ["light.kitchen"];
 panel._panelModel.sections[0].cards[0].controls = ["toggle", "brightness", "color"];
-panel._hass.states["light.kitchen"].state = "unavailable";
+panel._hass.states["light.kitchen"] = {entity_id:"light.kitchen", state:"unavailable", attributes:{brightness:128, rgb_color:[20,40,60], supported_color_modes:["rgb"]}};
 panel._view = "lighting";
 panel._selectedRoom = "";
 panel.render();
