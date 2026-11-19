@@ -389,6 +389,7 @@ assert.match(native.renderNativeCard(myCover,scoped),/data-action="close"/);
 assert.match(native.renderNativeCard(myMedia,scoped),/data-action="play_pause"/);
 assert.doesNotMatch(native.renderNativeCard(myCover,new Set()),/data-action="open"/);
 assert.doesNotMatch(native.renderNativeCard({...myFan,layout:"info"},scoped),/data-fanpercentage=/);
+assert.doesNotMatch(native.renderNativeCard({...myFan,layout:"info"},scoped),/data-action="details"/);
 native._hass.states["fan.bath"].state = "unavailable";
 assert.doesNotMatch(native.renderNativeCard(myFan,scoped),/data-action="toggle"/);
 assert.doesNotMatch(native.renderNativeCard(myFan,scoped),/data-fanpercentage=/);
@@ -431,5 +432,56 @@ assert.equal(chatter._chatConversationId,null);
 const hostileCard = {...myMedia,name:'<img src=x onerror=alert(1)>'};
 assert.doesNotMatch(native.renderNativeCard(hostileCard,scoped),/<img src=/);
 assert.match(native.renderNativeCard(hostileCard,scoped),/&lt;img/);
+
+
+// Malicious/stale DOM controls must be revalidated at click time.
+const guardPanel = new Panel();
+const guardedButton = {dataset:{id:"fan.bath",action:"toggle"}};
+const calledServices = [];
+guardPanel._hass = {states:{
+  "fan.bath":{entity_id:"fan.bath",state:"on",attributes:{friendly_name:"Bathroom fan"}},
+},callService:async (...args)=>calledServices.push(args)};
+guardPanel._manifest = {
+  installation_id:"safe-home",
+  rooms:[{id:"bath",name:"Bathroom"}],
+  entities:[{entity_id:"fan.bath",area_id:"bath",name:"Fan"}],
+  controllable_entities:[],
+};
+guardPanel._panelModel = {
+  installation_id:"safe-home",panel_version:"7.1.1",
+  sections:[{id:"bath",name:"Bathroom",cards:[
+    {entity_id:"fan.bath",domain:"fan",name:"Fan",controls:["toggle"],layout:"compact"},
+  ]}],
+};
+guardPanel._mode = "stevora";
+guardPanel.shadowRoot.querySelectorAll = selector =>
+  selector === "[data-action]" ? [guardedButton] : [];
+guardPanel.render();
+assert.equal(typeof guardedButton.onclick,"function");
+await guardedButton.onclick();
+assert.equal(calledServices.length,0);
+guardPanel._manifest.controllable_entities = ["fan.bath"];
+guardPanel._panelModel.sections[0].cards[0].controls = [];
+await guardedButton.onclick();
+assert.equal(calledServices.length,0);
+guardPanel._panelModel.sections[0].cards[0].controls = ["toggle"];
+await guardedButton.onclick();
+assert.equal(calledServices.length,1);
+assert.equal(calledServices[0][0],"fan");
+guardPanel._manifest.entities[0].original_name = "Bathroom backlight";
+await guardedButton.onclick();
+assert.equal(calledServices.length,1);
+
+// Native Home Assistant Assist error handling is explicit, not fake chat success.
+const chatError = new Panel();
+chatError._hass = {connection:{},user:{id:"visitor"},
+  callWS:async ()=>{throw new Error("unknown_command");}};
+chatError._manifest = {installation_id:"home-no-conversation"};
+chatError._mode = "stevora";
+await chatError.sendAssist("Hello");
+assert.equal(chatError._chatMessages.length,2);
+assert.match(chatError.renderAssistChat(),/Home Assistant/);
+assert.equal(chatError._chatBusy,false);
+assert.match(chatError._chatError,/unknown_command/);
 
 console.log("STEVORA panel runtime: PASS");
