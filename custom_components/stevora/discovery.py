@@ -22,6 +22,8 @@ def build_manifest(hass, entry):
     entities = entity_registry.async_get(hass)
     devices = device_registry.async_get(hass)
     settings = {**entry.data, **entry.options}
+    admin_manager = hass.data.get("stevora", {}).get("_admin_managers")
+    visibility = admin_manager.data.get("visibility", {}) if admin_manager else {}
     selected_areas = set(settings.get("room_filter") or [])
     rooms = [
         {"id": a.id, "name": a.name}
@@ -59,6 +61,8 @@ def build_manifest(hass, entry):
     for entity in entities.entities.values():
         if entity.disabled_by is not None or entity.hidden_by is not None:
             skip(entity, "disabled" if entity.disabled_by is not None else "hidden")
+            continue
+        if visibility.get(entity.entity_id) == "exclude":
             continue
         domain = entity.entity_id.split(".", 1)[0]
         if domain not in SUPPORTED_DOMAINS:
@@ -98,7 +102,7 @@ def build_manifest(hass, entry):
     revision_payload = json.dumps({
         "rooms": rooms, "mappings": mappings,
         "domain_mappings": domain_mappings, "settings": settings, "modules": modules,
-        "diagnostic_counts": counts,
+        "diagnostic_counts": counts, "visibility": visibility,
     }, sort_keys=True, default=str)
     revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
