@@ -214,6 +214,7 @@ class StevoraHomePanel extends HTMLElement {
         controllable.has(card.entity_id) && (card.controls || []).includes(key);
     };
     const ent = card => this._hass?.states?.[card.entity_id];
+    const online = card => !!ent(card) && !["unavailable","unknown"].includes(ent(card).state);
     const friendlyState = card => {
       const state = ent(card);
       if (!state || state.state === "unavailable" || state.state === "unknown") return "—";
@@ -227,7 +228,7 @@ class StevoraHomePanel extends HTMLElement {
       if (!state) return "";
       const icons = {light:"✧",switch:"⏼",fan:"◈",climate:"◉",sensor:"◫",
         binary_sensor:"◫",lock:"⌑",media_player:"▷",cover:"▤"};
-      const allowed = controllable.has(card.entity_id) ? card.controls || [] : [];
+      const allowed = online(card) && controllable.has(card.entity_id) ? card.controls || [] : [];
       const actions = [];
       if (allowed.includes("toggle") && ["light","switch","fan"].includes(card.domain))
         actions.push(`<button class="v7-action" data-action="toggle" data-id="${this.escape(card.entity_id)}">${this.t("Включи / изключи", "Toggle")}</button>`);
@@ -267,7 +268,7 @@ class StevoraHomePanel extends HTMLElement {
         <div class="v7-actions">
           ${!summaryOnly && can(card, "temperature") ? `<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1°C</button>
           <button class="v7-action" data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1°C</button>` : ""}
-          ${!summaryOnly && controllable.has(card.entity_id) && (card.controls || []).length
+          ${!summaryOnly && online(card) && controllable.has(card.entity_id) && (card.controls || []).length
             ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Разширен контрол", "Advanced controls")}</button>`
             : ""}
           ${summaryOnly ? `<button class="v7-action subtle" data-view="climate">${this.t("Отвори климатичния център", "Open climate center")}</button>` : ""}
@@ -302,7 +303,7 @@ class StevoraHomePanel extends HTMLElement {
         <div class="v7-rgb"><span class="v7-color-dot" style="background:${hex}"></span><div><strong>${this.escape(on ? this.t("Включена","On") : this.t("Изключена","Off"))}</strong><div class="v7-muted">${this.escape(card.entity_id)}</div></div></div>
         <div class="v7-actions">
           ${can(card,"toggle") ? `<button class="v7-action" data-action="toggle" data-id="${this.escape(card.entity_id)}">${this.t("Включи / изключи","Toggle")}</button>` : ""}
-          ${controllable.has(card.entity_id) && (card.controls||[]).length ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Повече","More")}</button>` : ""}
+          ${online(card) && controllable.has(card.entity_id) && (card.controls||[]).length ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Повече","More")}</button>` : ""}
         </div>
         ${can(card,"brightness") && "brightness" in (state?.attributes||{}) ? `<div class="v7-control-item"><label>${this.t("Яркост","Brightness")}: ${pct}%</label><input class="v7-slider" type="range" min="1" max="100" value="${pct}" data-lightbrightness="${this.escape(card.entity_id)}" aria-label="${this.t("Яркост","Brightness")}"></div>` : ""}
         ${can(card,"color") && rgbSupported ? `<div class="v7-control-item"><label>${this.t("RGB цвят","RGB color")}</label><input class="v7-color-input" type="color" value="${hex}" data-lightcolor="${this.escape(card.entity_id)}" aria-label="${this.t("Цвят","Color")}"></div>` : ""}
@@ -512,7 +513,9 @@ class StevoraHomePanel extends HTMLElement {
         section.cards.some(card =>
           card.entity_id === id && card.domain === "light" && (card.controls || []).includes(control)
         )
-      ) && !!this._hass?.states?.[id] && !/back[ _-]?light|подсвет/i.test(id)
+      ) && !!this._hass?.states?.[id] &&
+      !["unavailable","unknown"].includes(this._hass.states[id].state) &&
+      !/back[ _-]?light|подсвет/i.test(id)
     );
     this.shadowRoot.querySelectorAll("[data-lightbrightness]").forEach(input => input.onchange = async () => {
       const id = input.dataset.lightbrightness;
