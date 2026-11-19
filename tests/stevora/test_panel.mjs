@@ -84,4 +84,23 @@ assert.equal(panel.inventory().length, 0);
 panel.render();
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
 
+
+// Switching HA sessions must clear all old room/entity permissions immediately.
+const switched = new Panel();
+switched._hass = {connection: {}, user: {id: "home-a-admin"}, states: {}};
+switched._manifest = {installation_id: "home-a", controllable_entities: ["light.old"]};
+switched._panelModel = {sections: [], installation_id: "home-a"};
+switched._mode = "stevora";
+switched.hass = {
+  connection: {}, user: {id: "home-b-admin"}, states: {
+    "light.old": {entity_id: "light.old", state: "on", attributes: {}}
+  },
+  callWS: async () => { throw new Error("New home has no integration"); },
+};
+assert.equal(switched._mode, "native");
+assert.equal(switched._manifest, null);
+assert.equal(switched._panelModel, null);
+assert.deepEqual(switched.inventory(), []);
+assert.doesNotMatch(switched.shadowRoot.innerHTML, /data-action="toggle"/);
+
 console.log("STEVORA panel runtime: PASS");
