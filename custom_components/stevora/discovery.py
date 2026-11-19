@@ -59,9 +59,11 @@ def build_manifest(hass, entry):
         "explicitly_excluded": 0,
     }
     excluded = []
+    diagnostics = []
 
     def skip(entity, reason):
         counts[reason] += 1
+        diagnostics.append({"entity_id": entity.entity_id, "reason": reason})
         if len(excluded) < 100:
             excluded.append({"entity_id": entity.entity_id, "reason": reason})
 
@@ -80,7 +82,12 @@ def build_manifest(hass, entry):
         profile = device_profiles.get(entity.entity_id, {})
         area_id = profile.get("area_id") or entity.area_id or (device.area_id if device else None)
         if area_id is None:
-            if include_unassigned:
+            if visibility.get(entity.entity_id) == "include":
+                area_id = UNASSIGNED_ROOM
+                if UNASSIGNED_ROOM not in mappings:
+                    mappings[UNASSIGNED_ROOM] = []
+                    rooms.append({"id": UNASSIGNED_ROOM, "name": "Unassigned", "source_name": "Unassigned", "translations": {"bg": "Без стая", "en": "Unassigned"}})
+            elif include_unassigned:
                 area_id = UNASSIGNED_ROOM
             else:
                 skip(entity, "unassigned")
@@ -107,6 +114,7 @@ def build_manifest(hass, entry):
             "user_ids": profile.get("user_ids", []),
         })
         counts["included"] += 1
+        diagnostics.append({"entity_id": entity.entity_id, "reason": "included", "area_id": area_id})
 
     # Explicit climate/light selections take precedence over automatic discovery.
     for option, group in (("climate_entities", "climate"), ("lighting_entities", "lighting")):
@@ -141,7 +149,7 @@ def build_manifest(hass, entry):
         "modules": modules,
         # Only administrators receive this field. permissions.py strips it
         # before sending the manifest to a non-administrator.
-        "discovery_diagnostics": {"counts": counts, "excluded_sample": excluded},
+        "discovery_diagnostics": {"counts": counts, "excluded_sample": excluded, "entities": sorted(diagnostics, key=lambda item: item["entity_id"])},
         "configuration": {
             "auto_discovery": bool(settings.get("auto_discovery", True)),
             "panel_enabled": panel_requested(entry),
