@@ -116,10 +116,10 @@ class StevoraHomePanel extends HTMLElement {
         <input data-profile-controls="${this.escape(e.entity_id)}" placeholder="Controls (comma separated)" value="${this.escape((p.controls || []).join(","))}"/>
         <button data-profile-save="${this.escape(e.entity_id)}">${this.t("Запази устройството", "Save device")}</button></details>`; }).join("")}</div>
       <h3>${this.t("Видимост на устройствата", "Device visibility")}</h3>
-      <div class="auditlist" style="max-height:330px">${(admin.rooms.entities || []).map(e => `<div style="padding:6px 0"><span>${this.escape(e.name)} — ${this.escape(e.entity_id)}</span>
+      <div class="auditlist" style="max-height:330px">${(admin.rooms.entities || []).map(e => `<div style="padding:6px 0"><span>${this.escape(e.name)} — ${this.escape(e.entity_id)} · ${this.escape(e.reason || (e.included ? "included" : "unknown"))} ${e.area_id ? "· " + this.escape(e.area_id) : ""}</span>
         <select data-visibility="${this.escape(e.entity_id)}" ${e.disabled || e.hidden ? "disabled" : ""}>
         ${["default","include","exclude"].map(v => `<option value="${v}" ${(admin.rooms.visibility?.[e.entity_id] || "default") === v ? "selected" : ""}>${this.escape(v)}</option>`).join("")}</select></div>`).join("")}</div>
-      <p class="muted">${this.t("Промените се прилагат към сървърния Manifest.", "Changes are applied to the server manifest.")}</p>
+      <p class="muted">${this.t("Include показва активни неназначени устройства във виртуална стая. За постоянна стая използвайте Device customization. Деактивираните и скритите устройства остават изключени.", "Include displays active unassigned entities in a virtual room. For a permanent room use Device customization. Disabled and hidden entities remain excluded.")}</p>
       </details>` : "";
     const auditText = audit
       ? `<details class="audit"><summary>${this.t("Диагностика на откриването", "Discovery diagnostics")}</summary>
