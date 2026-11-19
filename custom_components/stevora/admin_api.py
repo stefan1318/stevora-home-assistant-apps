@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.helpers import area_registry, entity_registry
+from homeassistant.helpers import entity_registry
 
 from .admin_managers import require_admin
 from .discovery import build_manifest
@@ -113,14 +113,11 @@ async def assistants_update(hass, connection, msg):
     if msg["expected_revision"] != manager.data["revision"]:
         connection.send_error(msg["id"], "conflict", "Configuration revision changed")
         return
-    new_prefs = {
-        "default_pipeline": msg["default_pipeline"],
-        "user_pipelines": msg["user_pipelines"],
-    }
-    manager.data["assistants"] = new_prefs
-    manager.data["revision"] += 1
-    await manager.save()
-    connection.send_result(msg["id"], {"revision": manager.data["revision"]})
+    # Do not trust arbitrary pipeline identifiers or user identities.
+    # Configuration becomes effective only after HA verifies valid providers
+    # and eligible user IDs in a future server-side selection resolver.
+    connection.send_error(msg["id"], "not_implemented", "Assistant routing validation is not yet available")
+    return
 
 
 def register(hass):
