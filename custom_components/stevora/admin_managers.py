@@ -19,7 +19,7 @@ class AdminManagers:
     def __init__(self, hass):
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.lock = asyncio.Lock()
-        self.data = {"revision": 1, "visibility": {}, "room_aliases": {}, "entity_aliases": {}, "assistants": {"default_pipeline": None, "user_pipelines": {}}}
+        self.data = {"revision": 1, "visibility": {}, "room_aliases": {}, "room_order": [], "entity_aliases": {}, "assistants": {"default_pipeline": None, "user_pipelines": {}}}
 
     async def load(self):
         saved = await self._store.async_load()
@@ -28,6 +28,7 @@ class AdminManagers:
                 "revision": saved.get("revision", 1),
                 "visibility": saved.get("visibility", {}),
                 "room_aliases": saved.get("room_aliases", {}),
+                "room_order": saved.get("room_order", []),
                 "entity_aliases": saved.get("entity_aliases", {}),
                 "assistants": saved.get("assistants", {"default_pipeline": None, "user_pipelines": {}}),
             })
