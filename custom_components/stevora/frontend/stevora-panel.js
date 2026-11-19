@@ -89,6 +89,15 @@ class StevoraHomePanel extends HTMLElement {
       <h3>${this.t("Основен асистент", "Default assistant")}</h3>
       <select id="admin-assistant"><option value="">${this.t("Без избор", "No selection")}</option>${(admin.assistants.pipelines || []).map(p => `<option value="${this.escape(p.id)}" ${admin.assistants.settings?.default_pipeline === p.id ? "selected" : ""}>${this.escape(p.name)}</option>`).join("")}</select>
       <button id="save-assistant">${this.t("Запази", "Save")}</button>
+      <h3>${this.t("Персонализация на устройствата", "Device customization")}</h3>
+      <div class="auditlist" style="max-height:380px">${(admin.rooms.entities || []).map(e => { const p = admin.rooms.device_profiles?.[e.entity_id] || {}; return `<details><summary>${this.escape(e.name)} (${this.escape(e.entity_id)})</summary>
+        <input data-profile-name="${this.escape(e.entity_id)}" placeholder="Display name" value="${this.escape(p.name || "")}"/>
+        <input data-profile-icon="${this.escape(e.entity_id)}" placeholder="mdi:lightbulb" value="${this.escape(p.icon || "")}"/>
+        <select data-profile-layout="${this.escape(e.entity_id)}">${["info","compact","expanded"].map(v => `<option value="${v}" ${p.layout === v ? "selected" : ""}>${v}</option>`).join("")}</select>
+        <select data-profile-area="${this.escape(e.entity_id)}"><option value="">${this.t("Автоматична стая", "Automatic room")}</option>${admin.rooms.rooms.map(room => `<option value="${this.escape(room.id)}" ${p.area_id === room.id ? "selected" : ""}>${this.escape(room.name)}</option>`).join("")}</select>
+        <input data-profile-users="${this.escape(e.entity_id)}" placeholder="HA user IDs (comma separated)" value="${this.escape((p.user_ids || []).join(","))}"/>
+        <input data-profile-controls="${this.escape(e.entity_id)}" placeholder="Controls (comma separated)" value="${this.escape((p.controls || []).join(","))}"/>
+        <button data-profile-save="${this.escape(e.entity_id)}">${this.t("Запази устройството", "Save device")}</button></details>`; }).join("")}</div>
       <h3>${this.t("Видимост на устройствата", "Device visibility")}</h3>
       <div class="auditlist" style="max-height:330px">${(admin.rooms.entities || []).map(e => `<div style="padding:6px 0"><span>${this.escape(e.name)} — ${this.escape(e.entity_id)}</span>
         <select data-visibility="${this.escape(e.entity_id)}" ${e.disabled || e.hidden ? "disabled" : ""}>
@@ -145,11 +154,14 @@ class StevoraHomePanel extends HTMLElement {
         ${this._adminError ? `<p class="status">${this.escape(this._adminError)}</p>` : ""}
         <div class="grid">${items.map(item => {
           const domain = item.entity_id.split(".")[0];
-          const controls = controllable.has(item.entity_id) && ["light","switch","fan"].includes(domain)
+          const display = this._manifest?.entities?.find(e=>e.entity_id===item.entity_id) || {};
+          const enabledControls = display.controls || [];
+          const hasProfile = Boolean(this._admin?.rooms?.device_profiles?.[item.entity_id]);
+          const controls = controllable.has(item.entity_id) && ["light","switch","fan"].includes(domain) && (!hasProfile || enabledControls.includes("toggle"))
             ? `<div class="actions"><button data-action="toggle" data-id="${this.escape(item.entity_id)}">${this.t("Вкл./Изкл.","Toggle")}</button></div>` : "";
-          const climate = controllable.has(item.entity_id) && domain === "climate"
+          const climate = controllable.has(item.entity_id) && domain === "climate" && (!hasProfile || enabledControls.includes("temperature"))
             ? `<div class="actions"><button data-action="temperature-down" data-id="${this.escape(item.entity_id)}">−1°C</button><button data-action="temperature-up" data-id="${this.escape(item.entity_id)}">+1°C</button></div>` : "";
-          return `<article><h2>${this.escape(item.attributes?.friendly_name || item.entity_id)}</h2><div class="state">${this.escape(item.state)} ${this.escape(item.attributes?.unit_of_measurement || "")}</div><div class="meta">${this.escape(item.entity_id)}</div>${controls}${climate}</article>`;
+          return `<article><h2>${this.escape(display.name || item.attributes?.friendly_name || item.entity_id)}</h2><div class="state">${this.escape(item.state)} ${this.escape(item.attributes?.unit_of_measurement || "")}</div><div class="meta">${this.escape(item.entity_id)}</div>${controls}${climate}</article>`;
         }).join("")}</div>
       </main>`;
     this.shadowRoot.getElementById("refresh").onclick = () => this.refresh();
@@ -163,6 +175,21 @@ class StevoraHomePanel extends HTMLElement {
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
     };
+    this.shadowRoot.querySelectorAll("[data-profile-save]").forEach(button => button.onclick = async () => {
+      const id = button.dataset.profileSave;
+      const field = key => this.shadowRoot.querySelector('[data-profile-' + key + '="' + CSS.escape(id) + '"]')?.value || "";
+      const profile = {
+        name:field("name"), icon:field("icon"), layout:field("layout") || "compact",
+        area_id:field("area") || null,
+        user_ids:field("users").split(",").map(x=>x.trim()).filter(Boolean),
+        controls:field("controls").split(",").map(x=>x.trim()).filter(Boolean)
+      };
+      try {
+        await this._hass.callWS({type:"stevora/admin/devices/update",
+          expected_revision:this._admin.rooms.revision,profiles:{[id]:profile}});
+        await this.refresh();
+      } catch(error) { this._adminError = String(error?.message || error); this.render(); }
+    });
     this.shadowRoot.querySelectorAll("[data-visibility]").forEach(select => select.onchange = async () => {
       try {
         await this._hass.callWS({type:"stevora/admin/rooms/update",
