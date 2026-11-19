@@ -60,11 +60,16 @@ class PermissionsTests(unittest.TestCase):
             "domain_mappings": {"lighting": ["light.kitchen"], "climate": ["climate.bedroom"]},
             "capabilities": {"lighting": True, "climate": True, "voice": False},
             "configuration": {"auto_discovery": True},
+            "discovery_diagnostics": {
+                "counts": {"unassigned": 1},
+                "excluded_sample": [{"entity_id": "sensor.secret", "reason": "unassigned"}],
+            },
         }
 
     def test_admin_gets_entire_inventory_and_control_rights(self):
         result = self.project(self.manifest, _User(admin=True))
         self.assertEqual(len(result["entities"]), 2)
+        self.assertIn("discovery_diagnostics", result)
         self.assertEqual(len(result["rooms"]), 2)
         self.assertEqual(result["controllable_entities"], ["climate.bedroom", "light.kitchen"])
 
@@ -77,6 +82,7 @@ class PermissionsTests(unittest.TestCase):
         self.assertEqual(result["domain_mappings"]["climate"], [])
         self.assertFalse(result["capabilities"]["climate"])
         self.assertEqual(result["controllable_entities"], [])
+        self.assertNotIn("discovery_diagnostics", result)
 
     def test_control_only_requires_read_permission_as_well(self):
         user = _User(readable={"light.kitchen"}, controllable={"climate.bedroom"})
