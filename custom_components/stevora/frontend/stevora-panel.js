@@ -269,7 +269,10 @@ class StevoraHomePanel extends HTMLElement {
       '<p class="v7-editor-intro">' +
       this.t("Избери устройство, икона и управление без писане на код. Промените засягат само STEVORA.",
         "Choose devices, icons and controls without code. Changes affect STEVORA only.") +
-      '</p>';
+      '</p><div class="v7-editor-search"><ha-icon icon="mdi:magnify"></ha-icon>' +
+      '<input type="search" data-device-filter="1" aria-label="' +
+      this.t("Търси устройство","Search devices") + '" placeholder="' +
+      this.t("Търси по име или тип...","Search by name or type...") + '"/></div>';
     return title + '<div class="auditlist v7-editor-list">' + entities.map(entity => {
       const id = e(entity.entity_id);
       const profile = profiles[entity.entity_id] || {};
@@ -906,7 +909,7 @@ class StevoraHomePanel extends HTMLElement {
         this.t("Текстовият чат работи с разговорния агент в Home Assistant, независимо от Hey Stevora.",
                "Text chat uses the HA conversation agent independently of Hey Stevora.") +
         '</p><div class="v7-mini-pair"><span>' +
-        this.t("Избран асистент","Selected assistant") + '</span><strong>' +
+        this.t("Гласов профил","Voice pipeline") + '</span><strong>' +
         this.escape(pipeline || this.t("По подразбиране","Default")) +
         '</strong></div></section><section class="v7-card">' +
         '<div class="v7-card-title">✦ HEY STEVORA</div><p class="v7-muted">' +
@@ -1017,6 +1020,16 @@ class StevoraHomePanel extends HTMLElement {
       });
     }
 
+    this.shadowRoot.querySelectorAll("[data-device-filter]").forEach(search => {
+      search.oninput = () => {
+        const needle = search.value.trim().toLocaleLowerCase();
+        this.shadowRoot.querySelectorAll("details.v7-device-editor").forEach(detail => {
+          const label = detail.querySelector(".v7-editor-title")?.textContent || "";
+          const key = detail.getAttribute("data-editor-key") || "";
+          detail.hidden = !(label + " " + key).toLocaleLowerCase().includes(needle);
+        });
+      };
+    });
     // Searchable local gallery: user picks actual MDI icons visually, no code.
     this.shadowRoot.querySelectorAll("[data-icon-open]").forEach(button => button.onclick = () => {
       const id = button.dataset.iconOpen;
