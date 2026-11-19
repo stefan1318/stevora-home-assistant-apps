@@ -345,6 +345,101 @@ class StevoraHomePanel extends HTMLElement {
     }).join("") + '</div>';
   }
 
+
+  async sendAssist(text) {
+    const message = String(text || "").trim().slice(0, 1000);
+    if (!message || this._chatBusy || this._mode !== "stevora" ||
+        !this._manifest || !this._hass?.callWS) return;
+    const connection = this._hass.connection;
+    const userId = this._hass.user?.id;
+    const installationId = this._manifest.installation_id;
+    const stillHere = () => this._hass?.connection === connection &&
+      this._hass?.user?.id === userId &&
+      this._manifest?.installation_id === installationId &&
+      this._mode === "stevora";
+    this._chatBusy = true;
+    this._chatError = "";
+    this._chatMessages.push({role:"user",text:message});
+    this._chatMessages = this._chatMessages.slice(-30);
+    this.render();
+    try {
+      // Native HA conversation WebSocket uses the authenticated user's
+      // context and configured Assist conversation agent. No STEVORA tokens.
+      const request = {type:"conversation/process",text:message,
+        language:this._language === "bg" ? "bg" : "en"};
+      if (this._chatConversationId) request.conversation_id = this._chatConversationId;
+      const answer = await this._hass.callWS(request);
+      if (!stillHere()) return;
+      const output = answer?.response?.speech?.plain?.speech;
+      const failure = answer?.response?.response_type === "error";
+      const responseText = typeof output === "string" && output.trim() ?
+        output.trim() : failure
+          ? this.t("Assist не успя да обработи заявката. Провери избрания разговорен агент.",
+                   "Assist could not process the request. Check your conversation agent.")
+          : this.t("Assist не върна текстов отговор.","Assist returned no text response.");
+      if (typeof answer?.conversation_id === "string" && answer.conversation_id)
+        this._chatConversationId = answer.conversation_id;
+      this._chatMessages.push({role:"assistant",text:responseText});
+      this._chatMessages = this._chatMessages.slice(-30);
+    } catch(error) {
+      if (!stillHere()) return;
+      this._chatError = String(error?.message || error);
+      this._chatMessages.push({role:"assistant",text:
+        this.t("В момента няма достъпен Home Assistant разговорен агент. Активирай Assist/Conversation в тази HA инсталация.",
+               "No Home Assistant conversation agent is available. Enable Assist/Conversation on this HA server.")});
+    } finally {
+      if (stillHere()) {
+        this._chatBusy = false;
+        this.render();
+      }
+    }
+  }
+
+  renderAssistChat() {
+    const e = value => this.escape(value);
+    const prompt = (bg,en) => '<button type="button" class="v7-chat-prompt" data-assist-prompt="' +
+      e(this.t(bg,en)) + '">' + e(this.t(bg,en)) + '</button>';
+    const conversation = this._chatMessages.length
+      ? this._chatMessages.map(item => '<div class="v7-chat-message ' +
+          (item.role === "user" ? "from-user" : "from-assist") + '">' +
+          '<span class="v7-chat-speaker">' +
+          (item.role === "user" ? this.t("Ти","You") : "Home Assistant Assist") +
+          '</span><p>' + e(item.text) + '</p></div>').join("")
+      : '<div class="v7-chat-welcome"><ha-icon icon="mdi:robot-happy-outline"></ha-icon>' +
+        '<h3>' + this.t("Как мога да ти помогна?","How can I help?") + '</h3>' +
+        '<p>' + this.t("Използвай вградения Home Assistant Assist — Hey Stevora не е необходим.",
+          "Chat with built-in Home Assistant Assist. Hey Stevora is optional.") + '</p>' +
+        '<div class="v7-chat-suggestions">' +
+        prompt("Кои светлини са включени?","Which lights are on?") +
+        prompt("Каква е температурата?","What is the temperature?") +
+        '</div></div>';
+    return '<section class="v7-card v7-chat">' +
+      '<header class="v7-chat-head"><span class="v7-editor-device-icon"><ha-icon icon="mdi:robot-happy-outline"></ha-icon></span>' +
+      '<div><strong>Home Assistant Assist</strong><small>' +
+      this.t("Разговор с текущата инсталация","Chat with your current installation") +
+      '</small></div><button type="button" class="v7-action subtle" id="v7-chat-clear">' +
+      this.t("Нов разговор","New chat") + '</button></header>' +
+      '<div class="v7-chat-feed" role="log" aria-live="polite">' + conversation +
+      (this._chatBusy ? '<div class="v7-chat-typing">' +
+        this.t("Assist отговаря…","Assist is responding…") + '</div>' : '') +
+      '</div>' +
+      (this._chatError ? '<p class="v7-chat-error" role="alert">' +
+        e(this._chatError) + '</p>' : '') +
+      '<form id="v7-chat-form" class="v7-chat-compose">' +
+      '<label for="v7-chat-input">' +
+      this.t("Напиши команда или въпрос","Write a command or question") + '</label>' +
+      '<textarea id="v7-chat-input" rows="2" maxlength="1000" placeholder="' +
+      this.t("Например: Включи осветлението в кухнята","For example: Turn on the kitchen lights") +
+      '" ' + (this._chatBusy ? "disabled" : "") + '></textarea>' +
+      '<button type="submit" class="v7-action" ' + (this._chatBusy ? "disabled" : "") +
+      '><ha-icon icon="mdi:send"></ha-icon> ' +
+      this.t("Изпрати","Send") + '</button></form>' +
+      '<p class="v7-chat-privacy">' + this.t(
+        "Използва HA разрешенията и избрания разговорен агент. Историята на този панел не се записва в браузъра.",
+        "Uses HA permissions and your configured conversation agent. Panel chat history is not stored in your browser.") +
+      '</p></section>';
+  }
+
   inventory() {
     const states = Object.values(this._hass?.states || {});
     const allowed = new Set((this._panelModel?.sections || []).flatMap(s => s.cards.map(x => x.entity_id)));
@@ -671,16 +766,26 @@ class StevoraHomePanel extends HTMLElement {
         </section>`;
     } else if (this._view === "ai") {
       const module = this._manifest?.modules?.hey_stevora;
-      const pipeline = admin?.assistants?.pipelines?.find(p=>p.id===admin?.assistants?.settings?.default_pipeline)?.name;
-      content = `${sectionTitle(this.t("AI и асистенти","AI and assistants"))}<div class="v7-two">
-        <section class="v7-card"><div class="v7-card-title">✦ HEY STEVORA</div>
-          <div class="v7-banner">${module?.bundled
-            ? this.t("Гласовият модул е включен","Voice module is included")
-            : this.t("Гласовият модул не е част от тази интеграция. Използвай отделната инсталация на Hey Stevora.","Voice module is not bundled with this integration; use the separate Hey Stevora app.")}</div></section>
-        <section class="v7-card"><div class="v7-card-title">◉ HOME ASSISTANT ASSIST</div>
-          <div class="v7-entity-value">${this.escape(pipeline || this.t("Стандартен асистент","Default assistant"))}</div>
-          <div class="v7-muted">${this.t("Изборът за администратори е в Настройки","Admin setup is in Settings")}</div></section>
-      </div>`;
+      const pipeline = admin?.assistants?.pipelines?.find(p =>
+        p.id === admin?.assistants?.settings?.default_pipeline)?.name;
+      content = sectionTitle(this.t("Асистент и разговори","Assistant & conversations"),
+        this.t("Директна връзка с Home Assistant","Powered by Home Assistant")) +
+        '<div class="v7-chat-layout">' + this.renderAssistChat() +
+        '<aside class="v7-chat-side"><section class="v7-card">' +
+        '<div class="v7-card-title"><ha-icon icon="mdi:microphone"></ha-icon> ' +
+        this.t("Гласов асистент","Voice assistant") + '</div>' +
+        '<h3>Home Assistant Assist</h3><p class="v7-muted">' +
+        this.t("Текстовият чат работи с разговорния агент в Home Assistant, независимо от Hey Stevora.",
+               "Text chat uses the HA conversation agent independently of Hey Stevora.") +
+        '</p><div class="v7-mini-pair"><span>' +
+        this.t("Избран асистент","Selected assistant") + '</span><strong>' +
+        this.escape(pipeline || this.t("По подразбиране","Default")) +
+        '</strong></div></section><section class="v7-card">' +
+        '<div class="v7-card-title">✦ HEY STEVORA</div><p class="v7-muted">' +
+        (module?.bundled ? this.t("Инсталиран модул","Installed module") :
+          this.t("Допълнителен гласов модул. Не е необходим за чат.",
+                 "Optional voice module. Not required for chat.")) +
+        '</p></section></aside></div>';
     } else if (this._view === "system") {
       const modules = Object.entries(this._manifest?.modules || {});
       content = `${sectionTitle(this.t("Здраве на системата","System health"))}${stats}
@@ -740,6 +845,25 @@ class StevoraHomePanel extends HTMLElement {
     this._renderedUser = this._hass?.user?.id || null;
     this._resetEditorValues = false;
     this.shadowRoot.getElementById("refresh").onclick = () => this.refresh();
+
+    const chatForm = this.shadowRoot.getElementById("v7-chat-form");
+    if (chatForm) chatForm.onsubmit = event => {
+      event?.preventDefault?.();
+      const input = this.shadowRoot.getElementById("v7-chat-input");
+      const message = input?.value || "";
+      if (input) input.value = "";
+      void this.sendAssist(message);
+    };
+    const clearChat = this.shadowRoot.getElementById("v7-chat-clear");
+    if (clearChat) clearChat.onclick = () => {
+      this._chatConversationId = null;
+      this._chatMessages = [];
+      this._chatError = "";
+      if (!this._chatBusy) this.render();
+    };
+    this.shadowRoot.querySelectorAll("[data-assist-prompt]").forEach(button =>
+      button.onclick = () => { void this.sendAssist(button.dataset.assistPrompt); }
+    );
     const assistantSave = this.shadowRoot.getElementById("save-assistant");
     if (assistantSave) assistantSave.onclick = async () => {
       try {
