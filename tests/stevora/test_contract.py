@@ -43,7 +43,7 @@ class ContractTests(unittest.TestCase):
         code = (COMP / "frontend/stevora-panel.js").read_text()
         self.assertIn('if (this._mode !== "stevora" || !this._manifest) return [];', code)
         self.assertIn('if (!allowed.has(x.entity_id)) return false;', code)
-        self.assertIn('/backlight/i.test(x.entity_id)', code)
+        self.assertIn('/back[ _-]?light|подсвет/i.test(x.entity_id)', code)
         self.assertIn('this._hass.callService(', code)
         self.assertIn('controllable.has(card.entity_id)', code)
         self.assertIn('stevora/panel/generate', code)
