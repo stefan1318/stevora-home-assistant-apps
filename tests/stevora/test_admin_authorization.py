@@ -22,6 +22,8 @@ class AdminAuthorizationTests(unittest.TestCase):
         helpers.storage = storage
         registry = types.ModuleType("homeassistant.helpers.entity_registry")
         helpers.entity_registry = registry
+        area_registry = types.ModuleType("homeassistant.helpers.area_registry")
+        helpers.area_registry = area_registry
         components = types.ModuleType("homeassistant.components")
         ws = types.ModuleType("homeassistant.components.websocket_api")
         ws.websocket_command = lambda schema: lambda fn: fn
@@ -40,6 +42,7 @@ class AdminAuthorizationTests(unittest.TestCase):
             "homeassistant.helpers": helpers,
             "homeassistant.helpers.storage": storage,
             "homeassistant.helpers.entity_registry": registry,
+            "homeassistant.helpers.area_registry": area_registry,
             "homeassistant.components": components,
             "homeassistant.components.websocket_api": ws,
             "homeassistant.components.assist_pipeline": pipeline,
