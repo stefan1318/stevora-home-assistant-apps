@@ -5,8 +5,10 @@ STEVORA manifest. It never writes Home Assistant dashboards or registries.
 """
 from __future__ import annotations
 
+import re
+
 PANEL_VERSION = "7.1.1"
-BACKLIGHT_MARKERS = ("backlight", "back_light", "back-light", "подсвет")
+BACKLIGHT_MARKERS = ("backlight", "back light", "подсвет")
 DEFAULT_LAYOUT = "compact"
 DOMAIN_ICONS = {
     "light": "mdi:lightbulb", "switch": "mdi:toggle-switch",
@@ -27,8 +29,12 @@ DOMAIN_CONTROLS = {
 
 
 def _is_backlight(entity: dict) -> bool:
-    value = " ".join(str(entity.get(key, "")) for key in ("entity_id", "name")).casefold()
-    return any(marker in value for marker in BACKLIGHT_MARKERS)
+    value = " ".join(
+        str(entity.get(key, "")) for key in
+        ("entity_id", "name", "source_name", "original_name")
+    ).casefold()
+    normalized = re.sub(r"[\\s_-]+", " ", value)
+    return any(marker in normalized for marker in BACKLIGHT_MARKERS)
 
 
 def generate_panel(manifest: dict) -> dict:
