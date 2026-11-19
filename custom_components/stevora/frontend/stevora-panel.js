@@ -12,6 +12,7 @@ class StevoraHomePanel extends HTMLElement {
     this._mode = "auto";
     this._selectedRoom = "";
     this._language = "bg";
+    this._languageOverride = null;
     this._admin = null;
     this._adminError = "";
   }
@@ -34,8 +35,9 @@ class StevoraHomePanel extends HTMLElement {
     if (!this._hass || this._busy) return;
     this._busy = true;
     try {
-      this._manifest = await this._hass.callWS({ type: "stevora/manifest" });
-      this._panelModel = await this._hass.callWS({ type: "stevora/panel/generate" });
+      const locale = this._languageOverride || (this._hass?.language?.startsWith("bg") ? "bg" : "en");
+      this._manifest = await this._hass.callWS({ type: "stevora/manifest", language: locale });
+      this._panelModel = await this._hass.callWS({ type: "stevora/panel/generate", language: locale });
       if (this._panelModel?.installation_id !== this._manifest?.installation_id) throw new Error("Panel installation mismatch");
       this._language = this._manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
@@ -99,8 +101,13 @@ class StevoraHomePanel extends HTMLElement {
       <h3>${this.t("Основен асистент", "Default assistant")}</h3>
       <select id="admin-assistant"><option value="">${this.t("Без избор", "No selection")}</option>${(admin.assistants.pipelines || []).map(p => `<option value="${this.escape(p.id)}" ${admin.assistants.settings?.default_pipeline === p.id ? "selected" : ""}>${this.escape(p.name)}</option>`).join("")}</select>
       <button id="save-assistant">${this.t("Запази", "Save")}</button>
+      <h3>${this.t("Двуезични имена BG/EN", "Bilingual BG/EN names")}</h3>
+      <div class="auditlist">${admin.rooms.rooms.map(room => `<div><strong>${this.escape(room.name)}</strong><input data-translation-room-bg="${this.escape(room.id)}" placeholder="Български" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.bg || "")}"/><input data-translation-room-en="${this.escape(room.id)}" placeholder="English" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.en || "")}"/><button data-translation-save-room="${this.escape(room.id)}">Save BG/EN</button></div>`).join("")}</div>
       <h3>${this.t("Персонализация на устройствата", "Device customization")}</h3>
       <div class="auditlist" style="max-height:380px">${(admin.rooms.entities || []).map(e => { const p = admin.rooms.device_profiles?.[e.entity_id] || {}; return `<details><summary>${this.escape(e.name)} (${this.escape(e.entity_id)})</summary>
+        <input data-translation-entity-bg="${this.escape(e.entity_id)}" placeholder="Име на български" value="${this.escape(admin.rooms.translations?.entities?.[e.entity_id]?.bg || "")}"/>
+        <input data-translation-entity-en="${this.escape(e.entity_id)}" placeholder="Name in English" value="${this.escape(admin.rooms.translations?.entities?.[e.entity_id]?.en || "")}"/>
+        <button data-translation-save-entity="${this.escape(e.entity_id)}">Save BG/EN</button>
         <input data-profile-name="${this.escape(e.entity_id)}" placeholder="Display name" value="${this.escape(p.name || "")}"/>
         <input data-profile-icon="${this.escape(e.entity_id)}" placeholder="mdi:lightbulb" value="${this.escape(p.icon || "")}"/>
         <select data-profile-layout="${this.escape(e.entity_id)}">${["info","compact","expanded"].map(v => `<option value="${v}" ${p.layout === v ? "selected" : ""}>${v}</option>`).join("")}</select>
@@ -201,6 +208,19 @@ class StevoraHomePanel extends HTMLElement {
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
     };
+    for (const kind of ["room", "entity"]) {
+      this.shadowRoot.querySelectorAll("[data-translation-save-" + kind + "]").forEach(button => button.onclick = async () => {
+        const id = button.dataset[kind === "room" ? "translationSaveRoom" : "translationSaveEntity"];
+        const read = locale => this.shadowRoot.querySelector('[data-translation-' + kind + '-' + locale + '="' + CSS.escape(id) + '"]')?.value || "";
+        try {
+          await this._hass.callWS({type:"stevora/admin/translations/update",
+            expected_revision:this._admin.rooms.revision,
+            rooms:kind === "room" ? {[id]:{bg:read("bg"),en:read("en")}} : {},
+            entities:kind === "entity" ? {[id]:{bg:read("bg"),en:read("en")}} : {}});
+          await this.refresh();
+        } catch(error) {this._adminError=String(error?.message || error);this.render();}
+      });
+    }
     this.shadowRoot.querySelectorAll("[data-profile-save]").forEach(button => button.onclick = async () => {
       const id = button.dataset.profileSave;
       const field = key => this.shadowRoot.querySelector('[data-profile-' + key + '="' + CSS.escape(id) + '"]')?.value || "";
