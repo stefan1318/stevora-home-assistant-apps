@@ -644,18 +644,18 @@ class StevoraHomePanel extends HTMLElement {
     ).length;
     const isAdmin = !!admin;
     const nav = [
-      ["home", "Начало", "Home", "⌂"],
-      ["rooms", "Помещения", "Rooms", "▦"],
-      ["climate", "Климат", "Climate", "◉"],
-      ["lighting", "Осветление", "Lighting", "✧"],
-      ["devices", "Устройства", "Devices", "◫"],
-      ["scenes", "Сцени", "Scenes", "▷"],
-      ["insights", "Статистика", "Insights", "⌁"],
-      ["ai", "AI център", "AI center", "✦"],
-      ["system", "Система", "System", "▥"],
-      ["hub", "Home Hub", "Home Hub", "◇"],
-      ["memory", "Памет", "Memory", "◇"],
-      ["settings", "Настройки", "Settings", "⚙"],
+      ["home", "Начало", "Home", "mdi:view-dashboard-outline"],
+      ["rooms", "Помещения", "Rooms", "mdi:floor-plan"],
+      ["climate", "Климат", "Climate", "mdi:thermostat"],
+      ["lighting", "Осветление", "Lighting", "mdi:lightbulb-group-outline"],
+      ["devices", "Устройства", "Devices", "mdi:devices"],
+      ["scenes", "Сцени", "Scenes", "mdi:play-box-multiple-outline"],
+      ["insights", "Статистика", "Insights", "mdi:chart-line"],
+      ["ai", "AI център", "AI center", "mdi:robot-happy-outline"],
+      ["system", "Система", "System", "mdi:monitor-dashboard"],
+      ["hub", "Home Hub", "Home Hub", "mdi:server"],
+      ["memory", "Памет", "Memory", "mdi:brain"],
+      ["settings", "Настройки", "Settings", "mdi:cog-outline"],
     ];
     if (!nav.some(n => n[0] === this._view)) this._view = "home";
     const page = nav.find(n => n[0] === this._view);
@@ -706,24 +706,41 @@ class StevoraHomePanel extends HTMLElement {
         </div>
       </section>`;
     };
-    const quickLights = () => `<section class="v7-card">
-      <div class="v7-card-title">✧ ${this.t("Бързо осветление", "Quick lighting")}</div>
-      ${lightCards.length ? lightCards.filter(card => {
-        const modes = ent(card)?.attributes?.supported_color_modes || [];
-        return !modes.some(mode => ["rgb","rgbw","rgbww","hs","xy"].includes(mode));
-      }).slice(0,6).map(card => {
-        const on = ent(card)?.state === "on";
-        return `<div class="v7-light-tile"><div><span class="v7-state-dot ${on ? "on" : ""}"></span><span class="v7-light-name">${this.escape(card.name)}</span></div>
-          ${can(card,"toggle") ? `<button class="v7-action subtle" data-action="toggle" data-id="${this.escape(card.entity_id)}">${on ? this.t("Изключи","Off") : this.t("Включи","On")}</button>` : `<span class="v7-muted">${on ? "ON" : "OFF"}</span>`}
-        </div>`;
-      }).join("") : `<div class="v7-empty">${this.t("Няма осветление", "No lighting")}</div>`}
-      <div class="v7-actions"><button class="v7-action subtle" data-view="lighting">${this.t("Всички светлини", "All lighting")}</button></div>
-    </section>`;
+    // On Home, RGB fixtures are informational (state + current color);
+    // full sliders and color control remain inside Lighting/Rooms.
+    const quickLights = () => '<section class="v7-card">' +
+      '<div class="v7-card-title"><ha-icon icon="mdi:lightbulb-group-outline"></ha-icon> ' +
+      this.t("Осветление","Lighting") + '</div>' +
+      (lightCards.length ? lightCards.slice(0,6).map(card => {
+        const st = ent(card);
+        const attrs = st?.attributes || {};
+        const modes = attrs.supported_color_modes || [];
+        const rgb = Array.isArray(modes) && modes.some(x =>
+          ["rgb","rgbw","rgbww","hs","xy"].includes(x));
+        const components = attrs.rgb_color;
+        const hasColor = rgb && Array.isArray(components) && components.length === 3 &&
+          components.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
+        const color = hasColor ? "#" + components.map(x => x.toString(16).padStart(2,"0")).join("") : "";
+        const on = st?.state === "on";
+        return '<div class="v7-light-tile"><div class="v7-light-name-wrap">' +
+          '<span class="v7-state-dot ' + (on ? "on" : "") + '"' +
+          (color && on ? ' style="background:' + color + '"' : "") + '></span>' +
+          '<span class="v7-light-name">' + this.escape(card.name) + '</span></div>' +
+          (can(card,"toggle") && !rgb ?
+            '<button class="v7-action subtle" data-action="toggle" data-id="' +
+              this.escape(card.entity_id) + '">' +
+              (on ? this.t("Изключи","Off") : this.t("Включи","On")) + '</button>' :
+            '<span class="v7-muted">' + this.escape(this.nativeStateLabel(st,"light")) + '</span>') +
+          '</div>';
+      }).join("") : '<div class="v7-empty">' +
+        this.t("Няма открити светлини","No discovered lights") + '</div>') +
+      '<div class="v7-actions"><button class="v7-action subtle" data-view="lighting">' +
+      this.t("Осветление и RGB","Lighting & RGB") + '</button></div></section>';
     const lightingWidget = card => this.renderNativeCard(card, controllable, true);
     const runSections = roomsToDisplay => roomsToDisplay.map(room =>
       `${sectionTitle(room.name, room.cards.length + " " + this.t("устройства","entities"))}${cardGrid(room.cards,this.t("Няма устройства в стаята","No entities in room"))}`
     ).join("");
-    const navButton = n => `<button type="button" data-view="${n[0]}" class="v7-navbtn ${this._view === n[0] ? "active" : ""}" ${this._view === n[0] ? 'aria-current="page"' : ""}><span class="v7-ico">${n[3]}</span><span class="v7-nav-text">${this.t(n[1],n[2])}</span></button>`;
+    const navButton = n => `<button type="button" data-view="${n[0]}" class="v7-navbtn ${this._view === n[0] ? "active" : ""}" ${this._view === n[0] ? 'aria-current="page"' : ""}><span class="v7-ico"><ha-icon icon="${this.escape(n[3])}"></ha-icon></span><span class="v7-nav-text">${this.t(n[1],n[2])}</span></button>`;
     const statusText = this._mode === "stevora"
       ? this.t("Синхронизацията с Home Assistant е активна", "Home Assistant synchronization active")
       : this.t("Manifest не е достъпен — управлението е изключено", "Manifest unavailable — controls disabled");
@@ -907,7 +924,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711-hub2");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-native1");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
@@ -929,7 +946,7 @@ class StevoraHomePanel extends HTMLElement {
           ${content}
           <footer class="v7-footer"><span>STEVORA HOME PANEL · 7.1.1</span><span>${this.t("Работи с текущия Home Assistant","Powered by this Home Assistant")}</span></footer>
         </div></main>
-        <nav class="v7-bottom" aria-label="STEVORA navigation">${bottomNav.map(n=>`<button data-view="${n[0]}" class="${this._view === n[0] ? "active" : ""}"><span>${n[3]}</span><span>${this.t(n[1],n[2])}</span></button>`).join("")}</nav>
+        <nav class="v7-bottom" aria-label="STEVORA navigation">${bottomNav.map(n=>`<button data-view="${n[0]}" class="${this._view === n[0] ? "active" : ""}"><ha-icon icon="${this.escape(n[3])}"></ha-icon><span>${this.t(n[1],n[2])}</span></button>`).join("")}</nav>
       </div>`;
     this.restoreUiState(uiSnapshot);
     this._renderedView = this._view;
