@@ -244,7 +244,7 @@ class StevoraHomePanel extends HTMLElement {
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
     });
-    this.shadowRoot.getElementById("language").onchange = e => { this._language = e.target.value; this.render(); };
+    this.shadowRoot.getElementById("language").onchange = e => { this._languageOverride = e.target.value; this._language = e.target.value; this.refresh(); };
     this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this.render(); };
     this.shadowRoot.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
       const entity = button.dataset.id;
