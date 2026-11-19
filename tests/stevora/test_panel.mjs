@@ -12,6 +12,7 @@ class FakeElement {
       innerHTML: "",
       getElementById() { return {}; },
       querySelectorAll() { return []; },
+      querySelector() { return null; },
     };
   }
 }
@@ -91,6 +92,7 @@ const switched = new Panel();
 switched._hass = {connection: {}, user: {id: "home-a-admin"}, states: {}};
 switched._manifest = {installation_id: "home-a", controllable_entities: ["light.old"]};
 switched._panelModel = {sections: [], installation_id: "home-a"};
+switched._hub = {status: {installation_id: "home-a", status: "active"}};
 switched._mode = "stevora";
 switched.hass = {
   connection: {}, user: {id: "home-b-admin"}, states: {
@@ -101,6 +103,7 @@ switched.hass = {
 assert.equal(switched._mode, "native");
 assert.equal(switched._manifest, null);
 assert.equal(switched._panelModel, null);
+assert.equal(switched._hub, null);
 assert.equal(switched.inventory().length, 0);
 assert.doesNotMatch(switched.shadowRoot.innerHTML, /data-action="toggle"/);
 
@@ -191,6 +194,31 @@ panel._view = "memory";
 panel.render();
 assert.match(panel.shadowRoot.innerHTML, /not_included/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
+
+
+// Home Hub view renders only the authenticated installation's server projection.
+panel._manifest.modules = {home_hub: {bundled:true,enabled:true,status:"active"}};
+panel._hub = {
+  status:{installation_id:"home-premium",hub_version:"1.0.0-beta.1",status:"active",
+    metrics:{visible_entities:2,unavailable_entities:0,notifications:1}},
+  history:{events:[{seq:1,entity_id:"climate.bedroom",kind:"recovered",at:"2026-11-19T20:00:00Z"}],
+    notifications:[{seq:1,entity_id:"climate.bedroom",kind:"recovered"}]},
+  scenes:{installation_id:"home-premium",items:[
+    {entity_id:"scene.welcome",name:"Welcome",domain:"scene",action_allowed:true,state:"scening"},
+    {entity_id:"scene.blocked",name:"Restricted",domain:"scene",action_allowed:false,state:"scening"},
+  ]},
+  settings:null,
+};
+panel._view = "hub";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /HOME HUB/);
+assert.match(panel.shadowRoot.innerHTML, /climate.bedroom/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-hub-save=/);
+panel._view = "scenes";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /data-hub-scene="scene.welcome"/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-hub-scene="scene.blocked"/);
+panel._hub = null;
 
 // A completely unrelated independent installation must not inherit old room
 // names, controls or any historical Dunav hardcoded references.
