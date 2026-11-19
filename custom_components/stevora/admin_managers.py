@@ -5,6 +5,8 @@ authenticated Home Assistant user is currently an administrator.
 """
 from __future__ import annotations
 
+import asyncio
+
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
@@ -16,6 +18,7 @@ STORAGE_KEY = f"{DOMAIN}.admin_managers"
 class AdminManagers:
     def __init__(self, hass):
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self.lock = asyncio.Lock()
         self.data = {"revision": 1, "visibility": {}, "assistants": {"default_pipeline": None, "user_pipelines": {}}}
 
     async def load(self):
