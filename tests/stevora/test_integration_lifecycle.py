@@ -75,6 +75,8 @@ class IntegrationLifecycleTests(unittest.TestCase):
         helpers = types.ModuleType("homeassistant.helpers")
         helpers.storage = storage
         helpers.entity_registry = entity_registry
+        assist_pipeline = types.ModuleType("homeassistant.components.assist_pipeline")
+        assist_pipeline.async_get_pipelines = lambda hass: []
         websocket = types.ModuleType("homeassistant.components.websocket_api")
         websocket.websocket_command = lambda schema: lambda fn: fn
         websocket.async_response = lambda fn: fn
@@ -83,6 +85,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
         http.StaticPathConfig = lambda url, location, cache: (url, location, cache)
         components = types.ModuleType("homeassistant.components")
         components.websocket_api = websocket
+        components.assist_pipeline = assist_pipeline
 
         core = types.ModuleType("homeassistant.core")
         core.HomeAssistant = object
@@ -99,6 +102,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
             "homeassistant.config_entries": entries,
             "homeassistant.components": components,
             "homeassistant.components.websocket_api": websocket,
+            "homeassistant.components.assist_pipeline": assist_pipeline,
             "homeassistant.components.http": http,
             "homeassistant.helpers": helpers,
             "homeassistant.helpers.storage": storage,
@@ -156,7 +160,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
-        self.assertEqual(len(self.commands), 6)
+        self.assertEqual(len(self.commands), 7)
         response = {}
         connection = types.SimpleNamespace(
             user=types.SimpleNamespace(is_admin=False),
