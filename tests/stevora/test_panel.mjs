@@ -100,7 +100,7 @@ switched.hass = {
 assert.equal(switched._mode, "native");
 assert.equal(switched._manifest, null);
 assert.equal(switched._panelModel, null);
-assert.deepEqual(switched.inventory(), []);
+assert.equal(switched.inventory().length, 0);
 assert.doesNotMatch(switched.shadowRoot.innerHTML, /data-action="toggle"/);
 
 console.log("STEVORA panel runtime: PASS");
