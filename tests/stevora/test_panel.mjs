@@ -296,4 +296,140 @@ assert.doesNotMatch(offlinePanel.shadowRoot.innerHTML, /data-action="toggle"/);
 assert.doesNotMatch(offlinePanel.shadowRoot.innerHTML, /data-lightbrightness="light.offline"/);
 assert.doesNotMatch(offlinePanel.shadowRoot.innerHTML, /data-lightcolor="light.offline"/);
 
+
+
+// Premium admin editor must be a no-code icon gallery, not a raw MDI input.
+const editor = panel.deviceEditors({
+  entities:[{entity_id:"fan.bath",name:"Bathroom fan"}],
+  device_profiles:{"fan.bath":{icon:"mdi:fan",layout:"compact",controls:["toggle"]}},
+  translations:{entities:{}},rooms:[{id:"bath",name:"Bathroom"}],
+});
+assert.match(editor, /data-editor-key="device:fan.bath"/);
+assert.match(editor, /data-icon-open="fan.bath"/);
+assert.match(editor, /data-icon-grid="fan.bath"/);
+assert.match(editor, /type="hidden" data-profile-icon="fan.bath"/);
+assert.match(editor, /data-profile-control-mode="fan.bath"/);
+assert.match(editor, /Включване/);
+assert.match(editor, /data-profile-users=/);
+assert.match(editor, /v7-editor-advanced/);
+assert.ok(panel.iconGallery().length >= 25);
+
+// Form state persists across updates instead of closing open device settings.
+const formPanel = new Panel();
+formPanel._hass = {connection:{},user:{id:"admin"},states:{}};
+formPanel._manifest = {installation_id:"home-editor"};
+formPanel._renderedView = "settings";
+formPanel._renderedInstallation = "home-editor";
+formPanel._renderedUser = "admin";
+formPanel._view = "settings";
+const openEditor = {getAttribute:()=>"device:fan.bath"};
+const oldInput = {tagName:"INPUT",type:"text",value:"New custom name",checked:false};
+const oldList = {scrollTop:212};
+formPanel.shadowRoot.querySelectorAll = selector => {
+  if (selector === "details[data-editor-key][open]") return [openEditor];
+  if (selector.includes(".v7-manager input")) return [oldInput];
+  if (selector === ".v7-manager .auditlist") return [oldList];
+  return [];
+};
+const snapshot = formPanel.captureUiState();
+assert.deepEqual([...snapshot.opened], ["device:fan.bath"]);
+let newOpen = false;
+const newEditor = {getAttribute:()=>"device:fan.bath",set open(v){newOpen=v;}};
+const newInput = {tagName:"INPUT",type:"text",value:"Old persisted name",checked:false};
+const newList = {scrollTop:0};
+formPanel.shadowRoot.querySelectorAll = selector => {
+  if (selector === "details[data-editor-key]") return [newEditor];
+  if (selector.includes(".v7-manager input")) return [newInput];
+  if (selector === ".v7-manager .auditlist") return [newList];
+  return [];
+};
+formPanel.restoreUiState(snapshot);
+assert.equal(newOpen,true);
+assert.equal(newInput.value,"New custom name");
+assert.equal(newList.scrollTop,212);
+formPanel._resetEditorValues = true;
+newInput.value = "Server saved name";
+formPanel.restoreUiState(snapshot);
+assert.equal(newInput.value,"Server saved name");
+
+// An incoming HA state update must not rerender active Settings or chat.
+const stable = new Panel();
+const sharedConnection = {};
+stable._hass = {connection:sharedConnection,user:{id:"admin"},states:{"light.kitchen":{}}};
+stable._mode = "stevora";
+stable._admin = {rooms:{},assistants:{}};
+stable._stateSignature = "light.kitchen";
+stable._view = "settings";
+let renders = 0;
+stable.render = () => {renders += 1;};
+stable.hass = {connection:sharedConnection,user:{id:"admin"},states:{"light.kitchen":{state:"on"}}};
+assert.equal(renders,0);
+stable._view = "ai";
+stable.hass = {connection:sharedConnection,user:{id:"admin"},states:{"light.kitchen":{state:"off"}}};
+assert.equal(renders,0);
+
+// Device-specific cards only expose actions granted by scoped manifest.
+const scoped = new Set(["fan.bath","cover.window","media_player.tv"]);
+const myFan = {entity_id:"fan.bath",name:"Ventilator",domain:"fan",icon:"mdi:fan",
+  layout:"expanded",controls:["toggle","percentage"]};
+const myCover = {entity_id:"cover.window",name:"Blind",domain:"cover",
+  icon:"mdi:window-shutter",layout:"compact",controls:["open","stop","close"]};
+const myMedia = {entity_id:"media_player.tv",name:"TV",domain:"media_player",
+  icon:"mdi:television",layout:"compact",controls:["play_pause"]};
+const native = new Panel();
+native._hass = {states:{
+  "fan.bath":{entity_id:"fan.bath",state:"on",attributes:{percentage:45}},
+  "cover.window":{entity_id:"cover.window",state:"open",attributes:{}},
+  "media_player.tv":{entity_id:"media_player.tv",state:"playing",attributes:{}},
+}};
+assert.match(native.renderNativeCard(myFan,scoped),/data-fanpercentage="fan.bath"/);
+assert.match(native.renderNativeCard(myFan,scoped),/data-action="toggle"/);
+assert.match(native.renderNativeCard(myCover,scoped),/data-action="open"/);
+assert.match(native.renderNativeCard(myCover,scoped),/data-action="close"/);
+assert.match(native.renderNativeCard(myMedia,scoped),/data-action="play_pause"/);
+assert.doesNotMatch(native.renderNativeCard(myCover,new Set()),/data-action="open"/);
+assert.doesNotMatch(native.renderNativeCard({...myFan,layout:"info"},scoped),/data-fanpercentage=/);
+native._hass.states["fan.bath"].state = "unavailable";
+assert.doesNotMatch(native.renderNativeCard(myFan,scoped),/data-action="toggle"/);
+assert.doesNotMatch(native.renderNativeCard(myFan,scoped),/data-fanpercentage=/);
+assert.doesNotMatch(native.renderNativeCard(myFan,scoped),/fan\.bath<\/div>/);
+assert.match(native.renderNativeCard(myFan,scoped),/<ha-icon icon="mdi:fan"/);
+
+// A native HA Conversation agent works even when Hey Stevora is not bundled.
+// Plain text must be escaped; conversation_id must carry between turns.
+const chatter = new Panel();
+const conversationCalls = [];
+const chatConnection = {};
+chatter._hass = {connection:chatConnection,user:{id:"person"},states:{},
+  callWS:async msg => {
+    conversationCalls.push(msg);
+    return {conversation_id:"ha-thread-1",
+      response:{speech:{plain:{speech:"Connected <safe> & private"}}}};
+  },
+};
+chatter._manifest = {installation_id:"independent-chat"};
+chatter._mode = "stevora";
+chatter._language = "bg";
+await chatter.sendAssist("Какво е включено?");
+assert.equal(conversationCalls[0].type,"conversation/process");
+assert.equal(conversationCalls[0].language,"bg");
+assert.equal(conversationCalls[0].text,"Какво е включено?");
+assert.equal(chatter._chatMessages.length,2);
+assert.match(chatter.renderAssistChat(),/Connected &lt;safe&gt; &amp; private/);
+await chatter.sendAssist("Още?");
+assert.equal(conversationCalls[1].conversation_id,"ha-thread-1");
+assert.equal(chatter._chatMessages.length,4);
+assert.match(chatter.renderAssistChat(),/v7-chat-form/);
+assert.doesNotMatch(chatter.renderAssistChat(),/Hey Stevora is required/);
+const newHomeConnection = {};
+chatter.hass = {connection:newHomeConnection,user:{id:"other"},states:{},
+  callWS:async ()=>{throw new Error("not available");}};
+assert.equal(chatter._chatMessages.length,0);
+assert.equal(chatter._chatConversationId,null);
+
+// No HTML injection from manifest or chat responses.
+const hostileCard = {...myMedia,name:'<img src=x onerror=alert(1)>'};
+assert.doesNotMatch(native.renderNativeCard(hostileCard,scoped),/<img src=/);
+assert.match(native.renderNativeCard(hostileCard,scoped),/&lt;img/);
+
 console.log("STEVORA panel runtime: PASS");
