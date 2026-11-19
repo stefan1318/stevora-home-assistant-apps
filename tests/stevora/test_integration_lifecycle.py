@@ -55,6 +55,17 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
         panel.async_register_panel = add
         panel.async_remove_panel = remove
+        hub_api = types.ModuleType("stevora_lifecycle_pkg.hub_api")
+        hub_api.register = lambda hass: self.commands.extend(["hub"] * 5)
+        home_hub = types.ModuleType("stevora_lifecycle_pkg.home_hub")
+        class FakeHub:
+            def __init__(self, hass, entry):
+                self.active = False
+            async def async_start(self):
+                self.active = True
+            async def async_stop(self):
+                self.active = False
+        home_hub.HomeHub = FakeHub
         discovery = types.ModuleType("stevora_lifecycle_pkg.discovery")
         discovery.build_manifest = lambda hass, entry: {"installation_id": entry.entry_id}
         permissions = types.ModuleType("stevora_lifecycle_pkg.permissions")
@@ -98,6 +109,8 @@ class IntegrationLifecycleTests(unittest.TestCase):
             package.__name__: package,
             panel.__name__: panel,
             discovery.__name__: discovery,
+            hub_api.__name__: hub_api,
+            home_hub.__name__: home_hub,
             permissions.__name__: permissions,
             "homeassistant": types.ModuleType("homeassistant"),
             "homeassistant.core": core,
@@ -128,6 +141,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
         asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
         self.assertIn(self.hass.entry.entry_id, self.hass.data["stevora"])
         self.assertEqual(len(self.hass.static_paths), 1)
+        self.assertEqual(self.hass.data["stevora"][self.hass.entry.entry_id]["hub_status"], "active")
         self.assertEqual(self.hass.static_paths[0][0], "/stevora_static")
         asyncio.run(self.integration.async_unload_entry(self.hass, self.hass.entry))
         self.assertNotIn(self.hass.entry.entry_id, self.hass.data["stevora"])
@@ -163,7 +177,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
-        self.assertEqual(len(self.commands), 11)
+        self.assertEqual(len(self.commands), 16)
         response = {}
         connection = types.SimpleNamespace(
             user=types.SimpleNamespace(is_admin=False),
