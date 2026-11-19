@@ -19,9 +19,9 @@ DOMAIN_ICONS = {
 }
 DOMAIN_CONTROLS = {
     "light": ("toggle", "brightness", "color", "color_temp", "effect"),
-    "switch": ("toggle",), "fan": ("toggle", "percentage", "preset_mode"),
-    "climate": ("temperature", "hvac_mode", "fan_mode", "preset_mode"),
-    "cover": ("open", "close", "stop", "position"),
+    "switch": ("toggle",), "fan": ("toggle", "percentage", "preset_mode", "oscillate", "direction"),
+    "climate": ("temperature", "hvac_mode", "fan_mode", "preset_mode", "swing_mode"),
+    "cover": ("open", "close", "stop", "position", "tilt"),
     "media_player": ("play_pause", "volume", "source"),
     "lock": ("lock", "unlock"),
     "sensor": (), "binary_sensor": (),
