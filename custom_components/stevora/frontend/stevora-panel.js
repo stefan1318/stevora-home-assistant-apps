@@ -200,8 +200,11 @@ class StevoraHomePanel extends HTMLElement {
       ["climate", "Климат", "Climate", "◉"],
       ["lighting", "Осветление", "Lighting", "✧"],
       ["devices", "Устройства", "Devices", "◫"],
+      ["scenes", "Сцени", "Scenes", "▷"],
+      ["insights", "Статистика", "Insights", "⌁"],
       ["ai", "AI център", "AI center", "✦"],
       ["system", "Система", "System", "▥"],
+      ["memory", "Памет", "Memory", "◇"],
       ["settings", "Настройки", "Settings", "⚙"],
     ];
     if (!nav.some(n => n[0] === this._view)) this._view = "home";
@@ -341,6 +344,30 @@ class StevoraHomePanel extends HTMLElement {
     } else if (this._view === "devices") {
       content = `${sectionTitle(this.t("Всички устройства","All devices"),allCards.length+" "+this.t("устройства","entities"))}
         ${cardGrid(allCards,this.t("Няма открити устройства","No entities discovered"))}`;
+    } else if (this._view === "scenes") {
+      content = `${sectionTitle(this.t("Сцени и автоматизации","Scenes and automations"))}
+        <div class="v7-two">
+          <section class="v7-card"><div class="v7-card-title">▷ ${this.t("Сцени","Scenes")}</div>
+            <div class="v7-banner">${this.t("Универсалният manifest все още не предоставя сцени с проверени потребителски права. Няма автоматично изпълнение на сцени.","The current manifest does not expose user-authorized scenes. No scene is executed automatically.")}</div>
+            ${isAdmin ? `<div class="v7-actions"><a class="v7-action" href="/config/scene/dashboard">${this.t("Сцени в Home Assistant","HA scene editor")}</a></div>` : ""}
+          </section>
+          <section class="v7-card"><div class="v7-card-title">⚙ ${this.t("Автоматизации","Automations")}</div>
+            <div class="v7-muted">${this.t("Редакторът използва нативните права и конфигурация на Home Assistant.","The native Home Assistant editor enforces the current user's permissions.")}</div>
+            ${isAdmin ? `<div class="v7-actions"><a class="v7-action" href="/config/automation/dashboard">${this.t("Отвори автоматизации","Open automations")}</a></div>` : ""}
+          </section>
+        </div>`;
+    } else if (this._view === "insights") {
+      content = `${sectionTitle(this.t("Информация и статистика","Insights and statistics"),this.t("Данни в реално време","Live data"))}
+        ${stats}${sectionTitle(this.t("Сензорни показатели","Sensor readings"))}
+        ${cardGrid(statusCards, this.t("Няма видими сензори","No visible sensors"))}
+        <div class="v7-banner ok">${this.t("Историческите графики изискват отделно Recorder разрешение; тук не се показват измислени измервания.","Historical charts require verified Recorder access; no synthetic measurements are shown.")}</div>`;
+    } else if (this._view === "memory") {
+      const module = this._manifest?.modules?.memory_sync;
+      content = `${sectionTitle(this.t("STEVORA Memory Manager","STEVORA Memory Manager"))}
+        <section class="v7-card"><div class="v7-card-title">◇ MEMORY SYNC</div>
+        <div class="v7-banner">${this.escape(module?.status || "not_included")}</div>
+        <p class="v7-muted">${this.t("Паметта е отделен продукт; интеграцията показва статус, без да има достъп до чужди разговори или токени.","Memory is a separate product. This panel shows its status without accessing private conversations or tokens.")}</p>
+        </section>`;
     } else if (this._view === "ai") {
       const module = this._manifest?.modules?.hey_stevora;
       const pipeline = admin?.assistants?.pipelines?.find(p=>p.id===admin?.assistants?.settings?.default_pipeline)?.name;
@@ -366,6 +393,12 @@ class StevoraHomePanel extends HTMLElement {
         </section></div>${isAdmin ? auditText : ""}`;
     } else {
       content = `${sectionTitle(this.t("Настройки и мениджъри","Settings and managers"))}
+        <div class="v7-filter">
+          <button data-view="scenes">${this.t("Сцени","Scenes")}</button>
+          <button data-view="insights">${this.t("Статистика","Insights")}</button>
+          <button data-view="memory">${this.t("Памет","Memory")}</button>
+          <button data-view="ai">AI Center</button>
+        </div>
         <section class="v7-card"><div class="v7-card-title">⚙ ${this.t("Предпочитания","Preferences")}</div>
           <div class="v7-mini-pair"><span>${this.t("Режим за стенен панел","Wall panel mode")}</span>
             <button class="v7-action" data-wall-toggle="1">${this._wall ? this.t("Изключи","Disable") : this.t("Включи","Enable")}</button></div>
@@ -452,7 +485,7 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this.render(); };
     this.shadowRoot.querySelectorAll("[data-view]").forEach(button => button.onclick = () => {
       const view = button.dataset.view;
-      if (["home","rooms","climate","lighting","devices","ai","system","settings"].includes(view)) {
+      if (["home","rooms","climate","lighting","devices","scenes","insights","ai","system","memory","settings"].includes(view)) {
         this._view = view;
         this.render();
       }
