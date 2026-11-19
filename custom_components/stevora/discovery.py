@@ -76,7 +76,8 @@ def build_manifest(hass, entry):
             skip(entity, "unsupported_domain")
             continue
         device = device_by_id.get(entity.device_id) if entity.device_id else None
-        area_id = entity.area_id or (device.area_id if device else None)
+        profile = device_profiles.get(entity.entity_id, {})
+        area_id = profile.get("area_id") or entity.area_id or (device.area_id if device else None)
         if area_id is None:
             if include_unassigned:
                 area_id = UNASSIGNED_ROOM
@@ -88,9 +89,6 @@ def build_manifest(hass, entry):
             continue
         if getattr(entity, "entity_category", None) is not None:
             counts["categorized"] += 1
-        profile = device_profiles.get(entity.entity_id, {})
-        if profile.get("area_id") in mappings:
-            area_id = profile["area_id"]
         mappings[area_id].append(entity.entity_id)
         domain_mappings[SUPPORTED_DOMAINS[domain]].append(entity.entity_id)
         inventory.append({
