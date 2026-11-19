@@ -116,7 +116,7 @@ async def rooms_update(hass, connection, msg):
     "type": "stevora/admin/rooms/aliases/update",
     vol.Required("expected_revision"): vol.Coerce(int),
     vol.Required("room_aliases"): {str: str},
-    vol.Optional("room_order", default=[]): [str],
+    vol.Optional("room_order"): [str],
     vol.Required("entity_aliases"): {str: str},
 })
 @websocket_api.async_response
@@ -124,14 +124,14 @@ async def room_aliases_update(hass, connection, msg):
     if not require_admin(connection, msg):
         return
     room_aliases = msg["room_aliases"]
-    room_order = msg["room_order"]
+    room_order = msg.get("room_order")
     entity_aliases = msg["entity_aliases"]
-    if len(room_aliases) > 200 or len(entity_aliases) > 1000 or len(room_order) > 200:
+    if len(room_aliases) > 200 or len(entity_aliases) > 1000 or (room_order is not None and len(room_order) > 200):
         connection.send_error(msg["id"], "invalid_alias", "Too many aliases")
         return
     area_ids = {area.id for area in area_registry.async_get(hass).async_list_areas()}
     entity_ids = set(entity_registry.async_get(hass).entities)
-    if len(room_order) != len(set(room_order)) or any(key not in area_ids for key in room_order):
+    if room_order is not None and (len(room_order) != len(set(room_order)) or any(key not in area_ids for key in room_order)):
         connection.send_error(msg["id"], "invalid_order", "Unknown or duplicate room in ordering")
         return
     if any(key not in area_ids or len(value.strip()) > 80 for key, value in room_aliases.items()) or any(
@@ -145,7 +145,8 @@ async def room_aliases_update(hass, connection, msg):
             connection.send_error(msg["id"], "conflict", "Configuration revision changed")
             return
         new_state = dict(manager.data)
-        new_state["room_order"] = list(room_order)
+        if room_order is not None:
+            new_state["room_order"] = list(room_order)
         new_state["room_aliases"] = {key: value.strip() for key, value in room_aliases.items() if value.strip()}
         new_state["entity_aliases"] = {key: value.strip() for key, value in entity_aliases.items() if value.strip()}
         new_state["revision"] = manager.data["revision"] + 1
