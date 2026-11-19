@@ -50,7 +50,7 @@ class PanelLifecycleTests(unittest.TestCase):
         params = self.operations[0][1]
         self.assertEqual(params["frontend_url_path"], "stevora")
         self.assertFalse(params["require_admin"])
-        self.assertEqual(params["module_url"], "/stevora_static/stevora-panel.js")
+        self.assertEqual(params["module_url"], "/stevora_static/stevora-panel.js?v=7.1.1-rc2")
         asyncio.run(self.panel.async_remove_panel(hass))
         self.assertEqual(self.operations[1], ("remove", {
             "frontend_url_path": "stevora",
