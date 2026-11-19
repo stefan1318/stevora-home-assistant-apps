@@ -1,4 +1,5 @@
 name: STEVORA Admin Managers CI
+# Verify updated lifecycle stubs
 on:
   push:
     branches: [feature/stevora-admin-managers-integrated]
