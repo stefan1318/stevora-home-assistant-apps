@@ -107,7 +107,7 @@
 .v7-device-temp small{font-size:11px;margin-left:1px;color:#9bb5d2}
 .v7-device-target{font-size:13px;color:#a9c5e3;overflow-wrap:anywhere}
 .v7-device-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:auto}
-.v7-device-action{display:inline-flex;gap:7px;align-items:center;justify-content:center;min-height:40px;flex:1;border-radius:11px;border:1px solid rgba(124,174,243,.26);background:rgba(37,83,132,.42);color:#e5f3ff;cursor:pointer;font:650 12px/1.25 inherit;padding:9px 12px;transition:transform .16s,background .16s}
+.v7-device-action{display:inline-flex;gap:7px;align-items:center;justify-content:center;min-height:40px;flex:1;border-radius:11px;border:1px solid rgba(124,174,243,.26);background:rgba(37,83,132,.42);color:#e5f3ff;cursor:pointer;font:inherit;font-size:12px;font-weight:650;line-height:1.25;padding:9px 12px;transition:transform .16s,background .16s}
 .v7-device-action ha-icon{--mdc-icon-size:19px}
 .v7-device-action:last-child{background:rgba(8,24,43,.42);color:#aac7e3}
 .v7-device-action:hover{background:rgba(57,113,178,.5)}
@@ -220,3 +220,12 @@
 @media(prefers-reduced-motion:reduce){
   .v7-action,.v7-device-action,.v7-editor-chevron{transition:none}
 }
+
+/* Consistent native MDI icon sizes and informative RGB lighting on Home. */
+.v7-navbtn .v7-ico ha-icon{--mdc-icon-size:20px;display:block}
+.v7-bottom button ha-icon{--mdc-icon-size:21px;margin:2px auto}
+.v7-light-name-wrap{display:flex;align-items:center;gap:8px;min-width:0}
+.v7-light-name-wrap .v7-state-dot{flex:none;margin-right:0}
+.v7-light-name-wrap .v7-light-name{overflow-wrap:anywhere}
+.v7-card-title ha-icon{--mdc-icon-size:16px}
+@media(max-width:760px){.v7-bottom button ha-icon{--mdc-icon-size:22px}}
