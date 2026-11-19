@@ -25,7 +25,7 @@ async def capabilities(hass, connection, msg):
         return
     connection.send_result(msg["id"], {
         "room_manager": True,
-        "assistant_manager": True,
+        "assistant_manager": False,
         "schema_version": "1.0",
     })
 
