@@ -3,7 +3,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 from .const import DOMAIN, CONF_LANGUAGE, DEFAULT_LANGUAGE
-from .modules import CONF_PANEL_ENABLED
+from .modules import CONF_PANEL_ENABLED, CONF_HOME_HUB_ENABLED
 
 LANGUAGES = ("bg", "en")
 CONF_DASHBOARD = "dashboard_path"
@@ -27,6 +27,7 @@ class StevoraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_AUTO_DISCOVERY, default=True): bool,
             vol.Required(CONF_INCLUDE_UNASSIGNED, default=False): bool,
             vol.Required(CONF_PANEL_ENABLED, default=True): bool,
+            vol.Required(CONF_HOME_HUB_ENABLED, default=True): bool,
             vol.Required(CONF_VOICE, default=False): bool,
         }))
 
@@ -44,6 +45,7 @@ class StevoraOptionsFlow(config_entries.OptionsFlow):
             vol.Required(CONF_AUTO_DISCOVERY, default=existing.get(CONF_AUTO_DISCOVERY, True)): bool,
             vol.Required(CONF_INCLUDE_UNASSIGNED, default=existing.get(CONF_INCLUDE_UNASSIGNED, False)): bool,
             vol.Required(CONF_PANEL_ENABLED, default=existing.get(CONF_PANEL_ENABLED, True)): bool,
+            vol.Required(CONF_HOME_HUB_ENABLED, default=existing.get(CONF_HOME_HUB_ENABLED, True)): bool,
             vol.Required(CONF_VOICE, default=existing.get(CONF_VOICE, False)): bool,
             vol.Optional(CONF_ROOM_FILTER, default=existing.get(CONF_ROOM_FILTER, [])): selector.AreaSelector(selector.AreaSelectorConfig(multiple=True)),
             vol.Optional(CONF_CLIMATE, default=existing.get(CONF_CLIMATE, [])): selector.EntitySelector(selector.EntitySelectorConfig(domain="climate", multiple=True)),
