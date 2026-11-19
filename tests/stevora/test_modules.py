@@ -26,10 +26,24 @@ class ModuleCatalogTests(unittest.TestCase):
         catalog = self.modules.describe_modules(hass, self.make_entry())
         self.assertEqual(catalog["core"]["status"], "active")
         self.assertEqual(catalog["home_panel"]["status"], "active")
-        for product in ("home_hub", "hey_stevora", "memory_sync"):
+        self.assertTrue(catalog["home_hub"]["bundled"])
+        self.assertTrue(catalog["home_hub"]["enabled"])
+        self.assertEqual(catalog["home_hub"]["status"], "pending")
+        for product in ("hey_stevora", "memory_sync"):
             self.assertFalse(catalog[product]["bundled"])
             self.assertFalse(catalog[product]["enabled"])
             self.assertEqual(catalog[product]["status"], "not_included")
+
+    def test_hub_can_be_disabled_or_running(self):
+        home = self.make_entry(home_hub_enabled=False)
+        hass = types.SimpleNamespace(data={"stevora": {"home-a": {"panel_registered": True}}})
+        inactive = self.modules.describe_modules(hass, home)
+        self.assertEqual(inactive["home_hub"]["status"], "disabled")
+        self.assertFalse(inactive["home_hub"]["enabled"])
+        hass.data["stevora"]["home-a"]["hub"] = types.SimpleNamespace(active=True)
+        active = self.modules.describe_modules(hass, self.make_entry())
+        self.assertEqual(active["home_hub"]["status"], "active")
+        self.assertTrue(active["home_hub"]["bundled"])
 
     def test_panel_opt_out(self):
         hass = types.SimpleNamespace(data={"stevora": {"home-a": {
