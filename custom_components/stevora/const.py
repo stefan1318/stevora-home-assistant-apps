@@ -1,0 +1,5 @@
+DOMAIN = "stevora"
+CONF_LANGUAGE = "language"
+CONF_MAPPINGS = "mappings"
+DEFAULT_LANGUAGE = "bg"
+SCHEMA_VERSION = "1.0"

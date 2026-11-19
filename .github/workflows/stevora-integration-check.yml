@@ -1,0 +1,47 @@
+name: STEVORA integration checks
+on:
+  push:
+    branches:
+      - feature/stevora-universal-discovery-v1
+      - fix/stevora-discovery-audit-20261119
+    paths:
+      - 'custom_components/stevora/**'
+      - 'tests/stevora/**'
+      - '.github/workflows/stevora-integration-check.yml'
+  pull_request:
+    paths:
+      - 'custom_components/stevora/**'
+      - 'tests/stevora/**'
+      - '.github/workflows/stevora-integration-check.yml'
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test schema dependency
+        run: python -m pip install voluptuous
+      - name: Compile integration
+        run: python -m compileall -q custom_components/stevora
+      - name: Validate manifests and translations
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('custom_components/stevora')
+          for p in root.rglob('*.json'):
+              json.loads(p.read_text())
+              print('validated',p)
+          manifest=json.loads((root/'manifest.json').read_text())
+          assert manifest['domain']=='stevora'
+          assert manifest['config_flow'] is True
+          PY
+      - name: Run contract tests
+        run: python -m unittest discover -s tests/stevora -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run Home Panel JavaScript runtime tests
+        run: node tests/stevora/test_panel.mjs

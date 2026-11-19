@@ -1,0 +1,34 @@
+name: STEVORA manifest static validation
+
+on:
+  push:
+    branches:
+      - feature/stevora-universal-discovery-v1
+    paths:
+      - 'custom_components/stevora_manifest/**'
+      - 'tests/test_manifest_projection.py'
+      - '.github/workflows/stevora-manifest-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile integration and test syntax
+        run: python -m compileall -q custom_components/stevora_manifest tests/test_manifest_projection.py
+      - name: Validate integration manifest JSON
+        run: python -m json.tool custom_components/stevora_manifest/manifest.json > /dev/null
+      - name: Assert no hardcoded private home entity IDs
+        shell: bash
+        run: |
+          if grep -nE '62\.176\.|climate\.air_conditioner|device_tracker\.stefans_iphone' custom_components/stevora_manifest/*.py; then
+            echo "::error::Private installation-specific identifiers found"
+            exit 1
+          fi

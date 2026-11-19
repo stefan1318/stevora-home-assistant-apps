@@ -1,0 +1,75 @@
+"""STEVORA integration with authenticated read-only capability discovery."""
+from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.components import websocket_api
+from homeassistant.components.http import StaticPathConfig
+from pathlib import Path
+import voluptuous as vol
+from .panel import async_register_panel, async_remove_panel
+from .const import DOMAIN
+from .discovery import build_manifest
+from .permissions import project_manifest_for_user
+from .panel_generator import generate_panel
+from .localization import localized_manifest
+from .modules import panel_requested
+from .admin_managers import AdminManagers
+from .admin_api import register as register_admin_commands
+
+@websocket_api.websocket_command({"type": "stevora/manifest", vol.Optional("language"): vol.In(("bg", "en"))})
+@websocket_api.async_response
+async def websocket_manifest(hass, connection, msg):
+    """Return only entities this authenticated HA user may read/control."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
+        return
+    manifest = build_manifest(hass, entries[0])
+    scoped = project_manifest_for_user(manifest, connection.user)
+    connection.send_result(msg["id"], localized_manifest(scoped, msg.get("language") or scoped.get("preferred_language", "en")))
+
+@websocket_api.websocket_command({"type": "stevora/panel/generate", vol.Optional("language"): vol.In(("bg", "en"))})
+@websocket_api.async_response
+async def websocket_panel_generate(hass, connection, msg):
+    """Generate a fresh v7.1.1 panel for this user's visible HA entities."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
+        return
+    manifest = project_manifest_for_user(build_manifest(hass, entries[0]), connection.user)
+    connection.send_result(msg["id"], generate_panel(localized_manifest(manifest, msg.get("language") or manifest.get("preferred_language", "en"))))
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    websocket_api.async_register_command(hass, websocket_manifest)
+    websocket_api.async_register_command(hass, websocket_panel_generate)
+    register_admin_commands(hass)
+    manager = AdminManagers(hass)
+    await manager.load()
+    hass.data.setdefault(DOMAIN, {})["_admin_managers"] = manager
+    return True
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    data = hass.data.setdefault(DOMAIN, {})
+    # Static HTTP routes outlive config-entry reloads; avoid duplicate routes.
+    if not data.get("_static_registered"):
+        await hass.http.async_register_static_paths([
+            StaticPathConfig("/stevora_static", str(Path(__file__).parent / "frontend"), False)
+        ])
+        data["_static_registered"] = True
+    state = {"panel_registered": False, "panel_conflict": False}
+    if panel_requested(entry):
+        state["panel_registered"] = await async_register_panel(hass)
+        state["panel_conflict"] = not state["panel_registered"]
+    data[entry.entry_id] = state
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
+    return True
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    state = hass.data.get(DOMAIN, {}).pop(entry.entry_id, {})
+    # A foreign /stevora panel must never be removed by STEVORA unload.
+    if isinstance(state, dict) and state.get("panel_registered"):
+        await async_remove_panel(hass)
+    return True
