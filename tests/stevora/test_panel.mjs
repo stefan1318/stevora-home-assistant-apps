@@ -103,4 +103,49 @@ assert.equal(switched._panelModel, null);
 assert.equal(switched.inventory().length, 0);
 assert.doesNotMatch(switched.shadowRoot.innerHTML, /data-action="toggle"/);
 
+
+// A user with READ but not CONTROL permission may see states, never service buttons.
+const readOnly = new Panel();
+readOnly._hass = {states: {
+  "light.shared": {entity_id: "light.shared", state: "on", attributes: {}},
+}};
+readOnly._manifest = {
+  installation_id: "home-read-only", preferred_language: "en",
+  entities: [{entity_id:"light.shared", area_id:"room"}],
+  controllable_entities: [],
+};
+readOnly._panelModel = {
+  installation_id:"home-read-only",
+  sections:[{id:"room", name:"Room", cards:[{
+    entity_id:"light.shared", name:"Shared lamp", icon:"mdi:lightbulb",
+    layout:"compact", domain:"light", controls:["toggle"],
+  }]}],
+};
+readOnly._mode="stevora";
+readOnly.render();
+assert.match(readOnly.shadowRoot.innerHTML, /Shared lamp/);
+assert.doesNotMatch(readOnly.shadowRoot.innerHTML, /data-action="toggle"/);
+
+// The two separately fetched WS responses must describe the same revision.
+const mismatch = new Panel();
+mismatch._hass = {
+  connection: {}, user:{id:"reader"}, language:"en", states:{},
+  callWS: async message => {
+    if (message.type === "stevora/manifest") {
+      return {installation_id:"home-x", revision:5, preferred_language:"en",
+        rooms:[], entities:[], controllable_entities:[]};
+    }
+    if (message.type === "stevora/panel/generate") {
+      return {installation_id:"home-x", revision:6, sections:[]};
+    }
+    throw new Error("Unexpected WebSocket command");
+  },
+};
+await mismatch.refresh();
+assert.equal(mismatch._manifest, null);
+assert.equal(mismatch._panelModel, null);
+assert.equal(mismatch._mode, "native");
+assert.match(mismatch._error, /changed during refresh/);
+assert.doesNotMatch(mismatch.shadowRoot.innerHTML, /data-action="toggle"/);
+
 console.log("STEVORA panel runtime: PASS");
