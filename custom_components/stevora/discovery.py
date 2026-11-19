@@ -24,9 +24,11 @@ def build_manifest(hass, entry):
     settings = {**entry.data, **entry.options}
     admin_manager = hass.data.get("stevora", {}).get("_admin_managers")
     visibility = admin_manager.data.get("visibility", {}) if admin_manager else {}
+    room_aliases = admin_manager.data.get("room_aliases", {}) if admin_manager else {}
+    entity_aliases = admin_manager.data.get("entity_aliases", {}) if admin_manager else {}
     selected_areas = set(settings.get("room_filter") or [])
     rooms = [
-        {"id": a.id, "name": a.name}
+        {"id": a.id, "name": room_aliases.get(a.id, a.name)}
         for a in areas.async_list_areas()
         if not selected_areas or a.id in selected_areas
     ]
@@ -90,7 +92,7 @@ def build_manifest(hass, entry):
             "domain": domain,
             "area_id": area_id,
             "device_id": entity.device_id,
-            "name": entity.name or entity.original_name or entity.entity_id,
+            "name": entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
         })
         counts["included"] += 1
 
@@ -105,6 +107,7 @@ def build_manifest(hass, entry):
         "rooms": rooms, "mappings": mappings,
         "domain_mappings": domain_mappings, "settings": settings, "modules": modules,
         "diagnostic_counts": counts, "visibility": visibility,
+        "room_aliases": room_aliases, "entity_aliases": entity_aliases,
     }, sort_keys=True, default=str)
     revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
