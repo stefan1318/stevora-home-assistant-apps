@@ -41,10 +41,23 @@ async def rooms_get(hass, connection, msg):
         return
     manager = _manager(hass)
     manifest = build_manifest(hass, entry)
+    registry = entity_registry.async_get(hass)
+    included = {item["entity_id"] for item in manifest["entities"]}
+    inventory = []
+    for entity in registry.entities.values():
+        if entity.entity_id.split(".", 1)[0] not in ("climate", "light", "switch", "cover", "media_player", "sensor", "binary_sensor", "fan", "lock"):
+            continue
+        inventory.append({
+            "entity_id": entity.entity_id,
+            "name": entity.name or entity.original_name or entity.entity_id,
+            "included": entity.entity_id in included,
+            "disabled": entity.disabled_by is not None,
+            "hidden": entity.hidden_by is not None,
+        })
     connection.send_result(msg["id"], {
         "revision": manager.data["revision"],
         "rooms": manifest["rooms"],
-        "entities": manifest["entities"],
+        "entities": sorted(inventory, key=lambda item: item["entity_id"]),
         "visibility": manager.data["visibility"],
     })
 
@@ -72,6 +85,10 @@ async def rooms_update(hass, connection, msg):
     patches = msg["entities"]
     if len(patches) > 500 or any(item["entity_id"] not in available for item in patches):
         connection.send_error(msg["id"], "invalid_entity", "Entity is unknown or request is too large")
+        return
+    # A disabled/hidden HA entity cannot be made visible through STEVORA.
+    if any(item["visibility"] == "include" and (registry.entities[item["entity_id"]].disabled_by is not None or registry.entities[item["entity_id"]].hidden_by is not None) for item in patches):
+        connection.send_error(msg["id"], "invalid_entity", "Cannot expose disabled or hidden HA entities")
         return
     updates = dict(manager.data["visibility"])
     for item in patches:
