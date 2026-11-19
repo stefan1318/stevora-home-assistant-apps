@@ -689,13 +689,28 @@ class StevoraHomePanel extends HTMLElement {
       const state = ent(card);
       const attrs = state?.attributes || {};
       const target = Number(attrs.temperature);
-      const current = Number(attrs.current_temperature);
+      // Prefer a real room temperature sensor when one is exposed by HA.
+      // Never rely on Dunav-specific HomePod entity IDs.
+      const roomSensor = deviceClass => statusCards.find(item =>
+        item.roomId === card.roomId &&
+        ent(item)?.attributes?.device_class === deviceClass &&
+        !["unavailable","unknown"].includes(ent(item)?.state));
+      const sensor = roomSensor("temperature");
+      const sensorState = sensor ? ent(sensor) : null;
+      const numericSensor = sensorState?.state == null ? NaN : Number(sensorState.state);
+      const sensorUnit = sensorState?.attributes?.unit_of_measurement;
+      const sensorCelsius = sensorUnit === "°F" ? (numericSensor - 32) * 5 / 9 :
+        sensorUnit === "°C" || sensorUnit === "C" ? numericSensor : NaN;
+      const current = Number.isFinite(sensorCelsius) ? sensorCelsius : Number(attrs.current_temperature);
+      const humidity = roomSensor("humidity");
+      const humidityValue = humidity ? Number(ent(humidity)?.state) : NaN;
       const showTarget = attrs.temperature !== undefined && attrs.temperature !== null && Number.isFinite(target);
-      const showCurrent = attrs.current_temperature !== undefined && attrs.current_temperature !== null && Number.isFinite(current);
+      const showCurrent = Number.isFinite(sensorCelsius) ||
+        (attrs.current_temperature !== undefined && attrs.current_temperature !== null && Number.isFinite(current));
       return `<section class="v7-card v7-climate ${summaryOnly ? "v7-climate-summary" : ""}">
         <div class="v7-card-title">◉ ${this.escape(card.name)}</div>
         <div class="v7-climate-value">${showCurrent ? this.escape(current.toFixed(1)) : (showTarget ? this.escape(target.toFixed(0)) : "—")}<span class="v7-value-suffix">°C</span></div>
-        <div class="v7-climate-meta">${this.t("Зададена температура", "Target temperature")}: ${showTarget ? this.escape(target.toFixed(0)) + "°C" : "—"} · ${this.escape(state?.state || "unavailable")}</div>
+        <div class="v7-climate-meta">${this.t("Зададена температура", "Target temperature")}: ${showTarget ? this.escape(target.toFixed(0)) + "°C" : "—"} · ${this.escape(this.nativeStateLabel(state,"climate"))}${Number.isFinite(humidityValue) ? " · " + this.t("Влажност","Humidity") + " " + this.escape(humidityValue.toFixed(0)) + "%" : ""}</div>
         <div class="v7-actions">
           ${!summaryOnly && can(card, "temperature") ? `<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1°C</button>
           <button class="v7-action" data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1°C</button>` : ""}
