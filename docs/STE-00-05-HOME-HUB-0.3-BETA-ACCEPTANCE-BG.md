@@ -1,4 +1,4 @@
-# [STE-00/05/06] STEVORA Home Hub — Universal Integration 0.3.0-beta.1
+# [STE-00/05/06] STEVORA Home Hub — Universal Integration 0.3.0-beta.2
 
 **Статус:** функционален тестов кандидат в отделен GitHub feature branch / Draft PR #9.
 **Предшественик:** Universal Integration 0.2.0-rc.2 и Premium Home Panel 7.1.1.
@@ -25,12 +25,19 @@
 ## Безопасна инсталация на НЕЗАВИСИМ тестов HA
 
 1. В **Settings > System > Backups** направете пълен backup; проверете дали може да се възстанови.
-2. Използвайте *последния успешен GitHub Actions run на feature/stevora-home-hub-v1-20261119* с commit SHA, съвпадащ с PR #9. Изтеглете `STEVORA-Universal-Integration-0.3.0-beta.1` от Artifacts.
-3. Разархивирайте външния artifact ZIP; проверете вътрешния пакет `stevora-universal-integration-0.3.0-beta.1.zip` срещу `SHA256SUMS.txt`.
+2. Използвайте *последния успешен GitHub Actions run на feature/stevora-home-hub-v1-20261119* с commit SHA, съвпадащ с PR #9. Изтеглете `STEVORA-Universal-Integration-0.3.0-beta.2` от Artifacts.
+3. Разархивирайте външния artifact ZIP; проверете вътрешния пакет `stevora-universal-integration-0.3.0-beta.2.zip` срещу `SHA256SUMS.txt`.
 4. Спрете при наличие на **legacy `stevora_manifest`**. Двата компонента не трябва да се стартират едновременно, защото регистрират `stevora/manifest`.
-5. Запазете копие на текущата папка `/config/custom_components/stevora`, после разархивирайте съдържанието на вътрешния ZIP в `/config/`. Проверете `custom_components/stevora/manifest.json` за `0.3.0-beta.1`.
+5. Запазете копие на текущата папка `/config/custom_components/stevora`, после разархивирайте съдържанието на вътрешния ZIP в `/config/`. Проверете `custom_components/stevora/manifest.json` за `0.3.0-beta.2`.
 6. Рестартирайте Home Assistant. От **Settings > Devices & services > STEVORA Ecosystem > Configure** изберете `home_hub_enabled`; при липса на изричен избор beta default е true. Отворете `/stevora` и проверете Home Hub.
 7. Принудително обновете кеша на браузъра (`Ctrl+Shift+R`) при стар CSS.
+
+## Корекция във версия 0.3.0-beta.2
+
+- От страницата **System** бутонът **Open Home Hub** отваря Home Hub.
+- Когато Home Hub вече е отворен, бутонът е **Refresh Hub data / Обнови данните** и извършва действително извличане на нови стойности чрез WS API.
+- В картата се показва **Last updated / Обновено** при успешна синхронизация.
+- След инсталация направете твърдо презареждане на браузъра, за да не се използва старият JavaScript.
 
 ## Acceptance checklist — физическа система, не само CI
 
