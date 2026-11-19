@@ -77,6 +77,7 @@ class AdminAuthorizationTests(unittest.TestCase):
             (self.api.rooms_update, {"expected_revision": 1, "entities": []}),
             (self.api.room_aliases_update, {"expected_revision": 1, "room_aliases": {}, "entity_aliases": {}}),
             (self.api.devices_update, {"expected_revision": 1, "profiles": {}}),
+            (self.api.translations_update, {"expected_revision": 1, "rooms": {}, "entities": {}}),
             (self.api.assistants_get, {}),
             (self.api.assistants_update, {
                 "expected_revision": 1, "default_pipeline": None,
