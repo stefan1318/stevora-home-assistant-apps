@@ -214,6 +214,29 @@ panel.render();
 assert.match(panel.shadowRoot.innerHTML, /HOME HUB/);
 assert.match(panel.shadowRoot.innerHTML, /climate.bedroom/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-hub-save=/);
+assert.match(panel.shadowRoot.innerHTML, /data-hub-refresh="1"/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /class="v7-action subtle" data-view="hub"/);
+
+// Refresh button must actually fetch fresh Hub data, not re-open the same tab.
+const refreshControl = {};
+const originalQuery = panel.shadowRoot.querySelectorAll;
+panel.shadowRoot.querySelectorAll = selector =>
+  selector === "[data-hub-refresh]" ? [refreshControl] : [];
+let refreshCount = 0;
+panel.refresh = async () => { refreshCount += 1; };
+panel.render();
+assert.equal(typeof refreshControl.onclick, "function");
+await refreshControl.onclick();
+assert.equal(refreshCount, 1);
+assert.match(panel.shadowRoot.innerHTML, /data-hub-refresh="1"/);
+delete panel.refresh;
+panel.shadowRoot.querySelectorAll = originalQuery;
+
+panel._view = "system";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML,
+  /class="v7-action subtle" data-view="hub"/);
+
 panel._view = "scenes";
 panel.render();
 assert.match(panel.shadowRoot.innerHTML, /data-hub-scene="scene.welcome"/);
