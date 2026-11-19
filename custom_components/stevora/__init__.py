@@ -9,6 +9,8 @@ from .const import DOMAIN
 from .discovery import build_manifest
 from .permissions import project_manifest_for_user
 from .modules import panel_requested
+from .admin_managers import AdminManagers
+from .admin_api import register as register_admin_commands
 
 @websocket_api.websocket_command({"type": "stevora/manifest"})
 @websocket_api.async_response
@@ -23,6 +25,10 @@ async def websocket_manifest(hass, connection, msg):
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
+    register_admin_commands(hass)
+    manager = AdminManagers(hass)
+    await manager.load()
+    hass.data.setdefault(DOMAIN, {})["_admin_managers"] = manager
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
