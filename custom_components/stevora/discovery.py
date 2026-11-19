@@ -7,7 +7,7 @@ import zlib
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from .const import SCHEMA_VERSION, CONF_LANGUAGE, DEFAULT_LANGUAGE
 from .modules import describe_modules, panel_requested
-from .device_customization import permitted_controls
+from .device_customization import permitted_controls, is_backlight_entity
 
 SUPPORTED_DOMAINS = {
     "climate": "climate", "light": "lighting", "switch": "switches",
@@ -42,10 +42,16 @@ def build_manifest(hass, entry):
         rooms.append({
             "id": UNASSIGNED_ROOM,
             "name": "Без стая" if language == "bg" else "Unassigned",
+            "source_name": "Unassigned",
+            "translations": {"bg": "Без стая", "en": "Unassigned"},
         })
     mappings = {room["id"]: [] for room in rooms}
     domain_mappings = {name: [] for name in SUPPORTED_DOMAINS.values()}
     inventory = []
+    auto_discovery = bool(settings.get("auto_discovery", True))
+    explicit_entities = set(settings.get("climate_entities") or []) | set(
+        settings.get("lighting_entities") or []
+    )
     device_by_id = {device.id: device for device in devices.devices}
 
     counts = {
@@ -56,6 +62,8 @@ def build_manifest(hass, entry):
         "unassigned": 0,
         "outside_selected_rooms": 0,
         "categorized": 0,
+        "auto_discovery_disabled": 0,
+        "backlight": 0,
         "explicitly_excluded": 0,
     }
     excluded = []
@@ -80,9 +88,25 @@ def build_manifest(hass, entry):
             continue
         device = device_by_id.get(entity.device_id) if entity.device_id else None
         profile = device_profiles.get(entity.entity_id, {})
+        original_name = entity.original_name or entity.name or entity.entity_id
+        if is_backlight_entity(entity.entity_id, entity.name, entity.original_name):
+            skip(entity, "backlight")
+            continue
+        manually_selected = (
+            visibility.get(entity.entity_id) == "include"
+            or entity.entity_id in explicit_entities
+            or entity.entity_id in device_profiles
+        )
+        if not auto_discovery and not manually_selected:
+            skip(entity, "auto_discovery_disabled")
+            continue
+        # HA configuration/diagnostic entities are opt-in.
+        if getattr(entity, "entity_category", None) is not None and not manually_selected:
+            skip(entity, "categorized")
+            continue
         area_id = profile.get("area_id") or entity.area_id or (device.area_id if device else None)
         if area_id is None:
-            if visibility.get(entity.entity_id) == "include":
+            if visibility.get(entity.entity_id) == "include" and not selected_areas:
                 area_id = UNASSIGNED_ROOM
                 if UNASSIGNED_ROOM not in mappings:
                     mappings[UNASSIGNED_ROOM] = []
@@ -95,8 +119,6 @@ def build_manifest(hass, entry):
         if area_id not in mappings:
             skip(entity, "outside_selected_rooms")
             continue
-        if getattr(entity, "entity_category", None) is not None:
-            counts["categorized"] += 1
         mappings[area_id].append(entity.entity_id)
         domain_mappings[SUPPORTED_DOMAINS[domain]].append(entity.entity_id)
         inventory.append({
@@ -106,11 +128,12 @@ def build_manifest(hass, entry):
             "device_id": entity.device_id,
             "name": profile.get("name") or entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
             "source_name": profile.get("name") or entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
+            "original_name": original_name,
             "translations": translations.get("entities", {}).get(entity.entity_id, {}),
             "icon": profile.get("icon", ""),
             "layout": profile.get("layout", "compact"),
-            "controls": [item for item in profile["controls"] if item in permitted_controls(entity.entity_id)] if "controls" in profile else None,
-            "available_controls": permitted_controls(entity.entity_id),
+            "controls": [item for item in profile["controls"] if item in permitted_controls(entity.entity_id, source_name=original_name)] if "controls" in profile else None,
+            "available_controls": permitted_controls(entity.entity_id, source_name=original_name),
             "user_ids": profile.get("user_ids", []),
         })
         counts["included"] += 1
@@ -124,7 +147,7 @@ def build_manifest(hass, entry):
             domain_mappings[group] = sorted(item for item in chosen if item in available)
     modules = describe_modules(hass, entry)
     revision_payload = json.dumps({
-        "rooms": rooms, "mappings": mappings,
+        "rooms": rooms, "mappings": mappings, "inventory": inventory,
         "domain_mappings": domain_mappings, "settings": settings, "modules": modules,
         "diagnostic_counts": counts, "visibility": visibility,
         "room_aliases": room_aliases, "room_order": room_order, "entity_aliases": entity_aliases,
