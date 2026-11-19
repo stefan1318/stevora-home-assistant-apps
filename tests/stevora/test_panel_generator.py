@@ -56,6 +56,24 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(next(x for x in cards if x["entity_id"] == "fan.room")["controls"], ["toggle"])
 
 
+    def test_extended_native_controls_survive_scoped_model(self):
+        result = generator.generate_panel(manifest(
+            [{"id": "r", "name": "Room"}],
+            [
+                {"entity_id": "fan.bath", "area_id": "r",
+                 "controls": ["oscillate", "direction"]},
+                {"entity_id": "climate.room", "area_id": "r",
+                 "controls": ["swing_mode"]},
+                {"entity_id": "cover.window", "area_id": "r",
+                 "controls": ["tilt"]},
+            ],
+            ["fan.bath", "climate.room", "cover.window"],
+        ))
+        by_id = {x["entity_id"]: x for x in result["sections"][0]["cards"]}
+        self.assertEqual(by_id["fan.bath"]["controls"], ["oscillate", "direction"])
+        self.assertEqual(by_id["climate.room"]["controls"], ["swing_mode"])
+        self.assertEqual(by_id["cover.window"]["controls"], ["tilt"])
+
     def test_backlight_source_name_cannot_be_hidden_by_alias(self):
         result = generator.generate_panel(manifest(
             [{"id": "bath", "name": "Bathroom"}],

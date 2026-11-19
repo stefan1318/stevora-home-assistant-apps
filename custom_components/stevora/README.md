@@ -1,4 +1,4 @@
-# STEVORA Ecosystem — Universal Integration 0.3.0-beta.2
+# STEVORA Ecosystem — Universal Integration 0.3.0-beta.3
 
 **Status:** Home Hub major test candidate for an independent Home Assistant installation.
 **NOT production approved, NOT deployed to Home Assistant Dunav.**
@@ -59,11 +59,30 @@ run of `feature/stevora-home-hub-v1-20261119`; verify
 `SHA256SUMS.txt`. Install `custom_components/stevora/` on a separate
 test Home Assistant. Always take a full backup and a copy of the old
 integration directory before replacing files. Restart HA and verify
-`0.3.0-beta.2` and the Home Hub module's `active` status.
+`0.3.0-beta.3` and the Home Hub module's `active` status.
 
 **Do not install legacy `stevora_manifest` together with `stevora`**:
 both register the same WebSocket route. Do not modify existing memory
 bridge, voice assistants, BLE integrations or scenes during migration.
+
+## Beta.3 Native Premium UI major update
+
+The premium Home Panel includes a stable, user-oriented device editor:
+HA state updates no longer close open manager lists; an icon gallery and
+friendly controls/layout selection replace typed identifiers. Device cards
+use HA MDI icons, visible states, climate/RGB/fan/cover/media controls with
+full service authorization and native More Info dialogs when allowed.
+
+**Home Assistant Assist text chat** now works through the authenticated
+`conversation/process` WebSocket without Hey Stevora. A configured HA
+Conversation agent is required; the UI does not install a standalone voice
+engine. Chat history is volatile and erased on HA session/user switch.
+
+Safety: view-only devices and backlights never offer actuator controls in
+STEVORA. The Hub, BG/EN localization, independent-installation projection,
+and administrator managers remain in the same package.
+
+See [native UI acceptance and rollback plan](../../docs/STE-01-HOME-PANEL-7.1.1-NATIVE-UX-BETA3-BG.md).
 
 ## Beta.2 UI hotfix
 
