@@ -1,6 +1,8 @@
-# STEVORA Home Assistant Integration — 0.2.0-rc.1
+# STEVORA Home Assistant Integration — 0.2.0-rc.2
 
 **Release candidate for final tests only; NOT approved for production or Dunav.**
+
+The `/stevora` frontend uses the premium v7.1.1 responsive shell, independent-home room/device discovery, climate center, live lighting/RGB controls, scoped managers, and mobile/wall views. The historical static Dunav panel source is **not** copied verbatim because it contains hardcoded entity IDs and unrelated optional modules.
 GitHub Actions packages `custom_components/stevora/` into a checksum-pinned ZIP
 only after Python and JavaScript contract tests pass. For test steps and
 limitations see `docs/STE-05-UNIVERSAL-INTEGRATION-0.2-RC1-ACCEPTANCE-BG.md`.
