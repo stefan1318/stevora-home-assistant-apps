@@ -45,7 +45,8 @@ class ContractTests(unittest.TestCase):
         self.assertIn('if (!allowed.has(x.entity_id)) return false;', code)
         self.assertIn('/backlight/i.test(x.entity_id)', code)
         self.assertIn('this._hass.callService(', code)
-        self.assertIn('controllable.has(item.entity_id)', code)
+        self.assertIn('controllable.has(card.entity_id)', code)
+        self.assertIn('stevora/panel/generate', code)
 
     def test_sample_has_no_secrets(self):
         sample = json.loads((ROOT / "docs/STEVORA_CAPABILITY_MANIFEST_EXAMPLE.json").read_text())
