@@ -1,6 +1,9 @@
 name: STEVORA integration checks
 on:
   push:
+    branches:
+      - feature/stevora-universal-discovery-v1
+      - fix/stevora-discovery-audit-20261119
     paths:
       - 'custom_components/stevora/**'
       - 'tests/stevora/**'
