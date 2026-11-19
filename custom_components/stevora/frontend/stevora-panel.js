@@ -494,6 +494,7 @@ class StevoraHomePanel extends HTMLElement {
           <button data-view="scenes">${this.t("Сцени","Scenes")}</button>
           <button data-view="insights">${this.t("Статистика","Insights")}</button>
           <button data-view="memory">${this.t("Памет","Memory")}</button>
+           <button data-view="hub">HOME HUB</button>
           <button data-view="ai">AI Center</button>
         </div>
         <section class="v7-card"><div class="v7-card-title">⚙ ${this.t("Предпочитания","Preferences")}</div>
