@@ -1130,17 +1130,34 @@ class StevoraHomePanel extends HTMLElement {
         this.render();
       }
     });
-    const canModifyLight = (id, control) => (
-      this._mode === "stevora" &&
-      this._manifest?.controllable_entities?.includes(id) &&
-      (this._panelModel?.sections || []).some(section =>
-        section.cards.some(card =>
-          card.entity_id === id && card.domain === "light" && (card.controls || []).includes(control)
-        )
-      ) && !!this._hass?.states?.[id] &&
-      !["unavailable","unknown"].includes(this._hass.states[id].state) &&
-      !/back[ _-]?light|подсвет/i.test(id)
-    );
+    const controlAllowed = (entityId, control) => {
+      const state = this._hass?.states?.[entityId];
+      if (this._mode !== "stevora" || !state ||
+          ["unavailable","unknown"].includes(state.state) ||
+          !this._manifest?.controllable_entities?.includes(entityId)) return false;
+      const card = (this._panelModel?.sections || []).flatMap(section => section.cards || [])
+        .find(item => item.entity_id === entityId);
+      if (!card || !(card.controls || []).includes(control)) return false;
+      const manifestEntry = this._manifest.entities?.find(x => x.entity_id === entityId);
+      const sourceNames = [entityId, state.attributes?.friendly_name, card.name,
+        manifestEntry?.name, manifestEntry?.original_name, manifestEntry?.source_name];
+      return !sourceNames.some(value => /back[ _-]?light|подсвет/i.test(String(value || "")));
+    };
+    this.shadowRoot.querySelectorAll("[data-fanpercentage]").forEach(slider => slider.onchange = async () => {
+      const id = slider.dataset.fanpercentage;
+      const percent = Number(slider.value);
+      if (!controlAllowed(id, "percentage") || id.split(".")[0] !== "fan" ||
+          !Number.isFinite(percent) || percent < 0 || percent > 100) return;
+      try {
+        await this._hass.callService("fan","set_percentage",{entity_id:id,percentage:percent});
+        this._error = "";
+      } catch(error) {
+        this._error = String(error?.message || error);
+        this.render();
+      }
+    });
+    const canModifyLight = (id, control) =>
+      id.split(".")[0] === "light" && controlAllowed(id, control);
     this.shadowRoot.querySelectorAll("[data-lightbrightness]").forEach(input => input.onchange = async () => {
       const id = input.dataset.lightbrightness;
       const percent = Number(input.value);
@@ -1162,26 +1179,53 @@ class StevoraHomePanel extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
       const entity = button.dataset.id;
+      const action = button.dataset.action;
       const state = this._hass?.states?.[entity];
-      if (!state) return;
-      const domain = entity.split(".")[0];
+      if (!state || this._mode !== "stevora") return;
+      const card = (this._panelModel?.sections || []).flatMap(s => s.cards || [])
+        .find(item => item.entity_id === entity);
+      if (!card) return;
+      const domain = card.domain;
+      if (action === "details") {
+        // HA More Info is the familiar native control panel. HA decides which
+        // services this authenticated user can actually invoke.
+        this.dispatchEvent(new CustomEvent("hass-more-info", {
+          detail:{entityId:entity}, bubbles:true, composed:true,
+        }));
+        return;
+      }
+      const key = action.startsWith("temperature-") ? "temperature" : action;
+      const domains = {
+        toggle:["light","switch","fan"], temperature:["climate"],
+        open:["cover"],close:["cover"],stop:["cover"],play_pause:["media_player"],
+      };
+      if (!domains[key]?.includes(domain) || !controlAllowed(entity,key)) return;
       try {
-        if (button.dataset.action === "details") {
-          this.dispatchEvent(new CustomEvent("hass-more-info", {detail:{entityId:entity}, bubbles:true, composed:true}));
-        } else if (button.dataset.action === "toggle") {
-          await this._hass.callService(domain, "toggle", { entity_id: entity });
-        } else if (domain === "climate") {
-          const current = Number(state.attributes.temperature);
-          if (!Number.isFinite(current)) return;
-          const offset = button.dataset.action === "temperature-up" ? 1 : -1;
-          const next = current + offset;
-          const min = Number(state.attributes?.min_temp);
-          const max = Number(state.attributes?.max_temp);
-          if (Number.isFinite(min) && state.attributes?.min_temp != null && next < min) return;
-          if (Number.isFinite(max) && state.attributes?.max_temp != null && next > max) return;
-          await this._hass.callService("climate", "set_temperature", { entity_id: entity, temperature: next });
+        if (key === "toggle") {
+          await this._hass.callService(domain,"toggle",{entity_id:entity});
+        } else if (key === "temperature") {
+          const attrs = state.attributes || {};
+          const target = attrs.temperature == null ? NaN : Number(attrs.temperature);
+          if (!Number.isFinite(target)) return;
+          const next = target + (action === "temperature-up" ? 1 : -1);
+          const low = attrs.min_temp == null ? -Infinity : Number(attrs.min_temp);
+          const high = attrs.max_temp == null ? Infinity : Number(attrs.max_temp);
+          if (Number.isNaN(low) || Number.isNaN(high) ||
+              next < low || next > high) return;
+          await this._hass.callService("climate","set_temperature",{
+            entity_id:entity,temperature:next,
+          });
+        } else if (domain === "cover") {
+          await this._hass.callService("cover",{
+            open:"open_cover",close:"close_cover",stop:"stop_cover",
+          }[key],{entity_id:entity});
+        } else if (key === "play_pause" && domain === "media_player") {
+          await this._hass.callService("media_player","media_play_pause",{
+            entity_id:entity,
+          });
         }
-      } catch (error) {
+        this._error = "";
+      } catch(error) {
         this._error = String(error?.message || error);
         this.render();
       }
