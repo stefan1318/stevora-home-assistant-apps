@@ -241,7 +241,7 @@ class StevoraHomePanel extends HTMLElement {
       ? `<div class="v7-grid">${cards.map(oneCard).join("")}</div>`
       : `<div class="v7-empty">${this.escape(emptyLabel)}</div>`;
     const roomCards = () => `<div class="v7-room-grid">${sections.map(room =>
-      `<button class="v7-room ${this._selectedRoom === room.id ? "active" : ""}" data-room-go="${this.escape(room.id)}">
+      `<button class="v7-room ${this._selectedRoom === room.id ? "active" : ""}" data-room="${this.escape(room.id)}" data-room-go="${this.escape(room.id)}">
         <span class="v7-room-icon">⌂</span><span class="v7-room-name">${this.escape(room.name)}</span>
         <span class="v7-room-count">${room.cards.length} ${this.t("устройства", "entities")}</span>
       </button>`
@@ -446,6 +446,53 @@ class StevoraHomePanel extends HTMLElement {
     });
     this.shadowRoot.getElementById("language").onchange = e => { this._languageOverride = e.target.value; this._language = e.target.value; this.refresh(); };
     this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this.render(); };
+    this.shadowRoot.querySelectorAll("[data-view]").forEach(button => button.onclick = () => {
+      const view = button.dataset.view;
+      if (["home","rooms","climate","lighting","devices","ai","system","settings"].includes(view)) {
+        this._view = view;
+        this.render();
+      }
+    });
+    this.shadowRoot.querySelectorAll("[data-room-go]").forEach(button => button.onclick = () => {
+      const room = button.dataset.roomGo;
+      if ((this._panelModel?.sections || []).some(section => section.id === room)) {
+        this._selectedRoom = room;
+        this._view = "rooms";
+        this.render();
+      }
+    });
+    this.shadowRoot.querySelectorAll("[data-wall-toggle]").forEach(button => button.onclick = () => {
+      this._wall = !this._wall;
+      this.render();
+    });
+    const canModifyLight = (id, control) => (
+      this._mode === "stevora" &&
+      this._manifest?.controllable_entities?.includes(id) &&
+      (this._panelModel?.sections || []).some(section =>
+        section.cards.some(card =>
+          card.entity_id === id && card.domain === "light" && (card.controls || []).includes(control)
+        )
+      ) && !!this._hass?.states?.[id] && !/back[ _-]?light|подсвет/i.test(id)
+    );
+    this.shadowRoot.querySelectorAll("[data-lightbrightness]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.lightbrightness;
+      const percent = Number(input.value);
+      if (!canModifyLight(id, "brightness") || !Number.isInteger(percent) || percent < 1 || percent > 100) return;
+      try {
+        await this._hass.callService("light", "turn_on", {entity_id:id, brightness_pct:percent});
+        this._error = "";
+      } catch (error) { this._error = String(error?.message || error); this.render(); }
+    });
+    this.shadowRoot.querySelectorAll("[data-lightcolor]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.lightcolor;
+      const hex = String(input.value || "");
+      if (!canModifyLight(id, "color") || !/^#[0-9a-f]{6}$/i.test(hex)) return;
+      const rgb = [1,3,5].map(i => parseInt(hex.slice(i,i+2), 16));
+      try {
+        await this._hass.callService("light", "turn_on", {entity_id:id, rgb_color:rgb});
+        this._error = "";
+      } catch (error) { this._error = String(error?.message || error); this.render(); }
+    });
     this.shadowRoot.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
       const entity = button.dataset.id;
       const state = this._hass?.states?.[entity];
@@ -460,7 +507,12 @@ class StevoraHomePanel extends HTMLElement {
           const current = Number(state.attributes.temperature);
           if (!Number.isFinite(current)) return;
           const offset = button.dataset.action === "temperature-up" ? 1 : -1;
-          await this._hass.callService("climate", "set_temperature", { entity_id: entity, temperature: current + offset });
+          const next = current + offset;
+          const min = Number(state.attributes?.min_temp);
+          const max = Number(state.attributes?.max_temp);
+          if (Number.isFinite(min) && state.attributes?.min_temp != null && next < min) return;
+          if (Number.isFinite(max) && state.attributes?.max_temp != null && next > max) return;
+          await this._hass.callService("climate", "set_temperature", { entity_id: entity, temperature: next });
         }
       } catch (error) {
         this._error = String(error?.message || error);
