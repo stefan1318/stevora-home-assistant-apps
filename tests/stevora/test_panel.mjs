@@ -74,7 +74,8 @@ assert.match(panel.shadowRoot.innerHTML, /Kitchen light/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-id="climate.bedroom"/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-id="light.kitchen_backlight"/);
 panel._selectedRoom = "b";
-assert.deepEqual([...panel.inventory()].map((x) => x.entity_id), ["climate.bedroom"]);
+assert.deepEqual([...panel.inventory()].map((x) => x.entity_id),
+  ["light.kitchen", "climate.bedroom"]); // Room selection affects view, not global inventory.
 
 // A missing manifest must fail closed and expose no device controls.
 panel._mode = "native";
@@ -215,5 +216,18 @@ panel.render();
 assert.match(panel.shadowRoot.innerHTML, /Exhaust fan|Bathroom/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /Kitchen light|Bedroom climate/);
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
+
+
+// An unavailable device is still readable but must never render live controls.
+panel._manifest.controllable_entities = ["light.kitchen"];
+panel._panelModel.sections[0].cards[0].controls = ["toggle", "brightness", "color"];
+panel._hass.states["light.kitchen"].state = "unavailable";
+panel._view = "lighting";
+panel._selectedRoom = "";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /light.kitchen/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightcolor="light.kitchen"/);
 
 console.log("STEVORA panel runtime: PASS");
