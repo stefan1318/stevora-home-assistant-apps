@@ -160,7 +160,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
-        self.assertEqual(len(self.commands), 7)
+        self.assertEqual(len(self.commands), 8)
         response = {}
         connection = types.SimpleNamespace(
             user=types.SimpleNamespace(is_admin=False),
