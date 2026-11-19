@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.helpers import entity_registry
+from homeassistant.helpers import entity_registry, area_registry
 
 from .admin_managers import require_admin
 from .assistant_manager import available_pipelines, validate_assistant_settings, resolve_pipeline
@@ -60,6 +60,8 @@ async def rooms_get(hass, connection, msg):
         "rooms": manifest["rooms"],
         "entities": sorted(inventory, key=lambda item: item["entity_id"]),
         "visibility": manager.data["visibility"],
+        "room_aliases": manager.data.get("room_aliases", {}),
+        "entity_aliases": manager.data.get("entity_aliases", {}),
     })
 
 
@@ -104,6 +106,41 @@ async def rooms_update(hass, connection, msg):
                 updates[entity_id] = mode
         new_state = dict(manager.data)
         new_state["visibility"] = updates
+        new_state["revision"] = manager.data["revision"] + 1
+        await manager.save_state(new_state)
+    connection.send_result(msg["id"], {"revision": manager.data["revision"]})
+
+
+@websocket_api.websocket_command({
+    "type": "stevora/admin/rooms/aliases/update",
+    vol.Required("expected_revision"): vol.Coerce(int),
+    vol.Required("room_aliases"): {str: str},
+    vol.Required("entity_aliases"): {str: str},
+})
+@websocket_api.async_response
+async def room_aliases_update(hass, connection, msg):
+    if not require_admin(connection, msg):
+        return
+    room_aliases = msg["room_aliases"]
+    entity_aliases = msg["entity_aliases"]
+    if len(room_aliases) > 200 or len(entity_aliases) > 1000:
+        connection.send_error(msg["id"], "invalid_alias", "Too many aliases")
+        return
+    area_ids = {area.id for area in area_registry.async_get(hass).async_list_areas()}
+    entity_ids = set(entity_registry.async_get(hass).entities)
+    if any(key not in area_ids or len(value.strip()) > 80 for key, value in room_aliases.items()) or any(
+        key not in entity_ids or len(value.strip()) > 80 for key, value in entity_aliases.items()
+    ):
+        connection.send_error(msg["id"], "invalid_alias", "Unknown room/entity or alias too long")
+        return
+    manager = _manager(hass)
+    async with manager.lock:
+        if msg["expected_revision"] != manager.data["revision"]:
+            connection.send_error(msg["id"], "conflict", "Configuration revision changed")
+            return
+        new_state = dict(manager.data)
+        new_state["room_aliases"] = {key: value.strip() for key, value in room_aliases.items() if value.strip()}
+        new_state["entity_aliases"] = {key: value.strip() for key, value in entity_aliases.items() if value.strip()}
         new_state["revision"] = manager.data["revision"] + 1
         await manager.save_state(new_state)
     connection.send_result(msg["id"], {"revision": manager.data["revision"]})
@@ -176,5 +213,5 @@ async def assistants_resolve(hass, connection, msg):
 
 
 def register(hass):
-    for command in (capabilities, rooms_get, rooms_update, assistants_get, assistants_update, assistants_resolve):
+    for command in (capabilities, rooms_get, rooms_update, room_aliases_update, assistants_get, assistants_update, assistants_resolve):
         websocket_api.async_register_command(hass, command)
