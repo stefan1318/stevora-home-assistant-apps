@@ -97,10 +97,14 @@ async def rooms_update(hass, connection, msg):
             updates.pop(entity_id, None)
         else:
             updates[entity_id] = mode
-    new_state = dict(manager.data)
-    new_state["visibility"] = updates
-    new_state["revision"] = manager.data["revision"] + 1
-    await manager.save_state(new_state)
+    async with manager.lock:
+        if msg["expected_revision"] != manager.data["revision"]:
+            connection.send_error(msg["id"], "conflict", "Configuration revision changed")
+            return
+        new_state = dict(manager.data)
+        new_state["visibility"] = updates
+        new_state["revision"] = manager.data["revision"] + 1
+        await manager.save_state(new_state)
     connection.send_result(msg["id"], {"revision": manager.data["revision"]})
 
 
