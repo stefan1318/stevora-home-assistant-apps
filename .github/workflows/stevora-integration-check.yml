@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Install test schema dependency
+        run: python -m pip install voluptuous
       - name: Compile integration
         run: python -m compileall -q custom_components/stevora
       - name: Validate manifests and translations
