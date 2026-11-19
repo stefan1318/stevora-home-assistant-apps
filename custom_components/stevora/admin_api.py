@@ -46,6 +46,7 @@ async def rooms_get(hass, connection, msg):
     manifest = build_manifest(hass, entry)
     registry = entity_registry.async_get(hass)
     included = {item["entity_id"] for item in manifest["entities"]}
+    reasons = {item["entity_id"]: item["reason"] for item in manifest["discovery_diagnostics"]["entities"]}
     inventory = []
     for entity in registry.entities.values():
         if entity.entity_id.split(".", 1)[0] not in ("climate", "light", "switch", "cover", "media_player", "sensor", "binary_sensor", "fan", "lock"):
@@ -54,6 +55,8 @@ async def rooms_get(hass, connection, msg):
             "entity_id": entity.entity_id,
             "name": entity.name or entity.original_name or entity.entity_id,
             "included": entity.entity_id in included,
+            "reason": reasons.get(entity.entity_id, "unknown"),
+            "area_id": (manager.data.get("device_profiles", {}).get(entity.entity_id, {}).get("area_id") or entity.area_id),
             "disabled": entity.disabled_by is not None,
             "hidden": entity.hidden_by is not None,
         })
