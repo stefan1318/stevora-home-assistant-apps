@@ -8,6 +8,8 @@ class StevoraHomePanel extends HTMLElement {
     this._panelModel = null;
     this._hub = null;
     this._hubError = "";
+    this._hubLastUpdated = "";
+    this._hubRefreshing = false;
     this._stateSignature = null;
     this._busy = false;
     this._error = "";
@@ -35,6 +37,8 @@ class StevoraHomePanel extends HTMLElement {
       this._panelModel = null;
       this._hub = null;
       this._hubError = "";
+      this._hubLastUpdated = "";
+      this._hubRefreshing = false;
       this._admin = null;
       this._selectedRoom = "";
       this._stateSignature = null;
@@ -114,8 +118,10 @@ class StevoraHomePanel extends HTMLElement {
             if (sessionChanged()) { this._refreshQueued = true; return; }
           }
           this._hub = {status, history, scenes, settings};
+          this._hubLastUpdated = new Date().toLocaleTimeString(this._language === "bg" ? "bg-BG" : "en-GB");
         } catch (error) {
           this._hubError = String(error?.message || error);
+          this._hubLastUpdated = "";
         }
       }
     } catch (error) {
@@ -378,8 +384,18 @@ class StevoraHomePanel extends HTMLElement {
       '<div class="v7-mini-pair"><span>Entities</span><strong>' + this.escape(hubMetrics.visible_entities ?? "—") + '</strong></div>' +
       '<div class="v7-mini-pair"><span>Unavailable</span><strong>' + this.escape(hubMetrics.unavailable_entities ?? "—") + '</strong></div>' +
       '<div class="v7-mini-pair"><span>Alerts</span><strong>' + this.escape(hubMetrics.notifications ?? "—") + '</strong></div>' +
-      '<div class="v7-actions"><button class="v7-action subtle" data-view="hub">' +
-      this.t("Отвори Home Hub","Open Home Hub") + '</button></div>' +
+      '<div class="v7-mini-pair"><span>' + this.t("Обновено","Last updated") +
+      '</span><strong>' + this.escape(this._hubLastUpdated || "—") + '</strong></div>' +
+      '<div class="v7-actions">' +
+      (this._view === "hub"
+        ? '<button type="button" class="v7-action subtle" data-hub-refresh="1" ' +
+          (this._hubRefreshing ? 'disabled' : '') + '>' +
+          (this._hubRefreshing
+            ? this.t("Обновяване…","Refreshing…")
+            : this.t("Обнови данните","Refresh Hub data")) + '</button>'
+        : '<button type="button" class="v7-action subtle" data-view="hub">' +
+          this.t("Отвори Home Hub","Open Home Hub") + '</button>') +
+      '</div>' +
       (this._hubError ? '<div class="v7-banner">' + this.escape(this._hubError) + '</div>' : '') + '</section>';
     const hubOptions = isAdmin && hubConfig
       ? '<section class="v7-card"><div class="v7-card-title">⚙ Home Hub settings</div>' +
@@ -506,7 +522,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711-hub1");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-hub2");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
@@ -599,6 +615,17 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-wall-toggle]").forEach(button => button.onclick = () => {
       this._wall = !this._wall;
       this.render();
+    });
+    this.shadowRoot.querySelectorAll("[data-hub-refresh]").forEach(button => button.onclick = async () => {
+      if (this._busy || this._hubRefreshing) return;
+      this._hubRefreshing = true;
+      this.render();
+      try {
+        await this.refresh();
+      } finally {
+        this._hubRefreshing = false;
+        this.render();
+      }
     });
     const hubSave = this.shadowRoot.querySelector("[data-hub-save]");
     if (hubSave) hubSave.onclick = async () => {
