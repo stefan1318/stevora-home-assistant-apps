@@ -218,16 +218,31 @@ assert.doesNotMatch(panel.shadowRoot.innerHTML, /Kitchen light|Bedroom climate/)
 assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
 
 
-// An unavailable device is still readable but must never render live controls.
-panel._manifest.controllable_entities = ["light.kitchen"];
-panel._panelModel.sections[0].cards[0].controls = ["toggle", "brightness", "color"];
-panel._hass.states["light.kitchen"] = {entity_id:"light.kitchen", state:"unavailable", attributes:{brightness:128, rgb_color:[20,40,60], supported_color_modes:["rgb"]}};
-panel._view = "lighting";
-panel._selectedRoom = "";
-panel.render();
-assert.match(panel.shadowRoot.innerHTML, /light.kitchen/);
-assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-action="toggle"/);
-assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
-assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightcolor="light.kitchen"/);
+// An unavailable device remains visible but must never expose live controls.
+const offlinePanel = new Panel();
+offlinePanel._hass = {states: {
+  "light.offline": {entity_id:"light.offline", state:"unavailable",
+    attributes:{brightness:128, rgb_color:[20,40,60], supported_color_modes:["rgb"]}},
+}};
+offlinePanel._manifest = {
+  installation_id:"offline-home", preferred_language:"en",
+  rooms:[{id:"room",name:"Room"}],
+  entities:[{entity_id:"light.offline",area_id:"room"}],
+  controllable_entities:["light.offline"],
+};
+offlinePanel._panelModel = {
+  panel_version:"7.1.1", installation_id:"offline-home",
+  sections:[{id:"room",name:"Room",cards:[{
+    entity_id:"light.offline",name:"Offline light",domain:"light",
+    icon:"mdi:lightbulb",layout:"compact",controls:["toggle","brightness","color"],
+  }]}],
+};
+offlinePanel._mode = "stevora";
+offlinePanel._view = "lighting";
+offlinePanel.render();
+assert.match(offlinePanel.shadowRoot.innerHTML, /Offline light/);
+assert.doesNotMatch(offlinePanel.shadowRoot.innerHTML, /data-action="toggle"/);
+assert.doesNotMatch(offlinePanel.shadowRoot.innerHTML, /data-lightbrightness="light.offline"/);
+assert.doesNotMatch(offlinePanel.shadowRoot.innerHTML, /data-lightcolor="light.offline"/);
 
 console.log("STEVORA panel runtime: PASS");
