@@ -7,6 +7,7 @@ import zlib
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from .const import SCHEMA_VERSION, CONF_LANGUAGE, DEFAULT_LANGUAGE
 from .modules import describe_modules, panel_requested
+from .device_customization import permitted_controls
 
 SUPPORTED_DOMAINS = {
     "climate": "climate", "light": "lighting", "switch": "switches",
@@ -27,6 +28,7 @@ def build_manifest(hass, entry):
     room_aliases = admin_manager.data.get("room_aliases", {}) if admin_manager else {}
     room_order = admin_manager.data.get("room_order", []) if admin_manager else []
     entity_aliases = admin_manager.data.get("entity_aliases", {}) if admin_manager else {}
+    device_profiles = admin_manager.data.get("device_profiles", {}) if admin_manager else {}
     selected_areas = set(settings.get("room_filter") or [])
     rooms = [
         {"id": a.id, "name": room_aliases.get(a.id, a.name)}
@@ -86,6 +88,9 @@ def build_manifest(hass, entry):
             continue
         if getattr(entity, "entity_category", None) is not None:
             counts["categorized"] += 1
+        profile = device_profiles.get(entity.entity_id, {})
+        if profile.get("area_id") in mappings:
+            area_id = profile["area_id"]
         mappings[area_id].append(entity.entity_id)
         domain_mappings[SUPPORTED_DOMAINS[domain]].append(entity.entity_id)
         inventory.append({
@@ -93,7 +98,12 @@ def build_manifest(hass, entry):
             "domain": domain,
             "area_id": area_id,
             "device_id": entity.device_id,
-            "name": entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
+            "name": profile.get("name") or entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
+            "icon": profile.get("icon", ""),
+            "layout": profile.get("layout", "compact"),
+            "controls": [item for item in profile.get("controls", []) if item in permitted_controls(entity.entity_id)],
+            "available_controls": permitted_controls(entity.entity_id),
+            "user_ids": profile.get("user_ids", []),
         })
         counts["included"] += 1
 
@@ -109,6 +119,7 @@ def build_manifest(hass, entry):
         "domain_mappings": domain_mappings, "settings": settings, "modules": modules,
         "diagnostic_counts": counts, "visibility": visibility,
         "room_aliases": room_aliases, "room_order": room_order, "entity_aliases": entity_aliases,
+        "device_profiles": device_profiles,
     }, sort_keys=True, default=str)
     revision = zlib.crc32(revision_payload.encode("utf-8"))
     return {
