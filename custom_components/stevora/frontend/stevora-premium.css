@@ -46,3 +46,18 @@
 @media(max-width:760px){.v7-shell{display:block}.v7-side{display:none}.v7-main{padding:18px 14px 90px}.v7-hero{grid-template-columns:1fr;gap:8px;padding:24px}.v7-hero-right{text-align:left}.v7-hero-big{font-size:36px}.v7-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.v7-two{grid-template-columns:1fr}.v7-room-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v7-bottom{position:fixed;z-index:10;display:flex;justify-content:space-around;bottom:0;left:0;right:0;background:rgba(8,18,33,.97);border-top:1px solid rgba(123,175,238,.2);padding:7px max(7px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom));backdrop-filter:blur(16px)}.v7-bottom button{min-width:55px;background:none;color:#9db6d3;border:0;border-radius:9px;padding:4px 5px;display:grid;justify-items:center;gap:2px;font-size:10px}.v7-bottom button.active{color:#7fd7fe;background:rgba(79,133,221,.14)}.v7-bottom button span:first-child{font-size:20px}.v7-head-title{font-size:25px}}
 @media(max-width:380px){.v7-room-grid{grid-template-columns:1fr 1fr}.v7-tools{gap:5px}.v7-tools select,.v7-tools button{padding:7px}.v7-card{padding:15px}}
 @media(prefers-reduced-motion:reduce){.v7-navbtn,.v7-room{transition:none}}
+
+
+/* Embedded cross-platform managers inherit the premium style, never touch HA registries. */
+.v7-manager .audit, .v7-main .audit{background:linear-gradient(145deg,#132844,#0d1e31);border:1px solid rgba(132,183,245,.18);padding:16px;border-radius:15px;margin:10px 0;color:#bad1e9}
+.v7-manager .audit summary,.v7-main .audit summary{font-size:13px;color:#d9ecff;cursor:pointer;font-weight:720}
+.v7-manager .auditlist,.v7-main .auditlist{display:grid;gap:9px;max-height:420px;overflow:auto;padding:10px 0;scrollbar-width:thin;font-size:12px}
+.v7-manager .auditlist details,.v7-manager .auditlist>div{border:1px solid rgba(126,173,232,.15);border-radius:11px;padding:11px;background:#0f233b}
+.v7-manager input,.v7-manager select,.v7-manager button:not(.v7-action){border:1px solid rgba(132,186,244,.23);border-radius:9px;padding:9px 10px;margin:5px 6px 5px 0;background:#162d49;color:#e4f1ff;max-width:100%;font-size:12px}
+.v7-manager input{min-width:128px;max-width:260px}.v7-manager button{cursor:pointer}.v7-manager button:hover{background:#245181}
+.v7-manager select:disabled{opacity:.5}.v7-manager h3{font-size:13px;margin:17px 0 9px;color:#cbe4ff}
+.v7-manager details[open]>summary{margin-bottom:9px}
+.v7-climate-summary .v7-actions{margin-top:18px}
+.v7-climate-summary .v7-action{padding:10px 13px}
+.v7-system-id{overflow-wrap:anywhere}
+@media(max-width:680px){.v7-manager .auditlist{max-height:unset}.v7-manager input{width:100%;max-width:100%}}
