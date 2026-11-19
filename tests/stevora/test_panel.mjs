@@ -111,6 +111,31 @@ assert.match(theme, /\.v7-climate/);
 assert.match(theme, /prefers-reduced-motion/);
 assert.doesNotMatch(source, /sensor\.realna_temperatura_homepod|light\.living_room_switch_1/);
 
+// Restore the authenticated, permission-scoped session after fail-closed tests.
+panel._manifest = {
+  installation_id:"home-premium", preferred_language:"bg",
+  rooms:[{id:"k",name:"Kitchen"},{id:"b",name:"Bedroom"}],
+  entities:[
+    {entity_id:"light.kitchen",area_id:"k"},
+    {entity_id:"climate.bedroom",area_id:"b"},
+  ],
+  controllable_entities:["light.kitchen"],
+};
+panel._panelModel = {
+  panel_version:"7.1.1", installation_id:"home-premium",
+  sections:[
+    {id:"k",name:"Kitchen",cards:[{
+      entity_id:"light.kitchen",name:"Kitchen light",
+      icon:"mdi:lightbulb",layout:"compact",domain:"light",controls:["toggle"],
+    }]},
+    {id:"b",name:"Bedroom",cards:[{
+      entity_id:"climate.bedroom",name:"Bedroom climate",
+      icon:"mdi:thermostat",layout:"info",domain:"climate",controls:[],
+    }]},
+  ],
+};
+panel._mode = "stevora";
+
 // v7.1.1 premium visual shell must render dynamic rooms and navigation.
 panel._view = "home";
 panel._selectedRoom = "";
