@@ -138,6 +138,33 @@ class DiscoveryRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(included["discovery_diagnostics"]["counts"]["unassigned"], 0)
 
+    def test_explicit_include_unassigned_and_diagnostics(self):
+        hass = _Hass(
+            [("living", "Living")],
+            [("sensor.no_area", None), ("light.living", "living"),
+             ("sensor.disabled", None), ("sensor.hidden", None)],
+            "include-test", True,
+        )
+        hass.test_entities["sensor.disabled"].disabled_by = "integration"
+        hass.test_entities["sensor.hidden"].hidden_by = "user"
+        hass.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {"sensor.no_area": "include",
+                           "sensor.disabled": "include",
+                           "sensor.hidden": "include"},
+            "room_aliases": {}, "room_order": [], "entity_aliases": {},
+            "device_profiles": {}, "translations": {},
+        })
+        entry = types.SimpleNamespace(entry_id="include-test",
+                                      data={"include_unassigned": False}, options={})
+        result = self.discovery.build_manifest(hass, entry)
+        self.assertEqual(result["mappings"]["__stevora_unassigned__"], ["sensor.no_area"])
+        reasons = {x["entity_id"]: x["reason"]
+                   for x in result["discovery_diagnostics"]["entities"]}
+        self.assertEqual(reasons["sensor.no_area"], "included")
+        self.assertEqual(reasons["sensor.disabled"], "disabled")
+        self.assertEqual(reasons["sensor.hidden"], "hidden")
+        self.assertEqual(result["discovery_diagnostics"]["counts"]["included"], 2)
+
 
 
 if __name__ == "__main__":
