@@ -27,8 +27,9 @@ class AdminManagers:
                 "assistants": saved.get("assistants", {"default_pipeline": None, "user_pipelines": {}}),
             })
 
-    async def save(self):
-        await self._store.async_save(self.data)
+    async def save_state(self, new_state):
+        await self._store.async_save(new_state)
+        self.data = new_state
 
 
 def require_admin(connection, msg):
