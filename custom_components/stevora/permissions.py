@@ -14,7 +14,8 @@ def project_manifest_for_user(manifest: dict, user) -> dict:
     visible = {
         item["entity_id"]
         for item in manifest["entities"]
-        if is_admin or user.permissions.check_entity(item["entity_id"], POLICY_READ)
+        if (is_admin or user.permissions.check_entity(item["entity_id"], POLICY_READ))
+        and (is_admin or not item.get("user_ids") or user.id in item["user_ids"])
     }
     controllable = sorted(
         entity_id
@@ -22,7 +23,10 @@ def project_manifest_for_user(manifest: dict, user) -> dict:
         if is_admin or user.permissions.check_entity(entity_id, POLICY_CONTROL)
     )
 
-    entities = [item for item in manifest["entities"] if item["entity_id"] in visible]
+    entities = [
+        item if is_admin else {key: value for key, value in item.items() if key != "user_ids"}
+        for item in manifest["entities"] if item["entity_id"] in visible
+    ]
     visible_areas = {item["area_id"] for item in entities}
     rooms = [
         room
@@ -52,6 +56,7 @@ def project_manifest_for_user(manifest: dict, user) -> dict:
         "entities": entities,
         "capabilities": capabilities,
         "controllable_entities": controllable,
+        "entities": entities,
     }
     # Prevent clients from conflating different users' manifest revisions.
     scope = {
