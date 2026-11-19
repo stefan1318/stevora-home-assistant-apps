@@ -246,7 +246,7 @@ class StevoraHomePanel extends HTMLElement {
         <span class="v7-room-count">${room.cards.length} ${this.t("устройства", "entities")}</span>
       </button>`
     ).join("")}</div>`;
-    const climateWidget = card => {
+    const climateWidget = (card, summaryOnly = false) => {
       if (!card) return `<div class="v7-card v7-climate"><div class="v7-card-title">◉ ${this.t("Климат", "Climate")}</div><div class="v7-empty">${this.t("Няма климатично устройство", "No climate device")}</div></div>`;
       const state = ent(card);
       const attrs = state?.attributes || {};
@@ -254,22 +254,26 @@ class StevoraHomePanel extends HTMLElement {
       const current = Number(attrs.current_temperature);
       const showTarget = attrs.temperature !== undefined && attrs.temperature !== null && Number.isFinite(target);
       const showCurrent = attrs.current_temperature !== undefined && attrs.current_temperature !== null && Number.isFinite(current);
-      return `<section class="v7-card v7-climate">
+      return `<section class="v7-card v7-climate ${summaryOnly ? "v7-climate-summary" : ""}">
         <div class="v7-card-title">◉ ${this.escape(card.name)}</div>
         <div class="v7-climate-value">${showCurrent ? this.escape(current.toFixed(1)) : (showTarget ? this.escape(target.toFixed(0)) : "—")}<span class="v7-value-suffix">°C</span></div>
         <div class="v7-climate-meta">${this.t("Зададена температура", "Target temperature")}: ${showTarget ? this.escape(target.toFixed(0)) + "°C" : "—"} · ${this.escape(state?.state || "unavailable")}</div>
         <div class="v7-actions">
-          ${can(card, "temperature") ? `<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1°C</button>
+          ${!summaryOnly && can(card, "temperature") ? `<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1°C</button>
           <button class="v7-action" data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1°C</button>` : ""}
-          ${controllable.has(card.entity_id) && (card.controls || []).length
+          ${!summaryOnly && controllable.has(card.entity_id) && (card.controls || []).length
             ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Разширен контрол", "Advanced controls")}</button>`
             : ""}
+          ${summaryOnly ? `<button class="v7-action subtle" data-view="climate">${this.t("Отвори климатичния център", "Open climate center")}</button>` : ""}
         </div>
       </section>`;
     };
     const quickLights = () => `<section class="v7-card">
       <div class="v7-card-title">✧ ${this.t("Бързо осветление", "Quick lighting")}</div>
-      ${lightCards.length ? lightCards.slice(0,6).map(card => {
+      ${lightCards.length ? lightCards.filter(card => {
+        const modes = ent(card)?.attributes?.supported_color_modes || [];
+        return !modes.some(mode => ["rgb","rgbw","rgbww","hs","xy"].includes(mode));
+      }).slice(0,6).map(card => {
         const on = ent(card)?.state === "on";
         return `<div class="v7-light-tile"><div><span class="v7-state-dot ${on ? "on" : ""}"></span><span class="v7-light-name">${this.escape(card.name)}</span></div>
           ${can(card,"toggle") ? `<button class="v7-action subtle" data-action="toggle" data-id="${this.escape(card.entity_id)}">${on ? this.t("Изключи","Off") : this.t("Включи","On")}</button>` : `<span class="v7-muted">${on ? "ON" : "OFF"}</span>`}
@@ -321,7 +325,7 @@ class StevoraHomePanel extends HTMLElement {
           <div class="v7-hero-small">${this.t("Свързани с този дом","Connected to this home")}</div></div>
       </section>${stats}
       ${sectionTitle(this.t("Контролен център","Command center"),this.t("Реални Home Assistant устройства","Real Home Assistant entities"))}
-      <div class="v7-two">${climateWidget(climates[0])}${quickLights()}</div>
+      <div class="v7-two">${climateWidget(climates[0],true)}${quickLights()}</div>
       ${sectionTitle(this.t("Помещения","Rooms"))}${roomCards()}
       ${sectionTitle(this.t("Информация от сензорите","Sensor insights"))}${cardGrid(statusCards.slice(0,4),this.t("Няма налични сензори","No sensors"))}`;
     } else if (this._view === "rooms") {
