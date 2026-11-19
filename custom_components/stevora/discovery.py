@@ -99,7 +99,7 @@ def build_manifest(hass, entry):
             "name": profile.get("name") or entity_aliases.get(entity.entity_id) or entity.name or entity.original_name or entity.entity_id,
             "icon": profile.get("icon", ""),
             "layout": profile.get("layout", "compact"),
-            "controls": [item for item in profile.get("controls", []) if item in permitted_controls(entity.entity_id)],
+            "controls": [item for item in profile["controls"] if item in permitted_controls(entity.entity_id)] if "controls" in profile else None,
             "available_controls": permitted_controls(entity.entity_id),
             "user_ids": profile.get("user_ids", []),
         })
