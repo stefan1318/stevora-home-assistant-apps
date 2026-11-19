@@ -1,4 +1,4 @@
-# STEVORA Ecosystem — Universal Integration 0.3.0-beta.1
+# STEVORA Ecosystem — Universal Integration 0.3.0-beta.2
 
 **Status:** Home Hub major test candidate for an independent Home Assistant installation.
 **NOT production approved, NOT deployed to Home Assistant Dunav.**
@@ -59,11 +59,19 @@ run of `feature/stevora-home-hub-v1-20261119`; verify
 `SHA256SUMS.txt`. Install `custom_components/stevora/` on a separate
 test Home Assistant. Always take a full backup and a copy of the old
 integration directory before replacing files. Restart HA and verify
-`0.3.0-beta.1` and the Home Hub module's `active` status.
+`0.3.0-beta.2` and the Home Hub module's `active` status.
 
 **Do not install legacy `stevora_manifest` together with `stevora`**:
 both register the same WebSocket route. Do not modify existing memory
 bridge, voice assistants, BLE integrations or scenes during migration.
+
+## Beta.2 UI hotfix
+
+When a user is already on Home Hub, the primary card now shows
+**Refresh Hub data** instead of the non-functional **Open Home Hub** link.
+The button invokes the authenticated manifest/Hub API refresh, shows a
+refresh-in-progress state, and displays **Last updated** after successful
+synchronization. In System it still navigates to the Home Hub view.
 
 ## Outstanding release gates
 
