@@ -68,6 +68,21 @@ class StevoraHomePanel extends HTMLElement {
     const items = this.inventory();
     const rooms = this._manifest?.rooms || [];
     const controllable = new Set(this._manifest?.controllable_entities || []);
+    const audit = this._manifest?.discovery_diagnostics || null;
+    const reasons = audit?.counts || {};
+    const auditText = audit
+      ? `<details class="audit"><summary>${this.t("Диагностика на откриването", "Discovery diagnostics")}</summary>
+          <p>${this.t("Разпознати", "Included")}: ${Number(reasons.included || 0)} ·
+          ${this.t("Без стая", "Unassigned")}: ${Number(reasons.unassigned || 0)} ·
+          ${this.t("Неподдържан тип", "Unsupported domain")}: ${Number(reasons.unsupported_domain || 0)} ·
+          ${this.t("Скрити", "Hidden")}: ${Number(reasons.hidden || 0)} ·
+          ${this.t("Изключени", "Disabled")}: ${Number(reasons.disabled || 0)} ·
+          ${this.t("Извън избраните стаи", "Outside chosen rooms")}: ${Number(reasons.outside_selected_rooms || 0)}</p>
+          <div class="auditlist">${(audit.excluded_sample || []).slice(0, 50).map(x =>
+              `<div>${this.escape(x.entity_id)} — ${this.escape(x.reason)}</div>`
+            ).join("")}</div>
+        </details>`
+      : "";
     if (this._selectedRoom && !rooms.some(x => x.id === this._selectedRoom)) this._selectedRoom = "";
     this.shadowRoot.innerHTML = `
       <style>
@@ -86,6 +101,10 @@ class StevoraHomePanel extends HTMLElement {
         .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
         .actions button{font-size:13px;padding:7px 10px}
         .status{margin:0 0 20px;color:#a6b3c8}
+        .audit{background:#111d2c;border:1px solid #2b3a50;border-radius:12px;padding:12px;margin-bottom:18px;color:#9fb2c9}
+        .audit summary{cursor:pointer;color:#eef3fc;font-weight:600}
+        .audit p{font-size:13px;line-height:1.6}
+        .auditlist{max-height:160px;overflow:auto;font-size:11px;overflow-wrap:anywhere}
         @media(max-width:600px){main{padding:14px}h1{font-size:22px}}
       </style>
       <main>
@@ -96,6 +115,7 @@ class StevoraHomePanel extends HTMLElement {
           <button id="refresh">${this.t("Обнови","Refresh")}</button>
         </div></header>
         <p class="status">${this._mode === "stevora" ? this.t("STEVORA конфигурацията е заредена","STEVORA configuration loaded") : this.t("STEVORA Manifest е недостъпен — управлението е изключено","STEVORA manifest unavailable — controls disabled")} · ${items.length} ${this.t("устройства","entities")}</p>
+        ${auditText}
         <div class="grid">${items.map(item => {
           const domain = item.entity_id.split(".")[0];
           const controls = controllable.has(item.entity_id) && ["light","switch","fan"].includes(domain)
