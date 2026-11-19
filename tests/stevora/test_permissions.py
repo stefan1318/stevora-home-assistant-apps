@@ -20,7 +20,8 @@ class _Permissions:
 
 
 class _User:
-    def __init__(self, admin=False, readable=(), controllable=()):
+    def __init__(self, admin=False, readable=(), controllable=(), user_id="test-user"):
+        self.id = user_id
         self.is_admin = admin
         self.permissions = _Permissions(readable, controllable)
 
@@ -107,6 +108,48 @@ class PermissionsTests(unittest.TestCase):
         read_only = self.project(self.manifest, _User(readable={"light.kitchen"}))
         self.assertEqual(self.manifest, original)
         self.assertNotEqual(admin["revision"], read_only["revision"])
+
+
+    def test_per_user_audience_is_stricter_than_ha_permissions(self):
+        self.manifest["entities"][0]["user_ids"] = ["allowed"]
+        self.manifest["entities"][1]["user_ids"] = []
+        readable = {"light.kitchen", "climate.bedroom"}
+        allowed = self.project(self.manifest, _User(
+            readable=readable, controllable=readable, user_id="allowed",
+        ))
+        blocked = self.project(self.manifest, _User(
+            readable=readable, controllable=readable, user_id="blocked",
+        ))
+        self.assertEqual(
+            {entry["entity_id"] for entry in allowed["entities"]},
+            {"light.kitchen", "climate.bedroom"},
+        )
+        self.assertEqual(
+            {entry["entity_id"] for entry in blocked["entities"]},
+            {"climate.bedroom"},
+        )
+        self.assertEqual(blocked["mappings"]["b"], ["climate.bedroom"])
+        self.assertEqual(blocked["controllable_entities"], ["climate.bedroom"])
+        self.assertEqual(blocked["domain_mappings"]["lighting"], [])
+        self.assertNotIn("discovery_diagnostics", blocked)
+        self.assertTrue(all("user_ids" not in x for x in blocked["entities"]))
+        self.assertNotEqual(allowed["revision"], blocked["revision"])
+
+    def test_mapping_cannot_inject_unreadable_entity(self):
+        self.manifest["mappings"]["k"].append("lock.private")
+        self.manifest["domain_mappings"]["lighting"].append("lock.private")
+        user = _User(readable={"light.kitchen"}, controllable={"light.kitchen"})
+        projected = self.project(self.manifest, user)
+        self.assertNotIn("lock.private", projected["mappings"]["k"])
+        self.assertNotIn("lock.private", projected["domain_mappings"]["lighting"])
+        self.assertNotIn("lock.private", projected["controllable_entities"])
+
+    def test_source_manifest_revision_invalidates_scoped_revision(self):
+        user = _User(readable={"light.kitchen"})
+        before = self.project(self.manifest, user)
+        self.manifest["revision"] += 1
+        after = self.project(self.manifest, user)
+        self.assertNotEqual(before["revision"], after["revision"])
 
 
 if __name__ == "__main__":
