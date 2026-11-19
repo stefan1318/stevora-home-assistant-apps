@@ -64,4 +64,7 @@ def project_manifest_for_user(manifest: dict, user) -> dict:
     projected["revision"] = zlib.crc32(
         json.dumps(scope, sort_keys=True).encode("utf-8")
     )
+    if not is_admin:
+        # The audit contains other users' hidden/unassigned entity identifiers.
+        projected.pop("discovery_diagnostics", None)
     return projected
