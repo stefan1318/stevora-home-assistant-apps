@@ -122,9 +122,8 @@ class StevoraHomePanel extends HTMLElement {
       if (!allowed.has(x.entity_id)) return false;
       // Backlights are intentionally never controlled by STEVORA.
       if (/back[ _-]?light|подсвет/i.test(x.entity_id) || /back[ _-]?light|подсвет/i.test(x.attributes?.friendly_name || "")) return false;
-      if (this._selectedRoom) {
-        return this._manifest.entities.some(y => y.entity_id === x.entity_id && y.area_id === this._selectedRoom);
-      }
+      // Room selection is a view filter, never a global inventory filter.
+      // Summary, climate, lighting and system pages must represent the whole home.
       return true;
     });
   }
@@ -209,7 +208,11 @@ class StevoraHomePanel extends HTMLElement {
     ];
     if (!nav.some(n => n[0] === this._view)) this._view = "home";
     const page = nav.find(n => n[0] === this._view);
-    const can = (card, key) => controllable.has(card.entity_id) && (card.controls || []).includes(key);
+    const can = (card, key) => {
+      const state = this._hass?.states?.[card.entity_id];
+      return !!state && !["unknown", "unavailable"].includes(state.state) &&
+        controllable.has(card.entity_id) && (card.controls || []).includes(key);
+    };
     const ent = card => this._hass?.states?.[card.entity_id];
     const friendlyState = card => {
       const state = ent(card);
@@ -482,7 +485,7 @@ class StevoraHomePanel extends HTMLElement {
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
     });
     this.shadowRoot.getElementById("language").onchange = e => { this._languageOverride = e.target.value; this._language = e.target.value; this.refresh(); };
-    this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this.render(); };
+    this.shadowRoot.getElementById("room").onchange = e => { this._selectedRoom = e.target.value; this._view = "rooms"; this.render(); };
     this.shadowRoot.querySelectorAll("[data-view]").forEach(button => button.onclick = () => {
       const view = button.dataset.view;
       if (["home","rooms","climate","lighting","devices","scenes","insights","ai","system","memory","settings"].includes(view)) {
