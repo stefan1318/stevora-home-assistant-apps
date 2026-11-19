@@ -8,6 +8,7 @@ from homeassistant.helpers import entity_registry, area_registry
 from .admin_managers import require_admin
 from .assistant_manager import available_pipelines, validate_assistant_settings, resolve_pipeline
 from .discovery import build_manifest
+from .device_customization import validate_profile, normalize_profile
 
 
 def _manager(hass):
@@ -27,7 +28,8 @@ async def capabilities(hass, connection, msg):
     connection.send_result(msg["id"], {
         "room_manager": True,
         "assistant_manager": True,
-        "schema_version": "1.0",
+        "schema_version": "1.1",
+        "device_customization": True,
     })
 
 
@@ -63,6 +65,7 @@ async def rooms_get(hass, connection, msg):
         "room_aliases": manager.data.get("room_aliases", {}),
         "room_order": manager.data.get("room_order", []),
         "entity_aliases": manager.data.get("entity_aliases", {}),
+        "device_profiles": manager.data.get("device_profiles", {}),
     })
 
 
@@ -154,6 +157,51 @@ async def room_aliases_update(hass, connection, msg):
     connection.send_result(msg["id"], {"revision": manager.data["revision"]})
 
 
+@websocket_api.websocket_command({
+    "type": "stevora/admin/devices/update",
+    vol.Required("expected_revision"): vol.Coerce(int),
+    vol.Required("profiles"): {str: vol.Any(dict, None)},
+})
+@websocket_api.async_response
+async def devices_update(hass, connection, msg):
+    if not require_admin(connection, msg):
+        return
+    patches = msg["profiles"]
+    if len(patches) > 500:
+        connection.send_error(msg["id"], "invalid_profile", "Too many device profiles")
+        return
+    registry = entity_registry.async_get(hass)
+    valid_areas = {area.id for area in area_registry.async_get(hass).async_list_areas()}
+    users = await hass.auth.async_get_users()
+    user_ids = {user.id for user in users if user.is_active}
+    for entity_id, profile in patches.items():
+        if entity_id not in registry.entities:
+            connection.send_error(msg["id"], "invalid_entity", "Unknown device entity")
+            return
+        if profile is None:
+            continue
+        error = validate_profile(entity_id, profile, valid_areas)
+        if error or any(user not in user_ids for user in profile.get("user_ids", [])):
+            connection.send_error(msg["id"], "invalid_profile", error or "Unknown user")
+            return
+    manager = _manager(hass)
+    async with manager.lock:
+        if msg["expected_revision"] != manager.data["revision"]:
+            connection.send_error(msg["id"], "conflict", "Configuration revision changed")
+            return
+        profiles = dict(manager.data.get("device_profiles", {}))
+        for entity_id, profile in patches.items():
+            if profile is None:
+                profiles.pop(entity_id, None)
+            else:
+                profiles[entity_id] = normalize_profile(profile)
+        new_state = dict(manager.data)
+        new_state["device_profiles"] = profiles
+        new_state["revision"] = manager.data["revision"] + 1
+        await manager.save_state(new_state)
+    connection.send_result(msg["id"], {"revision": manager.data["revision"]})
+
+
 @websocket_api.websocket_command({"type": "stevora/admin/assistants/get"})
 @websocket_api.async_response
 async def assistants_get(hass, connection, msg):
@@ -223,5 +271,5 @@ async def assistants_resolve(hass, connection, msg):
 
 
 def register(hass):
-    for command in (capabilities, rooms_get, rooms_update, room_aliases_update, assistants_get, assistants_update, assistants_resolve):
+    for command in (capabilities, rooms_get, rooms_update, room_aliases_update, devices_update, assistants_get, assistants_update, assistants_resolve):
         websocket_api.async_register_command(hass, command)
