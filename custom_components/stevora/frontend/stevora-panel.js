@@ -555,7 +555,11 @@ class StevoraHomePanel extends HTMLElement {
     const status = offline ? this.t("Офлайн","Offline") :
       state.state === "on" || state.state === "playing"
         ? this.t("Активно","Active") : this.t("На линия","Available");
-    const allActions = actions.concat(details);
+    // A forced info-only profile must not open a native device dialog that
+    // might contain HA controls. Sensor detail dialogs remain informational.
+    const allowDetails = ["sensor","binary_sensor"].includes(domain) ||
+      (card.layout !== "info" && allowed.length > 0);
+    const allActions = allowDetails ? actions.concat(details) : actions;
     return '<article class="v7-card v7-device v7-device-' + e(domain) +
       (offline ? ' is-offline' : '') + (card.layout === "info" ? ' is-info' : '') + '">' +
       '<div class="v7-device-head"><span class="v7-device-glyph"><ha-icon icon="' +
