@@ -4,16 +4,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
 from homeassistant.components.http import StaticPathConfig
 from pathlib import Path
+import voluptuous as vol
 from .panel import async_register_panel, async_remove_panel
 from .const import DOMAIN
 from .discovery import build_manifest
 from .permissions import project_manifest_for_user
 from .panel_generator import generate_panel
+from .localization import localized_manifest
 from .modules import panel_requested
 from .admin_managers import AdminManagers
 from .admin_api import register as register_admin_commands
 
-@websocket_api.websocket_command({"type": "stevora/manifest"})
+@websocket_api.websocket_command({"type": "stevora/manifest", vol.Optional("language"): vol.In(("bg", "en"))})
 @websocket_api.async_response
 async def websocket_manifest(hass, connection, msg):
     """Return only entities this authenticated HA user may read/control."""
@@ -22,9 +24,10 @@ async def websocket_manifest(hass, connection, msg):
         connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
         return
     manifest = build_manifest(hass, entries[0])
-    connection.send_result(msg["id"], project_manifest_for_user(manifest, connection.user))
+    scoped = project_manifest_for_user(manifest, connection.user)
+    connection.send_result(msg["id"], localized_manifest(scoped, msg.get("language") or scoped["preferred_language"]))
 
-@websocket_api.websocket_command({"type": "stevora/panel/generate"})
+@websocket_api.websocket_command({"type": "stevora/panel/generate", vol.Optional("language"): vol.In(("bg", "en"))})
 @websocket_api.async_response
 async def websocket_panel_generate(hass, connection, msg):
     """Generate a fresh v7.1.1 panel for this user's visible HA entities."""
@@ -33,7 +36,7 @@ async def websocket_panel_generate(hass, connection, msg):
         connection.send_error(msg["id"], "not_configured", "STEVORA is not configured")
         return
     manifest = project_manifest_for_user(build_manifest(hass, entries[0]), connection.user)
-    connection.send_result(msg["id"], generate_panel(manifest))
+    connection.send_result(msg["id"], generate_panel(localized_manifest(manifest, msg.get("language") or manifest["preferred_language"])))
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
