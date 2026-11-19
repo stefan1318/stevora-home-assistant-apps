@@ -62,6 +62,19 @@ class IntegrationLifecycleTests(unittest.TestCase):
             **manifest, "role": "admin" if user.is_admin else "regular"
         }
 
+        storage = types.ModuleType("homeassistant.helpers.storage")
+        class FakeStore:
+            def __init__(self, hass, version, key):
+                self.data = None
+            async def async_load(self):
+                return self.data
+            async def async_save(self, data):
+                self.data = data
+        storage.Store = FakeStore
+        entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
+        helpers = types.ModuleType("homeassistant.helpers")
+        helpers.storage = storage
+        helpers.entity_registry = entity_registry
         websocket = types.ModuleType("homeassistant.components.websocket_api")
         websocket.websocket_command = lambda schema: lambda fn: fn
         websocket.async_response = lambda fn: fn
@@ -87,6 +100,9 @@ class IntegrationLifecycleTests(unittest.TestCase):
             "homeassistant.components": components,
             "homeassistant.components.websocket_api": websocket,
             "homeassistant.components.http": http,
+            "homeassistant.helpers": helpers,
+            "homeassistant.helpers.storage": storage,
+            "homeassistant.helpers.entity_registry": entity_registry,
         })
         self.module_patch.start()
         # __init__.py is a package, not a nested module.
@@ -140,7 +156,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
-        self.assertEqual(len(self.commands), 1)
+        self.assertEqual(len(self.commands), 6)
         response = {}
         connection = types.SimpleNamespace(
             user=types.SimpleNamespace(is_admin=False),
