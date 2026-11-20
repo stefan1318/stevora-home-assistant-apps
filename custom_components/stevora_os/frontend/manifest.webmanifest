@@ -22,15 +22,15 @@
       "purpose": "any"
     },
     {
-      "src": "/stevora_os_static/icons/stevora-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/stevora_os_static/icons/stevora-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/stevora_os_static/icons/stevora-maskable-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/stevora_os_static/icons/stevora-maskable-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "maskable"
     }
   ]
