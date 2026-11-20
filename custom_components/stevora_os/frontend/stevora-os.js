@@ -91,6 +91,40 @@
       onboardingInfo: "Universal Integration трябва да бъде инсталирана. STEVORA използва оригиналната HA автентикация.",
       integrationSettings: "Настройки на интеграциите",
       noControls: "Няма разрешени управления",
+      onboardTitle: "Първоначална настройка на STEVORA",
+      onboardSub: "Твоята STEVORA среда, персонализирана за този HA акаунт.",
+      onboardStep1: "1 · Свързана система",
+      onboardStep2: "2 · Изглед и език",
+      onboardStep3: "3 · Завършване",
+      onboardConnected: "Свързано към този Home Assistant сървър",
+      onboardConnectedNote: "Използва се твоят текущ HA вход. Не създаваме отделна парола за STEVORA.",
+      onboardManifestReady: "Стаите и устройствата се откриват автоматично през Universal Integration.",
+      onboardManifestMissing: "Universal Integration още не предоставя манифест. Завърши нейната настройка в HA.",
+      preferredHome: "Начален екран",
+      compactNav: "Компактна навигация",
+      enterFullscreen: "Цял екран",
+      exitFullscreen: "Изход от цял екран",
+      fullscreenUnavailable: "Този браузър не позволява режим „Цял екран“. На iPhone използвай Add to Home Screen за по-самостоятелен изглед.",
+      chooseStart: "Избери началния екран",
+      savePreferences: "Запази предпочитанията",
+      finishOnboarding: "Завърши началната настройка",
+      onboardingDone: "Първоначалната настройка е завършена",
+      reopenWizard: "Повтори настройката",
+      preferencesUnavailable: "Не могат да се заредят персоналните настройки.",
+      preferencesSaveFailed: "Неуспешно запазване на потребителските настройки. Опитай отново.",
+      savedPreferences: "Предпочитанията са запазени",
+      viewMode: "Режим на изгледа",
+      installationInfo: "Инсталиране на телефона",
+      installationHelp: "Отвори /stevora-os в Safari/Chrome и използвай „Добави към начален екран“ или „Инсталирай приложение“, ако браузърът предлага опцията. Оригиналният HA интерфейс остава за администриране.",
+      setupOptional: "Настройката на изгледа не променя устройството или системата.",
+      primaryFrontend: "Основна STEVORA среда",
+      accountSettings: "Лични настройки",
+      recoveryLink: "Аварийно администриране в HA",
+      setupUnavailable: "Без достъп до настройките, продължи да използваш системата в стандартен режим.",
+      roomCount: "Помещения",
+      deviceCount: "Устройства",
+      complete: "Завършено",
+      notComplete: "Не е завършено",
       systemOpen: "Отвори HA настройки", systemUnavailable: "Неизвестно / няма данни",
       integrationReady: "Конфигурирана", systemRefreshError: "Неуспешно зареждане на системните данни.",
     },
@@ -179,6 +213,40 @@
       onboardingInfo: "Universal Integration must be installed. STEVORA uses native HA authentication.",
       integrationSettings: "Integration settings",
       noControls: "No authorized controls",
+      onboardTitle: "Welcome to STEVORA",
+      onboardSub: "Your STEVORA experience, customized for this HA account.",
+      onboardStep1: "1 · Connected home",
+      onboardStep2: "2 · Appearance and language",
+      onboardStep3: "3 · Finish",
+      onboardConnected: "Connected to this Home Assistant server",
+      onboardConnectedNote: "Uses your existing HA login. STEVORA does not create another password.",
+      onboardManifestReady: "Rooms and devices are discovered automatically through Universal Integration.",
+      onboardManifestMissing: "Universal Integration has not provided a manifest. Complete its setup in HA.",
+      preferredHome: "Start page",
+      compactNav: "Compact navigation",
+      enterFullscreen: "Full screen",
+      exitFullscreen: "Exit full screen",
+      fullscreenUnavailable: "Full screen is not supported by this browser. On iPhone, use Add to Home Screen for a more standalone view.",
+      chooseStart: "Select start page",
+      savePreferences: "Save preferences",
+      finishOnboarding: "Complete setup",
+      onboardingDone: "First-run setup completed",
+      reopenWizard: "Run setup again",
+      preferencesUnavailable: "Could not load personal preferences.",
+      preferencesSaveFailed: "Could not save user preferences. Try again.",
+      savedPreferences: "Preferences saved",
+      viewMode: "View mode",
+      installationInfo: "Install on your phone",
+      installationHelp: "Open /stevora-os in Safari/Chrome and use Add to Home Screen or Install App if available. The original HA interface remains available for administration.",
+      setupOptional: "View preferences do not change devices or system settings.",
+      primaryFrontend: "Primary STEVORA experience",
+      accountSettings: "Personal settings",
+      recoveryLink: "Emergency HA administration",
+      setupUnavailable: "If preferences are unavailable, continue with the default layout.",
+      roomCount: "Rooms",
+      deviceCount: "Devices",
+      complete: "Completed",
+      notComplete: "Not completed",
       systemOpen: "Open HA settings", systemUnavailable: "Unknown / no data",
       integrationReady: "Configured", systemRefreshError: "Unable to load system diagnostics.",
     }
@@ -497,10 +565,17 @@
 
     _onClick(event) {
       const target = event.target?.closest?.(
-        "[data-view], [data-refresh], [data-system-refresh], [data-room], [data-device-action], [data-scene-run]"
+        "[data-view], [data-refresh], [data-system-refresh], [data-room], [data-device-action], [data-scene-run], [data-fullscreen], [data-onboarding]"
       );
       if (!target) return;
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
+      if (target.hasAttribute("data-fullscreen")) { this._toggleFullscreen(); return; }
+      if (target.hasAttribute("data-onboarding")) {
+        this._visitedView = true;
+        this._view = "onboarding";
+        this.render();
+        return;
+      }
       if (target.hasAttribute("data-system-refresh")) { void this._refreshSystem(); return; }
       if (target.hasAttribute("data-room")) {
         const room = target.getAttribute("data-room");
@@ -521,6 +596,7 @@
       const view = target.getAttribute("data-view");
       if (!["home", "rooms", "devices", "lighting", "climate", "scenes",
             "automation", "assist", "system", "setup", "about"].includes(view)) return;
+      this._visitedView = true;
       this._view = view;
       if (view !== "devices") this._selectedRoom = "";
       this.render();
@@ -534,6 +610,7 @@
         const lang = input.value;
         if (!["bg", "en"].includes(lang) || lang === this._language) return;
         this._language = lang;
+        if (this._preferences) void this._updatePreferences({language: lang});
         this._model = null;
         this._manifest = null;
         this._hubDirectory = null;
@@ -565,11 +642,55 @@
 
     async _onSubmit(event) {
       const form = event.target;
-      if (form?.hasAttribute("data-translate-form")) {
+      if (form?.hasAttribute("data-onboarding-form")) {
+        await this._saveOnboarding(form);
+      } else if (form?.hasAttribute("data-personal-form")) {
+        await this._savePersonalSettings(form);
+      } else if (form?.hasAttribute("data-translate-form")) {
         await this._saveTranslation(form);
       } else if (form?.hasAttribute("data-assist-form")) {
         await this._sendAssist(form);
       }
+    }
+
+    async _saveOnboarding(form) {
+      const lang = form?.querySelector?.('select[name="language"]')?.value;
+      const page = form?.querySelector?.('select[name="default_view"]')?.value;
+      const compact = Boolean(form?.querySelector?.('input[name="compact_nav"]')?.checked);
+      if (!["bg","en"].includes(lang) ||
+          !["home","rooms","devices","lighting","climate","scenes","automation",
+            "assist","system","setup","about"].includes(page)) return;
+      const saved = await this._updatePreferences({
+        language:lang, default_view:page, compact_nav:compact, onboarding_complete:true
+      });
+      if (!saved) return;
+      this._language = lang;
+      this._visitedView = false;
+      this._view = page;
+      this._actionNotice = COPY[lang].onboardingDone;
+      this._model = null;
+      this._manifest = null;
+      void this.refresh();
+    }
+
+    async _savePersonalSettings(form) {
+      const lang = form?.querySelector?.('select[name="language"]')?.value;
+      const page = form?.querySelector?.('select[name="default_view"]')?.value;
+      const compact = Boolean(form?.querySelector?.('input[name="compact_nav"]')?.checked);
+      if (!["bg","en"].includes(lang) ||
+          !["home","rooms","devices","lighting","climate","scenes","automation",
+            "assist","system","setup","about"].includes(page)) return;
+      const saved = await this._updatePreferences({
+        language:lang, default_view:page, compact_nav:compact
+      });
+      if (!saved) return;
+      this._actionNotice = COPY[lang].savedPreferences;
+      if (lang !== this._language) {
+        this._language = lang;
+        this._manifest = null;
+        this._model = null;
+        void this.refresh();
+      } else this.render();
     }
 
     _findCard(entityId) {
