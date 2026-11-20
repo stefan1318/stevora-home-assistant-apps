@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "stevora_os"
 PANEL_PATH = "stevora-os"
 PANEL_COMPONENT = "stevora-os-preview"
-PANEL_MODULE = "/stevora_os_static/stevora-os.js?v=0.2.0"
+PANEL_MODULE = "/stevora_os_static/stevora-os.js?v=1.0.0-alpha.1"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -51,7 +51,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         sidebar_title="STEVORA OS",
         sidebar_icon="mdi:monitor-dashboard",
         require_admin=False,
-        config={"preview_version": "0.2.0"},
+        config={"preview_version": "1.0.0-alpha.1"},
     )
     state["status"] = "active"
     return True

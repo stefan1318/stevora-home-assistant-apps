@@ -1,4 +1,4 @@
-"""Pure-Python contract tests for the STEVORA OS 0.2.0 System Center."""
+"""Pure-Python contract tests for the STEVORA OS 1.0 System Center."""
 from __future__ import annotations
 
 import importlib.util
