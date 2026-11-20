@@ -209,7 +209,7 @@ async def devices_update(hass, connection, msg):
         current_capabilities = available_controls(
             entity_id, live, original.original_name or original.name
         )
-        if "controls" in profile and any(
+        if live is not None and "controls" in profile and any(
             control not in current_capabilities for control in profile["controls"]
         ):
             error = "Control not supported by the live HA entity"
