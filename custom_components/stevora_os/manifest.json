@@ -1,7 +1,7 @@
 {
   "domain": "stevora_os",
   "name": "STEVORA OS Developer Preview",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "documentation": "https://github.com/stefan1318/stevora-home-assistant-apps",
   "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
   "codeowners": [],
