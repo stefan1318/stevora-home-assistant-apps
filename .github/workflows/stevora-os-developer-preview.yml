@@ -1,0 +1,56 @@
+name: STEVORA OS Developer Preview CI
+
+on:
+  push:
+    branches:
+      - feature/stevora-os-developer-preview-0-1-20261120
+    paths:
+      - 'custom_components/stevora_os/**'
+      - 'tests/test_stevora_os_preview.py'
+      - 'docs/STE-00-STEVORA-OS-DEVELOPER-PREVIEW-0.1-BG.md'
+      - '.github/workflows/stevora-os-developer-preview.yml'
+  pull_request:
+    branches:
+      - fix/stevora-beta5-stability-classification-20261120
+    paths:
+      - 'custom_components/stevora_os/**'
+      - 'tests/test_stevora_os_preview.py'
+      - '.github/workflows/stevora-os-developer-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview-validation:
+    name: Python, JS and preview package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python source and manifest checks
+        run: |
+          python -m compileall -q custom_components/stevora_os
+          python -m unittest discover -s tests -p 'test_stevora_os_preview.py' -v
+      - name: JavaScript syntax check
+        run: node --check custom_components/stevora_os/frontend/stevora-os.js
+      - name: Build isolated preview artifact
+        run: |
+          mkdir -p dist/custom_components dist/docs
+          cp -a custom_components/stevora_os dist/custom_components/
+          cp docs/STE-00-STEVORA-OS-DEVELOPER-PREVIEW-0.1-BG.md dist/docs/
+          find dist -type d -name '__pycache__' -exec rm -rf {} +
+          (cd dist && zip -qr ../STEVORA-OS-Developer-Preview-0.1.0.zip .)
+          sha256sum STEVORA-OS-Developer-Preview-0.1.0.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-OS-Developer-Preview-0.1.0
+          path: STEVORA-OS-Developer-Preview-0.1.0.zip
+          if-no-files-found: error
+          retention-days: 14
