@@ -9,6 +9,7 @@ from .admin_managers import require_admin
 from .assistant_manager import available_pipelines, validate_assistant_settings, resolve_pipeline
 from .discovery import build_manifest
 from .device_customization import validate_profile, normalize_profile, is_backlight_entity
+from .device_capabilities import available_controls
 
 
 def _manager(hass):
@@ -59,6 +60,11 @@ async def rooms_get(hass, connection, msg):
             "area_id": (manager.data.get("device_profiles", {}).get(entity.entity_id, {}).get("area_id") or entity.area_id),
             "disabled": entity.disabled_by is not None,
             "hidden": entity.hidden_by is not None,
+            "available_controls": available_controls(
+                entity.entity_id,
+                getattr(getattr(hass, "states", None), "get", lambda _id: None)(entity.entity_id),
+                entity.original_name or entity.name,
+            ),
         })
     connection.send_result(msg["id"], {
         "revision": manager.data["revision"],
@@ -198,6 +204,15 @@ async def devices_update(hass, connection, msg):
             entity_id, original.name, original.original_name
         ):
             error = "Cannot enable backlight controls"
+        # Reject unsupported selections at the server boundary as well as the UI.
+        live = getattr(getattr(hass, "states", None), "get", lambda _id: None)(entity_id)
+        current_capabilities = available_controls(
+            entity_id, live, original.original_name or original.name
+        )
+        if "controls" in profile and any(
+            control not in current_capabilities for control in profile["controls"]
+        ):
+            error = "Control not supported by the live HA entity"
         if error or any(user not in user_ids for user in profile.get("user_ids", [])):
             connection.send_error(msg["id"], "invalid_profile", error or "Unknown user")
             return
