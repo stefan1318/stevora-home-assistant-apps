@@ -16,6 +16,16 @@ class DeviceCustomizationTests(unittest.TestCase):
         self.assertIsNone(module.validate_profile("light.main", profile, {"living"}))
         self.assertEqual(module.normalize_profile(profile)["name"], "Main light")
 
+    def test_display_category_is_visual_and_validated(self):
+        profile = {"display_category": "lighting", "controls": ["toggle"]}
+        self.assertIsNone(module.validate_profile("switch.lamp", profile, {"living"}))
+        self.assertEqual(module.normalize_profile(profile)["display_category"], "lighting")
+        self.assertIsNotNone(module.validate_profile(
+            "switch.lamp", {"display_category": "unsupported"}, {"living"}))
+        self.assertIsNotNone(module.validate_profile(
+            "switch.lamp", {"controls": ["brightness"],
+             "display_category": "lighting"}, {"living"}))
+
     def test_forbid_backlights(self):
         self.assertEqual(module.permitted_controls("light.bedroom_backlight"), [])
         self.assertIsNotNone(module.validate_profile(
