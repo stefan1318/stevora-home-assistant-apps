@@ -471,6 +471,191 @@
       `;
     }
 
+    _cards(group = "all", area = "") {
+      const sections = this._model?.sections || [];
+      const allowed = new Set((this._manifest?.entities || []).map((item) => item.entity_id));
+      return sections.flatMap((section) => section.cards || [])
+        .filter((card) => allowed.has(card.entity_id))
+        .filter((card) => !area || this._entity(card.entity_id)?.area_id === area)
+        .filter((card) => group === "all" || card.display_category === group)
+        .filter((card) => !this._backlight(card.entity_id));
+    }
+
+    _entity(id) {
+      return (this._manifest?.entities || []).find((item) => item.entity_id === id) || null;
+    }
+
+    _backlight(id) {
+      const original = this._entity(id);
+      const label = [id, original?.name, original?.original_name, original?.source_name]
+        .join(" ").toLowerCase();
+      return /back[ _-]?light|подсвет/.test(label);
+    }
+
+    _can(card, control) {
+      if (!card || !card.entity_id || this._backlight(card.entity_id)) return false;
+      if (!this._entity(card.entity_id)) return false;
+      if (!(this._manifest?.controllable_entities || []).includes(card.entity_id)) return false;
+      if (card.layout === "info") return false;
+      if (!Array.isArray(card.controls) || !card.controls.includes(control)) return false;
+      if (this._hass?.states?.[card.entity_id]?.state === "unavailable") return false;
+      return true;
+    }
+
+    _state(id) {
+      return this._hass?.states?.[id] || null;
+    }
+
+    _deviceCard(card, t) {
+      const id = card.entity_id;
+      const idAttr = escapeHTML(id);
+      const state = this._state(id);
+      const category = card.display_category;
+      const domain = card.domain;
+      const isOff = state?.state === "off";
+      const unavailable = !state || ["unavailable", "unknown"].includes(state.state);
+      const stateLabel = unavailable ? t.unavailableDevice : (isOff ? t.off : state?.state || "—");
+      const icon = {light:"☼",switch:"◉",climate:"◈",fan:"✺",cover:"▥",
+        media_player:"▷",sensor:"◷",binary_sensor:"◌",lock:"♙"}[domain] || "▣";
+      const buttons = [];
+      if (this._can(card, "toggle") && ["light", "switch", "fan"].includes(domain)) {
+        buttons.push('<button class="action" type="button" data-device-action="toggle" data-entity="'+idAttr+'">'+
+          escapeHTML(isOff ? t.turnOn : t.turnOff)+'</button>');
+      }
+      if (this._can(card,"temperature") && domain === "climate") {
+        const temp = Number(state?.attributes?.temperature);
+        const min = Number(state?.attributes?.min_temp);
+        const max = Number(state?.attributes?.max_temp);
+        const valid = Number.isFinite(temp) && temp > 0;
+        const minT = Number.isFinite(min) ? min : 5, maxT = Number.isFinite(max) ? max : 35;
+        buttons.push('<div class="temp-controls"><button type="button" data-device-action="temp-down" data-entity="'+idAttr+
+          '" '+(!valid || temp-1 < minT ? "disabled" : "")+' aria-label="'+escapeHTML(t.minus)+'">−</button>'+
+          '<strong>'+escapeHTML(valid ? String(temp)+"°" : "—")+'</strong>'+
+          '<button type="button" data-device-action="temp-up" data-entity="'+idAttr+'" '+
+          (!valid || temp+1 > maxT ? "disabled" : "")+' aria-label="'+escapeHTML(t.plus)+'">+</button></div>');
+      }
+      if (this._can(card,"open") && domain === "cover")
+        buttons.push('<button type="button" class="action" data-device-action="open" data-entity="'+idAttr+'">'+escapeHTML(t.open)+'</button>');
+      if (this._can(card,"close") && domain === "cover")
+        buttons.push('<button type="button" class="action" data-device-action="close" data-entity="'+idAttr+'">'+escapeHTML(t.close)+'</button>');
+      if (this._can(card,"play_pause") && domain === "media_player")
+        buttons.push('<button type="button" class="action" data-device-action="play_pause" data-entity="'+idAttr+'">⏯</button>');
+      if (this._can(card,"brightness") && domain === "light") {
+        const brightness = Number(state?.attributes?.brightness);
+        const pct = Number.isFinite(brightness) ? Math.round(brightness * 100 / 255) : 100;
+        buttons.push('<label class="device-slider">'+escapeHTML(t.brightness)+
+          '<input type="range" min="1" max="100" step="1" value="'+pct+
+          '" data-device-input="brightness" data-entity="'+idAttr+'"></label>');
+      }
+      if (this._can(card,"percentage") && domain === "fan") {
+        const p = Number(state?.attributes?.percentage);
+        const pct = Number.isFinite(p) ? Math.max(0,Math.min(100,p)) : 0;
+        buttons.push('<label class="device-slider">'+escapeHTML(t.brightness)+
+          '<input type="range" min="0" max="100" step="1" value="'+pct+
+          '" data-device-input="percentage" data-entity="'+idAttr+'"></label>');
+      }
+      if (this._can(card,"color") && domain === "light") {
+        const rgb = state?.attributes?.rgb_color;
+        const color = Array.isArray(rgb) && rgb.length === 3 ? "#"+rgb.map((v)=>
+          Math.max(0,Math.min(255,Math.round(Number(v)||0))).toString(16).padStart(2,"0")).join("") : "#ffffff";
+        buttons.push('<label class="color-control">'+escapeHTML(t.color)+
+          '<input type="color" value="'+color+'" data-device-input="color" data-entity="'+idAttr+'"></label>');
+      }
+      const stateText = domain === "climate" && state && !unavailable
+        ? (Number.isFinite(Number(state.attributes?.current_temperature))
+          ? String(state.attributes.current_temperature)+"° · " : "") + state.state : stateLabel;
+      return '<article class="entity-card'+(unavailable ? " unavailable" : "")+'" data-device-card data-search="'+
+        escapeHTML((card.name || id).toLowerCase()+" "+id.toLowerCase())+'">'+
+        '<div class="entity-head"><span class="entity-icon" aria-hidden="true">'+icon+'</span>'+
+        '<div><strong>'+escapeHTML(card.name || id)+'</strong><small>'+escapeHTML(id)+'</small></div></div>'+
+        '<div class="entity-state" data-live-entity="'+idAttr+'">'+escapeHTML(stateText)+'</div>'+
+        '<div class="entity-actions">'+buttons.join("")+
+        '<button class="action subtle" type="button" data-device-action="details" data-entity="'+idAttr+'">'+
+          escapeHTML(t.details)+'</button></div></article>';
+    }
+
+    _deviceView(t, group) {
+      const title = group === "lighting" ? t.lighting : group === "climate" ? t.climate : t.devicesTitle;
+      const rooms = this._manifest?.rooms || [];
+      const roomOptions = [['',t.roomAll], ...rooms.map((room)=>[room.id,room.name])].map(([id,name])=>
+        '<option value="'+escapeHTML(id)+'" '+(id===this._selectedRoom ? "selected" : "")+'>'+
+          escapeHTML(name)+'</option>').join("");
+      const cards = this._cards(group,this._selectedRoom);
+      return '<header class="section-heading"><h1>'+escapeHTML(title)+'</h1>'+
+        '<span>'+cards.length+' · '+escapeHTML(t.local)+'</span></header>'+
+        '<section class="device-toolbar"><label>'+escapeHTML(t.room)+
+        '<select data-room-select>'+roomOptions+'</select></label>'+
+        '<label>'+escapeHTML(t.search)+
+        '<input type="search" data-device-search placeholder="'+escapeHTML(t.search)+'"></label></section>'+
+        (cards.length ? '<div class="device-grid">'+cards.map((c)=>this._deviceCard(c,t)).join("")+'</div>'
+          : '<div class="empty">'+escapeHTML(t.noDevices)+'</div>');
+    }
+
+    _sceneView(t) {
+      const automation = this._view === "automation";
+      const title = automation ? t.automation : t.scenes;
+      const items = (this._hubDirectory?.items || []).filter((item)=>
+        automation ? item.domain === "automation" : ["scene", "script"].includes(item.domain));
+      return '<header class="section-heading"><h1>'+escapeHTML(title)+'</h1>'+
+        '<span>Home Hub</span></header>'+
+        '<div class="device-grid">'+(items.length ? items.map((item) => {
+          const able = item.domain === "scene" && item.action_allowed === true &&
+            !this._backlight(item.entity_id);
+          return '<article class="entity-card"><div class="entity-head"><span class="entity-icon">✦</span>'+
+            '<div><strong>'+escapeHTML(item.name || item.entity_id)+'</strong><small>'+
+              escapeHTML(item.entity_id)+'</small></div></div>'+
+            '<div class="entity-state">'+escapeHTML(item.state || "—")+'</div>'+
+            (able ? '<button type="button" class="action" data-scene-run="'+escapeHTML(item.entity_id)+'">'+
+              escapeHTML(t.activate)+'</button>' : '<span class="read-only">'+escapeHTML(t.readonly)+'</span>')+
+            '</article>';
+        }).join("") : '<div class="empty">'+escapeHTML(automation?t.noAutomations:t.noScenes)+'</div>')+'</div>';
+    }
+
+    _assistView(t) {
+      // Chat history is memory-only and cleared on HA session/server changes.
+      const messages = this._chat.map((message) =>
+        '<div class="chat-msg '+(message.role==="user"?"is-user":"is-assistant")+'">'+
+          escapeHTML(message.text)+'</div>').join("");
+      return '<header class="section-heading"><h1>'+escapeHTML(t.assistTitle)+'</h1></header>'+
+        '<div class="card chat-card"><p>'+escapeHTML(t.assistNote)+'</p>'+
+        '<div class="chat-history" role="log" aria-live="polite">'+messages+'</div>'+
+        '<form data-assist-form><input name="message" type="text" maxlength="500" required '+
+          'placeholder="'+escapeHTML(t.assistPrompt)+'" autocomplete="off">'+
+          '<button class="button primary" type="submit" '+(this._chatBusy?"disabled":"")+'>'+
+          escapeHTML(t.send)+'</button></form></div>';
+    }
+
+    _setupView(t) {
+      const modules = this._manifest?.modules || {};
+      const labels = {core:"STEVORA Core",home_panel:"Home Panel 7.1.1",
+        home_hub:"Home Hub",hey_stevora:"Hey Stevora",memory_sync:"Memory Sync"};
+      const moduleRows = Object.entries(labels).map(([key,label])=>{
+        const info = modules[key] || {};
+        const status = info.status || "not_included";
+        return '<div class="kv"><span>'+escapeHTML(label)+'</span><strong>'+
+          escapeHTML(status)+'</strong></div>';
+      }).join("");
+      let editing = '<p>'+escapeHTML(t.needsAdmin)+'</p>';
+      if (this._hass?.user?.is_admin && this._admin && this._manifest) {
+        editing = '<p>'+escapeHTML(t.translationsHint)+'</p><div class="room-editor">'+
+          (this._manifest.rooms || []).filter((room)=>room.id!=="__stevora_unassigned__").map((room)=>{
+            const tr = this._admin.translations?.rooms?.[room.id] || {};
+            return '<form data-translate-form data-room-id="'+escapeHTML(room.id)+'">'+
+              '<strong>'+escapeHTML(room.name)+'</strong>'+
+              '<label>BG<input name="bg" maxlength="80" value="'+escapeHTML(tr.bg||"")+'"></label>'+
+              '<label>EN<input name="en" maxlength="80" value="'+escapeHTML(tr.en||"")+'"></label>'+
+              '<button type="submit" class="button secondary">'+escapeHTML(t.save)+'</button></form>';
+          }).join("")+'</div>';
+      } else if (this._hass?.user?.is_admin) editing='<p>'+escapeHTML(t.adminConfigMissing)+'</p>';
+      return '<header class="section-heading"><h1>'+escapeHTML(t.settingsTitle)+'</h1></header>'+
+        '<div class="os-system-grid"><div class="card"><h2>'+escapeHTML(t.editRooms)+'</h2>'+
+          editing+'</div><div class="card"><h2>'+escapeHTML(t.modulesTitle)+'</h2>'+
+          moduleRows+'<h2>'+escapeHTML(t.onboarding)+'</h2>'+
+          '<p>'+escapeHTML(t.onboardingInfo)+'</p>'+
+          (this._hass?.user?.is_admin?'<a href="/config/integrations" class="button secondary">'+
+            escapeHTML(t.integrationSettings)+'</a>':'')+'</div></div>';
+    }
+
     _content(t) {
       const ready = this._status === "ready";
       const count = this._counts();
