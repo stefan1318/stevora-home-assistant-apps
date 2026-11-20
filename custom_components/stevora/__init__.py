@@ -57,10 +57,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     # HA setup unless an explicitly pinned native image installed it.
     if isinstance(native, dict) and native.get("native_bootstrap") is True:
         if not hass.config_entries.async_entries(DOMAIN):
-            await hass.config_entries.flow.async_init(
-                DOMAIN,
-                context={"source": SOURCE_IMPORT},
-                data={},
+            hass.async_create_task(
+                hass.config_entries.flow.async_init(
+                    DOMAIN,
+                    context={"source": SOURCE_IMPORT},
+                    data={},
+                ),
+                "STEVORA native adapter bootstrap",
             )
     return True
 
