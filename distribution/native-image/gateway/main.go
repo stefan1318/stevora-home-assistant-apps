@@ -15,7 +15,6 @@ import (
  "encoding/pem"
  "errors"
  "flag"
- "fmt"
  "io"
  "log"
  "math/big"
