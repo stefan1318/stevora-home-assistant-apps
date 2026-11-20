@@ -1,0 +1,37 @@
+{
+  "id": "/stevora-os",
+  "name": "STEVORA OS",
+  "short_name": "STEVORA",
+  "description": "STEVORA OS — your connected home, powered by Home Assistant.",
+  "lang": "bg",
+  "dir": "auto",
+  "start_url": "/stevora-os",
+  "scope": "/stevora-os",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#06152a",
+  "theme_color": "#06152a",
+  "icons": [
+    {
+      "src": "/stevora_os_static/icons/stevora-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/stevora_os_static/icons/stevora-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/stevora_os_static/icons/stevora-maskable-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

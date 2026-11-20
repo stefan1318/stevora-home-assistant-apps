@@ -7,16 +7,19 @@ on:
       - feature/stevora-os-system-center-0-2-20261120
       - feature/stevora-os-1-0-alpha1-unified-ui-20261120
       - feature/stevora-os-1-0-alpha2-shell-onboarding-20261120
+      - feature/stevora-os-1-0-alpha3-pwa-integrations-20261120
     paths:
       - 'custom_components/stevora_os/**'
       - 'tests/test_stevora_os_preview.py'
       - 'tests/test_stevora_os_system_api.py'
       - 'tests/test_stevora_os_preferences.py'
+      - 'tests/test_stevora_os_integrations.py'
       - 'tests/stevora_os_preview_smoke.mjs'
       - 'docs/STE-00-STEVORA-OS-DEVELOPER-PREVIEW-0.1-BG.md'
       - 'docs/STE-00-STEVORA-OS-SYSTEM-CENTER-0.2-BG.md'
       - 'docs/STE-00-STEVORA-OS-1.0-ALPHA1-VM-ACCEPTANCE-BG.md'
       - 'docs/STE-00-STEVORA-OS-1.0-ALPHA2-VM-ACCEPTANCE-BG.md'
+      - 'docs/STE-00-STEVORA-OS-1.0-ALPHA3-PWA-INTEGRATIONS-BG.md'
       - '.github/workflows/stevora-os-developer-preview.yml'
   pull_request:
     branches:
@@ -24,6 +27,7 @@ on:
       - feature/stevora-os-developer-preview-0-1-20261120
       - feature/stevora-os-full-frontend-architecture-20261120
       - feature/stevora-os-1-0-alpha1-unified-ui-20261120
+      - feature/stevora-os-1-0-alpha2-shell-onboarding-20261120
     paths:
       - 'custom_components/stevora_os/**'
       - 'tests/test_stevora_os_preview.py'
@@ -62,12 +66,13 @@ jobs:
           cp docs/STE-00-STEVORA-OS-SYSTEM-CENTER-0.2-BG.md dist/docs/
           cp docs/STE-00-STEVORA-OS-1.0-ALPHA1-VM-ACCEPTANCE-BG.md dist/docs/
           cp docs/STE-00-STEVORA-OS-1.0-ALPHA2-VM-ACCEPTANCE-BG.md dist/docs/
+          cp docs/STE-00-STEVORA-OS-1.0-ALPHA3-PWA-INTEGRATIONS-BG.md dist/docs/
           find dist -type d -name '__pycache__' -exec rm -rf {} +
-          (cd dist && zip -qr ../STEVORA-OS-1.0.0-alpha.2.zip .)
-          sha256sum STEVORA-OS-1.0.0-alpha.2.zip
+          (cd dist && zip -qr ../STEVORA-OS-1.0.0-alpha.3.zip .)
+          sha256sum STEVORA-OS-1.0.0-alpha.3.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-1.0.0-alpha.2
-          path: STEVORA-OS-1.0.0-alpha.2.zip
+          name: STEVORA-OS-1.0.0-alpha.3
+          path: STEVORA-OS-1.0.0-alpha.3.zip
           if-no-files-found: error
           retention-days: 14
