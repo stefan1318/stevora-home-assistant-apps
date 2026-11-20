@@ -130,6 +130,67 @@ class AdminAuthorizationTests(unittest.TestCase):
         self.assertEqual(self.errors[0][1], "invalid_profile")
         self.assertFalse(self.results)
 
+    def test_admin_device_save_returns_actual_lighting_placement(self):
+        self.connection.user.is_admin = True
+        device = types.SimpleNamespace(
+            entity_id="switch.table_lamp", area_id=None, disabled_by=None,
+            hidden_by=None, name="Table lamp", original_name="Table lamp",
+        )
+        self.api.entity_registry.async_get = lambda hass: types.SimpleNamespace(
+            entities={"switch.table_lamp": device})
+        self.api.area_registry.async_get = lambda hass: types.SimpleNamespace(
+            async_list_areas=lambda: [])
+        async def users():
+            return []
+        self.hass.auth = types.SimpleNamespace(async_get_users=users)
+        manager = self.hass.data["stevora"]["_admin_managers"]
+        manager.data.update({"device_profiles": {}, "translations": {}, "visibility": {}})
+        manager.lock = asyncio.Lock()
+        async def save_state(next_state):
+            manager.data = next_state
+        manager.save_state = save_state
+        # This is the post-save manifest, not a client assertion that the
+        # device has been included.
+        self.api.build_manifest = lambda hass, entry: {
+            "entities": [{"entity_id": "switch.table_lamp",
+                          "display_category": "lighting",
+                          "area_id": "__stevora_unassigned__"}],
+            "domain_mappings": {"lighting": ["switch.table_lamp"]},
+            "discovery_diagnostics": {"entities": [
+                {"entity_id": "switch.table_lamp", "reason": "included",
+                 "area_id": "__stevora_unassigned__"}]},
+        }
+        asyncio.run(self.api.devices_update(self.hass, self.connection, {
+            "id": 15, "expected_revision": 1, "profiles": {
+                "switch.table_lamp": {"display_category": "lighting"},
+            },
+        }))
+        self.assertFalse(self.errors)
+        self.assertEqual(self.results[0][1]["revision"], 2)
+        verified = self.results[0][1]["devices"]["switch.table_lamp"]
+        self.assertTrue(verified["included"])
+        self.assertTrue(verified["in_lighting"])
+        self.assertEqual(verified["area_id"], "__stevora_unassigned__")
+
+        # Reporting is truthful if a room filter prevents visibility.
+        self.results.clear()
+        self.api.build_manifest = lambda hass, entry: {
+            "entities": [],
+            "domain_mappings": {"lighting": []},
+            "discovery_diagnostics": {"entities": [
+                {"entity_id": "switch.table_lamp", "reason": "unassigned"}]},
+        }
+        asyncio.run(self.api.devices_update(self.hass, self.connection, {
+            "id": 16, "expected_revision": 2, "profiles": {
+                "switch.table_lamp": {"display_category": "lighting"},
+            },
+        }))
+        self.assertFalse(self.errors)
+        denied = self.results[0][1]["devices"]["switch.table_lamp"]
+        self.assertFalse(denied["included"])
+        self.assertFalse(denied["in_lighting"])
+        self.assertEqual(denied["reason"], "unassigned")
+
 
 if __name__ == "__main__":
     unittest.main()
