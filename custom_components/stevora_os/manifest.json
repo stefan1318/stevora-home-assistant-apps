@@ -1,0 +1,10 @@
+{
+  "domain": "stevora_os",
+  "name": "STEVORA OS Developer Preview",
+  "version": "0.1.0",
+  "documentation": "https://github.com/stefan1318/stevora-home-assistant-apps",
+  "dependencies": ["frontend", "http", "panel_custom"],
+  "codeowners": [],
+  "integration_type": "helper",
+  "iot_class": "calculated"
+}
