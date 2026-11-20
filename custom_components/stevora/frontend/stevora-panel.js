@@ -30,6 +30,10 @@ class StevoraHomePanel extends HTMLElement {
     this._chatConversationId = null;
     this._chatBusy = false;
     this._chatError = "";
+    this._profileFeedback = null;
+    this._registryConnection = null;
+    this._registryUnsubs = [];
+    this._registryRefreshScheduled = false;
   }
 
   set hass(value) {
@@ -40,6 +44,7 @@ class StevoraHomePanel extends HTMLElement {
       (old.user?.id && value.user?.id && old.user.id !== value.user.id)
     ));
     if (sessionChanged) {
+      this.stopRegistrySubscriptions();
       // Never render a previous home's manifest against the new home's states.
       this._manifest = null;
       this._panelModel = null;
@@ -51,6 +56,7 @@ class StevoraHomePanel extends HTMLElement {
       this._chatConversationId = null;
       this._chatBusy = false;
       this._chatError = "";
+      this._profileFeedback = null;
       this._admin = null;
       this._selectedRoom = "";
       this._stateSignature = null;
@@ -60,39 +66,69 @@ class StevoraHomePanel extends HTMLElement {
       this.render();
       return;
     }
-    if (!old && value) void this.refresh();
-    else if (value && this.isConnected) {
-      const signature = Object.keys(value.states || {}).sort().join("|");
-      const inventoryChanged = this._stateSignature !== null &&
-        signature !== this._stateSignature;
-      this._stateSignature = signature;
-      // Full render is reserved for navigation/configuration changes.
-      // State ticks patch only live text/attributes of existing cards:
-      // no Shadow DOM replacement, focus loss, scroll jumps or flicker.
-      const changedFeatures = Object.keys(value.states || {}).some(id => {
-        const before = old?.states?.[id]?.attributes || {};
-        const after = value.states[id]?.attributes || {};
-        return ["supported_features","supported_color_modes","hvac_modes",
-          "fan_modes","preset_modes","swing_modes","effect_list","source_list"]
-          .some(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
-      });
-      if (inventoryChanged || changedFeatures) {
-        void this.refresh();
-        return;
-      }
-      if (this._mode === "stevora") {
-        if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
-        return;
-      }
-      this.render();
+    if (!old && value) {
+      void this.refresh();
+      return;
+    }
+    if (value && this.isConnected && this._mode === "stevora") {
+      // Routine HA state ticks must never replace the entire DOM.
+      // Genuine registry events and explicit actions update the structure.
+      if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
     }
   }
 
-  connectedCallback() { this.render(); }
+  connectedCallback() {
+    this.render();
+    if (this._mode === "stevora") void this.listenForRegistryChanges();
+  }
 
-  async refresh() {
+  disconnectedCallback() { this.stopRegistrySubscriptions(); }
+
+  stopRegistrySubscriptions() {
+    for (const unsubscribe of this._registryUnsubs) {
+      try { unsubscribe(); } catch (_) { /* HA connection may have closed */ }
+    }
+    this._registryUnsubs = [];
+    this._registryConnection = null;
+    this._registryRefreshScheduled = false;
+  }
+
+  async listenForRegistryChanges() {
+    const connection = this._hass?.connection;
+    if (!connection?.subscribeEvents || this._registryConnection === connection) return;
+    this.stopRegistrySubscriptions();
+    this._registryConnection = connection;
+    for (const eventType of ["entity_registry_updated", "device_registry_updated",
+                             "area_registry_updated"]) {
+      try {
+        const unsubscribe = await connection.subscribeEvents(() => {
+          if (this._hass?.connection !== connection || !this.isConnected ||
+              this._registryRefreshScheduled) return;
+          this._registryRefreshScheduled = true;
+          Promise.resolve().then(() => {
+            this._registryRefreshScheduled = false;
+            if (this._hass?.connection !== connection || !this.isConnected) return;
+            if (this._busy) { this._refreshQueued = true; return; }
+            void this.refresh({silent:true});
+          });
+        }, eventType);
+        if (this._registryConnection !== connection) {
+          if (typeof unsubscribe === "function") unsubscribe();
+          return;
+        }
+        if (typeof unsubscribe === "function") this._registryUnsubs.push(unsubscribe);
+      } catch (_) {
+        // Refresh remains available if a server doesn't publish this event.
+      }
+    }
+  }
+
+  async refresh({silent=false}={}) {
     if (!this._hass || this._busy) return;
     this._busy = true;
+    const previousRevision = this._manifest?.revision;
+    const previousInstallation = this._manifest?.installation_id;
+    let unchanged = false;
     const connection = this._hass.connection;
     const userId = this._hass.user?.id;
     const sessionChanged = () => (
@@ -108,11 +144,15 @@ class StevoraHomePanel extends HTMLElement {
           model?.revision !== manifest?.revision) {
         throw new Error("Panel manifest changed during refresh");
       }
+      unchanged = !!(silent && this._mode === "stevora" &&
+        previousInstallation === manifest.installation_id &&
+        previousRevision === manifest.revision);
       this._manifest = manifest;
       this._panelModel = model;
       this._language = manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
       this._mode = "stevora";
+      void this.listenForRegistryChanges();
       try {
         const [rooms, assistants] = await Promise.all([
           this._hass.callWS({type:"stevora/admin/rooms/get"}),
@@ -163,8 +203,12 @@ class StevoraHomePanel extends HTMLElement {
       this._busy = false;
       const queued = this._refreshQueued;
       this._refreshQueued = false;
-      this.render();
-      if (queued) void this.refresh();
+      if (unchanged && this._mode === "stevora") {
+        if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
+      } else {
+        this.render();
+      }
+      if (queued) void this.refresh({silent:true});
     }
   }
 
@@ -316,6 +360,32 @@ class StevoraHomePanel extends HTMLElement {
         (current === value ? " selected" : "") + '>' + e(text) + '</option>';
       const showLabel = this.t("Персонализирай устройството","Customize device");
       const translations = labels[entity.entity_id] || {};
+      const verification = this._profileFeedback?.entity_id === entity.entity_id ?
+        this._profileFeedback.result : null;
+      const reason = verification?.reason || entity.reason || "unknown";
+      const included = verification ? verification.included : entity.included;
+      const place = verification?.area_id || entity.area_id;
+      const reasonLabels = {
+        unassigned: this.t("Няма стая. Избери помещение или разреши неприписаните устройства.","No room. Choose a room or enable unassigned devices."),
+        outside_selected_rooms: this.t("Извън избраните помещения. Избери разрешено помещение.","Outside selected rooms. Choose an enabled room."),
+        explicitly_excluded: this.t("Изключено е във Visibility. Смени на Default или Include.","Excluded by Visibility. Change to Default or Include."),
+        hidden: this.t("Устройството е скрито в Home Assistant.","Device is hidden in Home Assistant."),
+        disabled: this.t("Устройството е деактивирано в Home Assistant.","Device is disabled in Home Assistant."),
+        unsupported_domain: this.t("Типът не се поддържа.","Entity domain is unsupported."),
+        backlight: this.t("Подсветките са изключени от STEVORA.","Backlights are excluded from STEVORA."),
+        not_discovered: this.t("Устройството не е открито в manifest.","Device not found in manifest."),
+      };
+      const showLighting = profile.display_category === "lighting";
+      const success = verification ? verification.in_lighting :
+        showLighting && included;
+      const statusText = success ?
+        this.t("Потвърдено в Осветление","Verified in Lighting") :
+        (showLighting && included ?
+          this.t("Включено в панела","Included in panel") :
+          reasonLabels[reason] || (included ?
+            this.t("Налично в STEVORA","Available in STEVORA") :
+            this.t("Не е включено в панела","Not included in the panel")));
+      const statusClass = (showLighting && !success) || !included ? "warning" : "ok";
       return '<details class="v7-device-editor" data-editor-key="device:' + id + '">' +
         '<summary><span class="v7-editor-device-icon"><ha-icon icon="' + e(icon) + '"></ha-icon></span>' +
         '<span class="v7-editor-title"><strong>' + e(entity.name) + '</strong><small>' +
@@ -350,7 +420,8 @@ class StevoraHomePanel extends HTMLElement {
         '<div class="v7-editor-field"><label>' + this.t("Помещение","Room") + '</label>' +
         '<select data-profile-area="' + id + '">' +
         option("",this.t("Автоматично","Automatic"),profile.area_id || "") +
-        rooms.map(room => option(room.id,room.name,profile.area_id)).join("") +
+        rooms.filter(room => room.id !== "__stevora_unassigned__").map(room =>
+          option(room.id,room.name,profile.area_id)).join("") +
         '</select></div></div>' +
         '<div class="v7-editor-field"><label>' + this.t("Контроли","Controls") + '</label>' +
         '<select data-profile-control-mode="' + id + '">' +
@@ -378,6 +449,11 @@ class StevoraHomePanel extends HTMLElement {
         '<button type="button" class="v7-action subtle" data-translation-save-entity="' + id + '">' +
         this.t("Запази BG/EN","Save BG/EN") + '</button>' +
         '<small class="v7-editor-id">' + id + '</small></details>' +
+        '<div class="v7-profile-status ' + statusClass + '" role="status">' +
+        '<ha-icon icon="' + (statusClass === "ok" ? "mdi:check-circle-outline" : "mdi:alert-circle-outline") +
+        '"></ha-icon><span>' + e(statusText) +
+        (place ? ' · ' + e(rooms.find(r=>r.id === place)?.name || place) : '') +
+        '</span></div>' +
         '<button type="button" class="v7-action v7-editor-save" data-profile-save="' + id + '">' +
         this.t("Запази устройството","Save device") + '</button></div></details>';
     }).join("") + '</div>';
@@ -1307,7 +1383,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711-beta4");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-beta5");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
@@ -1464,8 +1540,9 @@ class StevoraHomePanel extends HTMLElement {
         });
       }
       try {
-        await this._hass.callWS({type:"stevora/admin/devices/update",
+        const saved = await this._hass.callWS({type:"stevora/admin/devices/update",
           expected_revision:this._admin.rooms.revision,profiles:{[id]:profile}});
+        this._profileFeedback = {entity_id:id, result:saved?.devices?.[id] || null};
         this._resetEditorValues = true;
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }

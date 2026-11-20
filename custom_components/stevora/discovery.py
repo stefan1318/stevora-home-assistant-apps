@@ -107,11 +107,20 @@ def build_manifest(hass, entry):
             continue
         area_id = profile.get("area_id") or entity.area_id or (device.area_id if device else None)
         if area_id is None:
-            if visibility.get(entity.entity_id) == "include" and not selected_areas:
+            # A deliberately classified device is an explicit inclusion
+            # request. Never lose it merely because HA has no assigned room.
+            # Do not bypass a configured room_filter: the manager will show
+            # the precise exclusion reason and ask for an allowed room.
+            explicit_category = profile.get("display_category", "auto") != "auto"
+            if (visibility.get(entity.entity_id) == "include" or explicit_category) and not selected_areas:
                 area_id = UNASSIGNED_ROOM
                 if UNASSIGNED_ROOM not in mappings:
                     mappings[UNASSIGNED_ROOM] = []
-                    rooms.append({"id": UNASSIGNED_ROOM, "name": "Unassigned", "source_name": "Unassigned", "translations": {"bg": "Без стая", "en": "Unassigned"}})
+                    rooms.append({
+                        "id": UNASSIGNED_ROOM, "name": "Unassigned",
+                        "source_name": "Unassigned",
+                        "translations": {"bg": "Без стая", "en": "Unassigned"},
+                    })
             elif include_unassigned:
                 area_id = UNASSIGNED_ROOM
             else:

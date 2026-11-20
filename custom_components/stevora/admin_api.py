@@ -231,7 +231,35 @@ async def devices_update(hass, connection, msg):
         new_state["device_profiles"] = profiles
         new_state["revision"] = manager.data["revision"] + 1
         await manager.save_state(new_state)
-    connection.send_result(msg["id"], {"revision": manager.data["revision"]})
+    # Never acknowledge a visual category as successfully placed unless the
+    # post-save manifest actually includes it. Explain the exact filter or
+    # room exclusion that prevents a device from showing up in Lighting.
+    entry = _entry(hass)
+    manifest = build_manifest(hass, entry) if entry is not None else None
+    included = {
+        item["entity_id"]: item for item in (manifest or {}).get("entities", [])
+    }
+    reasons = {
+        item["entity_id"]: item
+        for item in (manifest or {}).get("discovery_diagnostics", {}).get("entities", [])
+    }
+    category_map = (manifest or {}).get("domain_mappings", {})
+    results = {}
+    for entity_id in patches:
+        item = included.get(entity_id)
+        diagnostic = reasons.get(entity_id, {})
+        category = item.get("display_category") if item else None
+        results[entity_id] = {
+            "included": item is not None,
+            "reason": "included" if item else diagnostic.get("reason", "not_discovered"),
+            "area_id": item.get("area_id") if item else diagnostic.get("area_id"),
+            "display_category": category,
+            "in_lighting": bool(item and entity_id in category_map.get("lighting", [])),
+        }
+    connection.send_result(msg["id"], {
+        "revision": manager.data["revision"],
+        "devices": results,
+    })
 
 
 @websocket_api.websocket_command({
