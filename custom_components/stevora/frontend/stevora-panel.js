@@ -420,7 +420,8 @@ class StevoraHomePanel extends HTMLElement {
         '<div class="v7-editor-field"><label>' + this.t("Помещение","Room") + '</label>' +
         '<select data-profile-area="' + id + '">' +
         option("",this.t("Автоматично","Automatic"),profile.area_id || "") +
-        rooms.map(room => option(room.id,room.name,profile.area_id)).join("") +
+        rooms.filter(room => room.id !== "__stevora_unassigned__").map(room =>
+          option(room.id,room.name,profile.area_id)).join("") +
         '</select></div></div>' +
         '<div class="v7-editor-field"><label>' + this.t("Контроли","Controls") + '</label>' +
         '<select data-profile-control-mode="' + id + '">' +
