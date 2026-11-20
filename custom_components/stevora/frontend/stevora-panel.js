@@ -650,6 +650,63 @@ class StevoraHomePanel extends HTMLElement {
           '</div>') + '</section>';
   }
 
+  renderAdvancedControls(card, allowed, attrs) {
+    // Lists and ranges come exclusively from the authenticated HA state.
+    const id = this.escape(card.entity_id);
+    const allow = key => allowed.includes(key);
+    const e = value => this.escape(value);
+    const inputs = [];
+    const select = (control,values,active,bg,en) => {
+      if (!allow(control) || !Array.isArray(values) || !values.length) return;
+      inputs.push('<label class="v7-native-field"><span>' + this.t(bg,en) +
+        '</span><select data-native-select="' + control + '" data-id="' + id + '">' +
+        values.map(value => '<option value="' + e(value) + '"' +
+          (String(value) === String(active) ? " selected" : "") + '>' +
+          e(String(value).replaceAll("_"," ")) + '</option>').join("") +
+        '</select></label>');
+    };
+    const range = (control,min,max,value,step,bg,en) => {
+      if (!allow(control) || !Number.isFinite(value) || !Number.isFinite(min) ||
+          !Number.isFinite(max) || max <= min) return;
+      inputs.push('<label class="v7-native-field"><span>' + this.t(bg,en) +
+        ' <strong>' + e(Math.round(value)) + '</strong></span>' +
+        '<input type="range" min="' + e(min) + '" max="' + e(max) +
+        '" step="' + e(step) + '" value="' + e(Math.min(max,Math.max(min,value))) +
+        '" data-native-range="' + control + '" data-id="' + id + '"/></label>');
+    };
+    if (card.domain === "light") {
+      range("color_temp",
+        Number(attrs.min_color_temp_kelvin || 2000),
+        Number(attrs.max_color_temp_kelvin || 6500),
+        Number(attrs.color_temp_kelvin || NaN),100,
+        "Топлина на светлината (K)","White temperature (K)");
+      select("effect",attrs.effect_list,attrs.effect,"Ефекти","Effects");
+    }
+    if (card.domain === "fan") {
+      select("preset_mode",attrs.preset_modes,attrs.preset_mode,"Режим","Preset");
+      if (allow("oscillate")) inputs.push('<label class="v7-native-check"><input type="checkbox" ' +
+        (attrs.oscillating ? "checked" : "") + ' data-native-check="oscillate" data-id="' + id +
+        '"/> ' + this.t("Осцилация","Oscillation") + '</label>');
+      select("direction",["forward","reverse"],attrs.direction,"Посока","Direction");
+    }
+    if (card.domain === "climate") {
+      select("hvac_mode",attrs.hvac_modes,this._hass?.states?.[card.entity_id]?.state,
+        "Работен режим","Operating mode");
+      select("fan_mode",attrs.fan_modes,attrs.fan_mode,"Вентилатор","Fan mode");
+      select("preset_mode",attrs.preset_modes,attrs.preset_mode,"Режим","Preset");
+      select("swing_mode",attrs.swing_modes,attrs.swing_mode,"Посока","Swing");
+    }
+    if (card.domain === "cover") {
+      range("position",0,100,Number(attrs.current_position),1,"Позиция (%)","Position (%)");
+      range("tilt",0,100,Number(attrs.current_tilt_position),1,"Наклон (%)","Tilt (%)");
+    }
+    if (card.domain === "media_player") {
+      range("volume",0,100,Number(attrs.volume_level)*100,5,"Сила на звука (%)","Volume (%)");
+      select("source",attrs.source_list,attrs.source,"Източник","Source");
+    }
+    return inputs.length ? '<div class="v7-native-advanced">' + inputs.join("") + '</div>' : "";
+  }
+
   renderNativeCard(card, controllable, expandedControls = false) {
     const state = this._hass?.states?.[card.entity_id];
     if (!state) return "";
@@ -751,18 +808,22 @@ class StevoraHomePanel extends HTMLElement {
       (card.layout !== "info" && allowed.length > 0);
     const allActions = allowDetails ? actions.concat(details) : actions;
     return '<article class="v7-card v7-device v7-device-' + e(domain) +
-      (offline ? ' is-offline' : '') + (card.layout === "info" ? ' is-info' : '') + '">' +
+      (offline ? ' is-offline' : '') + (card.layout === "info" ? ' is-info' :
+        card.layout === "expanded" ? ' is-expanded' : ' is-compact') +
+      '" data-live-card="' + id + '">' +
       '<div class="v7-device-head"><span class="v7-device-glyph"><ha-icon icon="' +
       e(icon) + '"></ha-icon></span><span class="v7-device-heading"><strong>' +
-      e(card.name) + '</strong><small>' + e(this.t(
+      e(card.name) + '</strong><small>' +
+      (card.display_category === "lighting" ? this.t("Осветление","Lighting") : e(this.t(
         ({light:"Осветление",climate:"Климат",fan:"Вентилатор",cover:"Щори",
           switch:"Превключвател",media_player:"Медия",lock:"Сигурност",
           sensor:"Сензор",binary_sensor:"Състояние"})[domain] || "Устройство",
         ({light:"Lighting",climate:"Climate",fan:"Fan",cover:"Cover",
           switch:"Switch",media_player:"Media",lock:"Security",
           sensor:"Sensor",binary_sensor:"Status"})[domain] || "Device"
-      )) + '</small></span><span class="v7-device-chip">' + status + '</span></div>' +
+      ))) + '</small></span><span class="v7-device-chip">' + status + '</span></div>' +
       center + (sliders.length ? '<div class="v7-device-sliders">' + sliders.join("") + '</div>' : '') +
+      (full ? this.renderAdvancedControls(card,allowed,attrs) : '') +
       '<div class="v7-device-actions">' + allActions.join("") + '</div></article>';
   }
 
