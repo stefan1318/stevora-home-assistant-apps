@@ -538,7 +538,7 @@
         const result = await this._hass.callWS({ type: "stevora_os/system/status" });
         if (token !== this._systemRequest || connection !== this._hass?.connection ||
             user !== this._hass?.user?.id || !this._hass?.user?.is_admin) return;
-        if (!result || result.schema_version !== "1" || result.preview_version !== "1.0.0-alpha.1")
+        if (!result || result.schema_version !== "1" || result.preview_version !== "1.0.0-alpha.2")
           throw new Error("Unsupported system snapshot schema");
         this._system = result;
       } catch (_error) {
