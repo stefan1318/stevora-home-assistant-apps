@@ -194,6 +194,55 @@ class DiscoveryRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(included["discovery_diagnostics"]["counts"]["unassigned"], 0)
 
+    def test_classified_switch_without_area_is_in_lighting(self):
+        home = _Hass([("living", "Living")],
+                     [("switch.unassigned_lamp", None)], "classified", True)
+        home.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {}, "room_aliases": {}, "room_order": [],
+            "entity_aliases": {}, "translations": {},
+            "device_profiles": {"switch.unassigned_lamp": {
+                "display_category": "lighting", "layout": "compact",
+            }},
+        })
+        entry = types.SimpleNamespace(entry_id="classified", data={
+            "auto_discovery": True, "include_unassigned": False,
+            "lighting_entities": [],
+        }, options={})
+        result = self.discovery.build_manifest(home, entry)
+        self.assertEqual(result["domain_mappings"]["lighting"],
+                         ["switch.unassigned_lamp"])
+        self.assertIn("__stevora_unassigned__", result["mappings"])
+        self.assertEqual(result["entities"][0]["domain"], "switch")
+        self.assertEqual(result["entities"][0]["display_category"], "lighting")
+
+    def test_classified_switch_cannot_bypass_room_filter_or_visibility(self):
+        home = _Hass([("living", "Living"), ("kitchen", "Kitchen")],
+                     [("switch.lamp", None)], "limited", True)
+        home.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {}, "room_aliases": {}, "room_order": [],
+            "entity_aliases": {}, "translations": {},
+            "device_profiles": {"switch.lamp": {
+                "display_category": "lighting",
+            }},
+        })
+        entry = types.SimpleNamespace(entry_id="limited", data={
+            "room_filter": ["kitchen"], "include_unassigned": False,
+        }, options={})
+        filtered = self.discovery.build_manifest(home, entry)
+        self.assertEqual(filtered["entities"], [])
+        reasons = {item["entity_id"]: item["reason"]
+                   for item in filtered["discovery_diagnostics"]["entities"]}
+        self.assertEqual(reasons["switch.lamp"], "unassigned")
+        home.data["stevora"]["_admin_managers"].data["device_profiles"]["switch.lamp"]["area_id"] = "kitchen"
+        allowed = self.discovery.build_manifest(home, entry)
+        self.assertEqual(allowed["domain_mappings"]["lighting"], ["switch.lamp"])
+        home.data["stevora"]["_admin_managers"].data["visibility"]["switch.lamp"] = "exclude"
+        hidden = self.discovery.build_manifest(home, entry)
+        self.assertFalse(hidden["entities"])
+        reasons = {item["entity_id"]: item["reason"]
+                   for item in hidden["discovery_diagnostics"]["entities"]}
+        self.assertEqual(reasons["switch.lamp"], "explicitly_excluded")
+
     def test_explicit_include_unassigned_and_diagnostics(self):
         hass = _Hass(
             [("living", "Living")],
