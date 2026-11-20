@@ -87,6 +87,7 @@
       if (changed) {
         // Critical security rule: never show another user's or home's manifest.
         this._request += 1;
+        this._busy = false;
         this._connection = connection;
         this._user = user;
         this._manifest = null;
@@ -116,6 +117,7 @@
     disconnectedCallback() {
       this._connected = false;
       this._request += 1;
+      this._busy = false;
       this._manifest = null;
     }
 
@@ -162,7 +164,7 @@
     }
 
     _onClick(event) {
-      const target = event.target.closest("[data-view], [data-refresh]");
+      const target = event.target?.closest?.("[data-view], [data-refresh]");
       if (!target) return;
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
       const view = target.getAttribute("data-view");
@@ -226,7 +228,7 @@
       if (this._view === "system") return `
         <header class="section-heading"><h1>${escapeHTML(t.system)}</h1><span>${escapeHTML(t.backend)}</span></header>
         <section class="metrics">
-          ${this._stat(t.server, escapeHTML(this._hass?.config?.version || t.unavailable), "version")}
+          ${this._stat(t.server, this._hass?.config?.version || t.unavailable, "version")}
           ${this._stat(t.integration, ready ? t.loaded : t.unavailableStatus, "integration")}
           ${this._stat(t.hub, ready ? hub : "—", "hub")}
           ${this._stat(t.access, this._hass?.user?.is_admin ? t.administrator : t.user, "access")}
