@@ -118,7 +118,7 @@ const mock=(privileged,room)=>({
     if(request.type==="stevora_os/system/status"){
       if(!privileged)throw Error("unauthorized");
       return {
-        schema_version:"1",preview_version:"1.0.0-alpha.2",core_version:"2026.11.1",
+        schema_version:"1",preview_version:"1.0.0-alpha.3",core_version:"2026.11.1",
         ha_state:"running",registered_entities:3,updates_available:1,updates_unknown:1,
         official_updates:{
           core:{status:"available",installed_version:"2026.11.1",latest_version:"<img src=x onerror=bad()>"},
