@@ -207,6 +207,20 @@
     });
   }
   async function tryCall(payload,def) {try{return await call(payload)}catch{return def}}
+  async function coreREST(path,method="GET",body=null){
+    if(!state.token || !path.startsWith("/api/"))throw new Error("Core auth required");
+    const response=await fetch(path,{
+      method,headers:{
+        "Authorization":"Bearer "+state.token,
+        ...(body!==null?{"Content-Type":"application/json"}:{})
+      },
+      body:body!==null?JSON.stringify(body):undefined,
+      cache:"no-store",
+    });
+    if(!response.ok)throw new Error("Core "+method+" "+path+" failed ("+response.status+")");
+    const kind=response.headers.get("content-type")||"";
+    return kind.includes("json")?response.json():response.text();
+  }
   async function supervisor(endpoint,method="GET",data) {
     if(!state.admin)throw new Error(t("notAdmin"));
     if(!/^\/[a-z0-9_./-]+$/.test(endpoint)||endpoint.includes(".."))throw new Error("Invalid endpoint");
@@ -300,6 +314,8 @@
     }
     if(domain==="scene" && controllable(e))buttons+=action("turn_on",t("activate"));
     if(domain==="automation" && controllable(e))buttons+=action("trigger",t("trigger"));
+    if(domain==="automation" && state.admin)
+      buttons+='<button data-automation-edit="'+esc(id)+'">'+esc(t("details"))+'</button>';
     const stateLabel=e.state==="off"?t("turnOff"):e.state;
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
     return '<article class="device-card"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><strong>'+esc(name)+'</strong><small>'+esc(id)+'</small></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
@@ -317,7 +333,10 @@
     const domain={lighting:"light",climate:"climate",scenes:"scene",automations:"automation"}[view]||"all";
     const name=t(view)||t("devices");
     const list=visibleEntities(domain);
-    return hdr(name,list.length+" "+t("devices"))+toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
+    return hdr(name,list.length+" "+t("devices"))+
+      (view==="automations"&&state.admin?
+        '<div class="actions"><button data-automation-new="1">'+esc(t("install"))+' automation</button></div>':"")+
+      toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
   }
   function roomsView(){
     const rooms=state.areas;
@@ -484,11 +503,99 @@
     if(!state.admin)throw new Error(t("notAdmin"));
     const domain=form.querySelector('input[name="domain"]')?.value.trim();
     if(!/^[a-z0-9_]+$/.test(domain||""))throw new Error("Invalid integration domain");
-    const result=await call({type:"config_entries/flow/init",handler:domain,show_advanced_options:false});
-    showTextModal(domain+" • Config flow",JSON.stringify(result,null,2));
-    if(result.type==="form"){
-      notice("Integration flow started. Follow-up field editor requires next test gate.",true);
+    const result=await coreREST("/api/config/config_entries/flow","POST",{handler:domain});
+    await processFlow(domain,result);
+  }
+  async function processFlow(domain,result){
+    if(result?.type==="create_entry"){
+      notice("Integration configured: "+(result.title||domain));
+      await loadAdmin("integrations");renderContent();return;
     }
+    if(result?.type==="abort"){
+      notice("Integration setup: "+(result.reason||"aborted"),true);return;
+    }
+    if(result?.type!=="form"||!result.flow_id){
+      showTextModal("Configuration flow: "+domain,JSON.stringify(result,null,2));return;
+    }
+    // Generic HA selector forms are a large compatibility surface. Simple
+    // field types get native controls. Unsupported schema types are exposed
+    // as JSON instead of guessing credentials or silently submitting data.
+    const fields=Array.isArray(result.data_schema)?result.data_schema:[];
+    const dlg=document.createElement("dialog");dlg.className="details-dialog";
+    const title=document.createElement("h2");title.textContent="Configure "+domain+": "+(result.step_id||"user");
+    const form=document.createElement("form");form.method="dialog";
+    for(const field of fields){
+      if(typeof field.name!=="string")continue;
+      const label=document.createElement("label");label.textContent=field.name;
+      label.style.display="grid";label.style.margin="11px 0";label.style.gap="7px";
+      const input=document.createElement("input");
+      input.name=field.name;
+      input.required=!!field.required;
+      input.type=field.type==="boolean"?"checkbox":field.type==="integer"||field.type==="float"?"number":"text";
+      if(field.type==="float")input.step="any";
+      if(field.default!==undefined && field.type!=="boolean")input.value=String(field.default);
+      if(field.type==="boolean")input.checked=!!field.default;
+      input.style.cssText="background:#0d2741;color:#eaf7ff;padding:11px;border:1px solid #5d89a4;border-radius:9px";
+      label.append(input);form.append(label);
+    }
+    if(!fields.length){
+      const message=document.createElement("p");message.textContent="This config flow uses an unsupported or dynamic schema. No fields will be submitted automatically.";
+      form.append(message);
+    }
+    const submit=document.createElement("button");submit.type="submit";submit.textContent=t("confirm");
+    const cancel=document.createElement("button");cancel.type="button";cancel.textContent="Cancel";cancel.onclick=()=>dlg.close();
+    form.append(submit,cancel);dlg.append(title,form);
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();
+      const data={};
+      for(const input of form.querySelectorAll("input[name]")){
+        let value=input.type==="checkbox"?input.checked:input.value;
+        if(input.type==="number"&&value!=="")value=Number(value);
+        data[input.name]=value;
+      }
+      try{
+        const next=await coreREST("/api/config/config_entries/flow/"+encodeURIComponent(result.flow_id),"POST",data);
+        dlg.close();await processFlow(domain,next);
+      }catch(error){notice(formatError(error),true)}
+    });
+    dlg.addEventListener("close",()=>dlg.remove());document.body.append(dlg);dlg.showModal();
+  }
+  async function editAutomation(entityId){
+    if(!state.admin)throw new Error(t("notAdmin"));
+    let conf,uuid;
+    if(entityId){
+      if(!validId(entityId)||!entityId.startsWith("automation."))throw new Error("Bad automation");
+      conf=await call({type:"automation/config",entity_id:entityId});
+      uuid=String(conf?.id||"");
+      if(!/^[a-zA-Z0-9_-]{1,100}$/.test(uuid))throw new Error("Automation has no editable YAML id");
+    }else{
+      uuid=crypto.randomUUID().replaceAll("-","");
+      conf={id:uuid,alias:"New STEVORA automation",description:"",
+        triggers:[],conditions:[],actions:[],mode:"single"};
+    }
+    const dialog=document.createElement("dialog");dialog.className="details-dialog";
+    const title=document.createElement("h2");title.textContent="STEVORA Automation Editor";
+    const text=document.createElement("textarea");text.rows=20;text.value=JSON.stringify(conf,null,2);
+    const hint=document.createElement("p");
+    hint.textContent="Advanced JSON editor using Home Assistant's validated automation config endpoint.";
+    const save=document.createElement("button");save.textContent=t("save");
+    save.addEventListener("click",async()=>{
+      try{
+        const cfg=JSON.parse(text.value);
+        if(!cfg||typeof cfg!=="object"||Array.isArray(cfg))throw new Error("Invalid JSON");
+        if(!confirm(t("confirm")+" automation "+uuid+"?"))return;
+        await coreREST("/api/config/automation/config/"+encodeURIComponent(uuid),"POST",cfg);
+        dialog.close();
+        const entities=await call({type:"get_states"});
+        const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
+        state.entities=(entities||[]).filter(e=>readable.has(e.entity_id)&&!backlight(e));
+        renderContent();
+        notice("Automation saved");
+      }catch(e){notice(formatError(e),true)}
+    });
+    const close=document.createElement("button");close.textContent="Close";close.onclick=()=>dialog.close();
+    dialog.append(title,hint,text,save,close);
+    dialog.addEventListener("close",()=>dialog.remove());document.body.append(dialog);dialog.showModal();
   }
   async function createBackup(){
     if(!state.admin)throw new Error(t("notAdmin"));
@@ -537,6 +644,15 @@
       try{await addonAction(addon,btn.getAttribute("data-addon-action"))}
       catch(e){notice(formatError(e),true)}
       finally{btn.disabled=false}
+      return;
+    }
+    if(btn.hasAttribute("data-automation-new")){
+      try{await editAutomation(null)}catch(e){notice(formatError(e),true)}
+      return;
+    }
+    if(btn.hasAttribute("data-automation-edit")){
+      try{await editAutomation(btn.getAttribute("data-automation-edit"))}
+      catch(e){notice(formatError(e),true)}
       return;
     }
     const entry=btn.getAttribute("data-entry");
