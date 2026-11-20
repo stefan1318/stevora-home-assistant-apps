@@ -66,15 +66,25 @@ class StevoraHomePanel extends HTMLElement {
       const inventoryChanged = this._stateSignature !== null &&
         signature !== this._stateSignature;
       this._stateSignature = signature;
-      // HA publishes state updates frequently. Settings and chat are workspaces:
-      // never destroy open editors, unsaved choices, chat input or scroll.
-      if (this._view === "settings" && this._mode === "stevora") {
-        if (inventoryChanged) void this.refresh();
+      // Full render is reserved for navigation/configuration changes.
+      // State ticks patch only live text/attributes of existing cards:
+      // no Shadow DOM replacement, focus loss, scroll jumps or flicker.
+      const changedFeatures = Object.keys(value.states || {}).some(id => {
+        const before = old?.states?.[id]?.attributes || {};
+        const after = value.states[id]?.attributes || {};
+        return ["supported_features","supported_color_modes","hvac_modes",
+          "fan_modes","preset_modes","swing_modes","effect_list","source_list"]
+          .some(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+      });
+      if (inventoryChanged || changedFeatures) {
+        void this.refresh();
         return;
       }
-      if (this._view === "ai" && this._mode === "stevora") return;
-      if (inventoryChanged) void this.refresh();
-      else this.render();
+      if (this._mode === "stevora") {
+        if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
+        return;
+      }
+      this.render();
     }
   }
 
@@ -827,6 +837,114 @@ class StevoraHomePanel extends HTMLElement {
       '<div class="v7-device-actions">' + allActions.join("") + '</div></article>';
   }
 
+  patchLiveStates() {
+    if (!this.shadowRoot?.querySelectorAll || !this._panelModel) return;
+    const states = this._hass?.states || {};
+    const cards = new Map((this._panelModel.sections || []).flatMap(section =>
+      (section.cards || []).map(card => [card.entity_id,card])));
+    const isOnline = state => state && !["unknown","unavailable"].includes(state.state);
+    const text = (node,value) => { if (node && node.textContent !== String(value)) node.textContent = String(value); };
+    const one = (node,selector) => node?.querySelector?.(selector);
+    const firstText = (node,value) => {
+      if (!node) return;
+      const first = node.firstChild;
+      if (first && first.nodeType === 3) first.nodeValue = String(value);
+    };
+    this.shadowRoot.querySelectorAll("[data-live-card]").forEach(node => {
+      const entityId = node.getAttribute("data-live-card");
+      const card = cards.get(entityId);
+      const state = states[entityId];
+      if (!card || !state) return;
+      const live = isOnline(state);
+      node.classList?.toggle("is-offline", !live);
+      text(one(node,".v7-device-chip"),live ? (
+        state.state === "on" || state.state === "playing" ?
+        this.t("Активно","Active") : this.t("На линия","Available")
+      ) : this.t("Офлайн","Offline"));
+      text(one(node,".v7-device-state"),this.nativeStateLabel(state,card.domain));
+      text(one(node,".v7-device-light-state strong"),this.nativeStateLabel(state,card.domain));
+      const rgb = state.attributes?.rgb_color;
+      if (Array.isArray(rgb) && rgb.length === 3 &&
+          rgb.every(x => Number.isInteger(x) && x >= 0 && x <= 255)) {
+        const dot = one(node,".v7-device-light-state .v7-color-dot");
+        if (dot) dot.style.background = "#" + rgb.map(x => x.toString(16).padStart(2,"0")).join("");
+      }
+      if (card.domain === "climate") {
+        const now = state.attributes?.current_temperature;
+        const target = state.attributes?.temperature;
+        firstText(one(node,".v7-device-temp"),
+          now == null || !Number.isFinite(Number(now)) ? "—" : Number(now).toFixed(1));
+        text(one(node,".v7-device-target"),this.t("Цел","Target") + " · " +
+          (target == null || !Number.isFinite(Number(target)) ? "—" :
+            Number(target).toFixed(0) + this.temperatureUnit()));
+      }
+      const canWrite = live && this._manifest?.controllable_entities?.includes(entityId);
+      node.querySelectorAll?.("button[data-action],input[data-native-range],select[data-native-select],input[data-native-check],input[data-lightbrightness],input[data-lightcolor],input[data-fanpercentage]")
+        .forEach(control => {
+          if (!control.dataset?.action || control.dataset.action !== "details")
+            control.disabled = !canWrite;
+        });
+      const toggle = one(node,'button[data-action="toggle"] span');
+      if (toggle) text(toggle,state.state === "on" ?
+        this.t("Изключи","Turn off") : this.t("Включи","Turn on"));
+      // Never pull a focused slider/selector out from under the user.
+      const active = this.shadowRoot.activeElement;
+      const bright = one(node,"[data-lightbrightness]");
+      if (bright && bright !== active) {
+        const value = Number(state.attributes?.brightness);
+        if (Number.isFinite(value)) bright.value = String(Math.round(value / 255 * 100));
+      }
+      const fan = one(node,"[data-fanpercentage]");
+      if (fan && fan !== active && Number.isFinite(Number(state.attributes?.percentage)))
+        fan.value = String(state.attributes.percentage);
+    });
+    this.shadowRoot.querySelectorAll("[data-live-climate]").forEach(node => {
+      const id = node.getAttribute("data-live-climate");
+      const card = cards.get(id);
+      if (!card) return;
+      const {state,current,target,humidity} = this.climateTelemetry(card);
+      firstText(one(node,".v7-climate-large"),Number.isFinite(current) ? current.toFixed(1) : "—");
+      const readings = node.querySelectorAll?.(".v7-climate-reading-item strong") || [];
+      text(readings[0],Number.isFinite(target) ? target.toFixed(0)+this.temperatureUnit() : "—");
+      text(readings[1],Number.isFinite(humidity) ? humidity.toFixed(0)+"%" : "—");
+      text(readings[2],this.nativeStateLabel(state,"climate"));
+      text(one(node,".v7-climate-title small"),this.nativeStateLabel(state,"climate"));
+      const live = isOnline(state);
+      text(one(node,".v7-climate-status"),live ? this.t("На линия","Online") :
+        this.t("Недостъпно","Unavailable"));
+      node.querySelectorAll?.("button[data-action],select[data-climate-select]").forEach(control =>
+        {control.disabled = !live;});
+    });
+    this.shadowRoot.querySelectorAll("[data-live-light]").forEach(node => {
+      const id = node.getAttribute("data-live-light");
+      const state = states[id];
+      if (!state) return;
+      const dot = one(node,".v7-state-dot");
+      const on = state.state === "on";
+      dot?.classList?.toggle("on",on);
+      const rgb = state.attributes?.rgb_color;
+      if (dot && Array.isArray(rgb) && rgb.length === 3 &&
+          rgb.every(x => Number.isInteger(x) && x >= 0 && x <= 255) && on)
+        dot.style.background = "#" + rgb.map(x => x.toString(16).padStart(2,"0")).join("");
+      const summary = one(node,".v7-muted");
+      text(summary,this.nativeStateLabel(state,"light"));
+      const toggle = one(node,'button[data-action="toggle"]');
+      if (toggle) {
+        toggle.disabled = !isOnline(state);
+        text(toggle,on ? this.t("Изключи","Off") : this.t("Включи","On"));
+      }
+    });
+    const tiles = this.shadowRoot.querySelectorAll(".v7-stats > .v7-card");
+    const permitted = [...cards.values()];
+    const lit = permitted.filter(x => x.display_category === "lighting" ||
+      x.domain === "light" && !x.display_category).filter(card =>
+        states[card.entity_id]?.state === "on").length;
+    const offline = permitted.filter(card =>
+      ["unavailable","unknown"].includes(states[card.entity_id]?.state)).length;
+    text(one(tiles[2],".v7-stat-val"),lit);
+    text(one(tiles[3],".v7-stat-val"),offline);
+  }
+
   inventory() {
     const states = Object.values(this._hass?.states || {});
     const allowed = new Set((this._panelModel?.sections || []).flatMap(s => s.cards.map(x => x.entity_id)));
@@ -965,7 +1083,7 @@ class StevoraHomePanel extends HTMLElement {
           components.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
         const color = hasColor ? "#" + components.map(x => x.toString(16).padStart(2,"0")).join("") : "";
         const on = st?.state === "on";
-        return '<div class="v7-light-tile"><div class="v7-light-name-wrap">' +
+        return '<div class="v7-light-tile" data-live-light="' + this.escape(card.entity_id) + '"><div class="v7-light-name-wrap">' +
           '<span class="v7-state-dot ' + (on ? "on" : "") + '"' +
           (color && on ? ' style="background:' + color + '"' : "") + '></span>' +
           '<span class="v7-light-name">' + this.escape(card.name) + '</span></div>' +
