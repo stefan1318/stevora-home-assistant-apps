@@ -7,6 +7,7 @@ on:
     paths:
       - 'custom_components/stevora_os/**'
       - 'tests/test_stevora_os_preview.py'
+      - 'tests/stevora_os_preview_smoke.mjs'
       - 'docs/STE-00-STEVORA-OS-DEVELOPER-PREVIEW-0.1-BG.md'
       - '.github/workflows/stevora-os-developer-preview.yml'
   pull_request:
@@ -40,6 +41,8 @@ jobs:
           python -m unittest discover -s tests -p 'test_stevora_os_preview.py' -v
       - name: JavaScript syntax check
         run: node --check custom_components/stevora_os/frontend/stevora-os.js
+      - name: JavaScript runtime isolation smoke
+        run: node tests/stevora_os_preview_smoke.mjs
       - name: Build isolated preview artifact
         run: |
           mkdir -p dist/custom_components dist/docs
