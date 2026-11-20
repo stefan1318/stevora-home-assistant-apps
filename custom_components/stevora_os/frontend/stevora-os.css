@@ -1,4 +1,4 @@
-/* STEVORA OS Experience 1.0.0-alpha.2 — all styles local; responsive, accessible. */
+/* STEVORA OS Experience 1.0.0-alpha.3 — all styles local; responsive, accessible. */
 :host{--bg:#050e1a;--surface:#0e1e34;--card:#102740;--edge:rgba(152,204,255,.17);--text:#eaf5ff;--muted:#9aafcb;--accent:#7edbfa;--mint:#73e0be;display:block;min-height:100vh;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 :host *{box-sizing:border-box}
 :host button,:host select{font:inherit}
@@ -187,4 +187,37 @@ footer strong{font-weight:750;margin-left:4px}
  .toolbar .shell-focus{font-size:10px;min-height:34px}
  .setup-steps{grid-template-columns:1fr}
  .setup-steps>.card{padding:21px}
+}
+
+/* Alpha.3: branded launch identity and scoped integration inventory. */
+.brand-mark,.orbit-core{
+  background-image:url("/stevora_os_static/icons/stevora-192.png");
+  background-color:#06152a;
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  color:transparent!important;
+  text-shadow:none!important;
+}
+.integrations-card{max-width:none;margin-top:18px}
+.integrations-card>p{margin:16px 0;font-size:12px;color:var(--muted)}
+.integrations-header{display:flex;gap:13px;align-items:end;justify-content:space-between}
+.integrations-header>label{display:grid;gap:7px;min-width:190px;flex:1;color:var(--muted);font-size:11px}
+.integrations-header input{
+  width:100%;min-width:0;border-radius:10px;background:#09192e;color:#d6ebff;
+  font:inherit;font-size:13px;border:1px solid var(--edge);min-height:42px;padding:10px 13px;
+}
+.integrations-header .button{margin:0;white-space:nowrap}
+.integration-list{display:grid;gap:7px;max-height:560px;overflow:auto;margin-top:16px}
+.integration-row{display:flex;align-items:center;gap:12px;border:1px solid var(--edge);border-radius:13px;padding:12px;background:rgba(12,31,52,.7)}
+.integration-row[hidden]{display:none!important}
+.integration-icon{width:38px;height:38px;flex:none;display:grid;place-items:center;border-radius:10px;background:rgba(55,134,186,.16);color:#91cff7;font-size:22px}
+.integration-text{min-width:0;flex:1}
+.integration-text strong{display:block;overflow-wrap:anywhere;font-size:13px}
+.integration-text small{display:block;font-size:10px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.integration-row .os-status{max-width:38%;white-space:normal;text-align:right;overflow-wrap:anywhere}
+@media(max-width:700px){
+ .integrations-header{flex-direction:column;align-items:stretch}
+ .integrations-header>label{width:100%}
+ .integrations-header>.button{align-self:start}
 }
