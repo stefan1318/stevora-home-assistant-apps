@@ -507,7 +507,7 @@
         const pref = result.preferences;
         if (!["bg","en"].includes(pref.language) ||
             !["home","rooms","devices","lighting","climate","scenes","automation",
-              "assist","system","setup","about"].includes(pref.default_view))
+              "assist","system","setup","integrations","about"].includes(pref.default_view))
           throw new Error("Unsupported preferences");
         this._preferences = result;
         const relocalize = this._language !== pref.language;
@@ -783,7 +783,7 @@
       const compact = Boolean(form?.querySelector?.('input[name="compact_nav"]')?.checked);
       if (!["bg","en"].includes(lang) ||
           !["home","rooms","devices","lighting","climate","scenes","automation",
-            "assist","system","setup","about"].includes(page)) return;
+            "assist","system","setup","integrations","about"].includes(page)) return;
       const saved = await this._updatePreferences({
         language:lang, default_view:page, compact_nav:compact, onboarding_complete:true
       });
@@ -803,7 +803,7 @@
       const compact = Boolean(form?.querySelector?.('input[name="compact_nav"]')?.checked);
       if (!["bg","en"].includes(lang) ||
           !["home","rooms","devices","lighting","climate","scenes","automation",
-            "assist","system","setup","about"].includes(page)) return;
+            "assist","system","setup","integrations","about"].includes(page)) return;
       const saved = await this._updatePreferences({
         language:lang, default_view:page, compact_nav:compact
       });
@@ -1187,7 +1187,7 @@
         ["home", t.home], ["rooms", t.rooms], ["devices", t.devicesTitle],
         ["lighting", t.lighting], ["climate", t.climate],
         ["scenes", t.scenes], ["automation", t.automation],
-        ["assist", t.assist], ["system", t.system]
+        ["assist", t.assist], ["system", t.system], ["integrations", t.integrations]
       ];
       const pageOptions = allowed.map(([id, name]) =>
         '<option value="'+id+'" '+(preferences.default_view===id?'selected':'')+'>'+
