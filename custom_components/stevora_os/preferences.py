@@ -89,10 +89,10 @@ class Preferences:
                 return "limit", current
             updated = {
                 "revision": expected_revision + 1,
-                "preferences": {
+                "preferences": valid_preferences({
                     **current["preferences"],
                     **changes,
-                },
+                }),
             }
             next_data = {**self._data, user_id: updated}
             await self._store.async_save(next_data)
