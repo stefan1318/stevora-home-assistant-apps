@@ -1532,7 +1532,9 @@ class StevoraHomePanel extends HTMLElement {
           !this._manifest?.controllable_entities?.includes(entityId)) return false;
       const card = (this._panelModel?.sections || []).flatMap(section => section.cards || [])
         .find(item => item.entity_id === entityId);
-      if (!card || !(card.controls || []).includes(control)) return false;
+      if (!card || card.layout === "info" ||
+          !(card.controls || []).includes(control) ||
+          !this.supportedControls(card).includes(control)) return false;
       const manifestEntry = this._manifest.entities?.find(x => x.entity_id === entityId);
       const sourceNames = [entityId, state.attributes?.friendly_name, card.name,
         manifestEntry?.name, manifestEntry?.original_name, manifestEntry?.source_name];
@@ -1550,6 +1552,83 @@ class StevoraHomePanel extends HTMLElement {
         this._error = String(error?.message || error);
         this.render();
       }
+    });
+    const nativeControl = (id,key,domain) => {
+      const card = (this._panelModel?.sections || []).flatMap(section => section.cards || [])
+        .find(item => item.entity_id === id);
+      return !!card && card.domain === domain && card.layout === "expanded" &&
+        controlAllowed(id,key);
+    };
+    const nativeSelectServices = {
+      "climate:hvac_mode":["climate","set_hvac_mode","hvac_mode","hvac_modes"],
+      "climate:fan_mode":["climate","set_fan_mode","fan_mode","fan_modes"],
+      "climate:preset_mode":["climate","set_preset_mode","preset_mode","preset_modes"],
+      "climate:swing_mode":["climate","set_swing_mode","swing_mode","swing_modes"],
+      "fan:preset_mode":["fan","set_preset_mode","preset_mode","preset_modes"],
+      "fan:direction":["fan","set_direction","direction",null],
+      "light:effect":["light","turn_on","effect","effect_list"],
+      "media_player:source":["media_player","select_source","source","source_list"],
+    };
+    const applySelect = async (entity,key,value,requireExpanded) => {
+      const domain = entity.split(".")[0];
+      const mapping = nativeSelectServices[domain+":"+key];
+      const allowed = requireExpanded ? nativeControl(entity,key,domain) :
+        controlAllowed(entity,key) && domain === "climate";
+      if (!mapping || !allowed) return;
+      const [serviceDomain,service,field,validAttribute] = mapping;
+      const attrs = this._hass?.states?.[entity]?.attributes || {};
+      if (validAttribute && (!Array.isArray(attrs[validAttribute]) ||
+            !attrs[validAttribute].includes(value))) return;
+      if (key === "direction" && !["forward","reverse"].includes(value)) return;
+      try {
+        await this._hass.callService(serviceDomain,service,{entity_id:entity,[field]:value});
+        this._error = "";
+      } catch(error) { this._error=String(error?.message || error); this.render(); }
+    };
+    this.shadowRoot.querySelectorAll("[data-climate-select]").forEach(select =>
+      select.onchange = () => { void applySelect(
+        select.dataset.id,select.dataset.climateSelect,select.value,false
+      ); }
+    );
+    this.shadowRoot.querySelectorAll("[data-native-select]").forEach(select =>
+      select.onchange = () => { void applySelect(
+        select.dataset.id,select.dataset.nativeSelect,select.value,true
+      ); }
+    );
+    this.shadowRoot.querySelectorAll("[data-native-range]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.id;
+      const key = input.dataset.nativeRange;
+      const domain = id?.split(".")[0];
+      if (!nativeControl(id,key,domain)) return;
+      const attrs = this._hass?.states?.[id]?.attributes || {};
+      const raw = Number(input.value);
+      const ranges = {
+        "light:color_temp": [
+          "light","turn_on","color_temp_kelvin",
+          Number(attrs.min_color_temp_kelvin || 2000),
+          Number(attrs.max_color_temp_kelvin || 6500)
+        ],
+        "cover:position":["cover","set_cover_position","position",0,100],
+        "cover:tilt":["cover","set_cover_tilt_position","tilt_position",0,100],
+        "media_player:volume":["media_player","volume_set","volume_level",0,100],
+      };
+      const map = ranges[domain+":"+key];
+      if (!map || !Number.isFinite(raw) || raw < map[3] || raw > map[4]) return;
+      const [serviceDomain,service,field] = map;
+      const value = key === "volume" ? raw / 100 : raw;
+      try {
+        await this._hass.callService(serviceDomain,service,{entity_id:id,[field]:value});
+        this._error = "";
+      } catch(error) { this._error=String(error?.message || error); this.render(); }
+    });
+    this.shadowRoot.querySelectorAll("[data-native-check]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.id;
+      if (input.dataset.nativeCheck !== "oscillate" ||
+          !nativeControl(id,"oscillate","fan")) return;
+      try {
+        await this._hass.callService("fan","oscillate",{entity_id:id,oscillating:!!input.checked});
+        this._error = "";
+      } catch(error) { this._error=String(error?.message || error); this.render(); }
     });
     const canModifyLight = (id, control) =>
       id.split(".")[0] === "light" && controlAllowed(id, control);
@@ -1582,6 +1661,8 @@ class StevoraHomePanel extends HTMLElement {
       if (!card) return;
       const domain = card.domain;
       if (action === "details") {
+        if (card.layout === "info" &&
+            !["sensor","binary_sensor"].includes(domain)) return;
         // HA More Info is the familiar native control panel. HA decides which
         // services this authenticated user can actually invoke.
         this.dispatchEvent(new CustomEvent("hass-more-info", {
