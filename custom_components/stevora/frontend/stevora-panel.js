@@ -1382,7 +1382,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711-beta4");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-beta5");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
