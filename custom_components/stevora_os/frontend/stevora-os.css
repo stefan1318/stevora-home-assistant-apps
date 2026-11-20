@@ -1,4 +1,4 @@
-/* STEVORA OS Experience 1.0.0-alpha.1 — all styles local; responsive, accessible. */
+/* STEVORA OS Experience 1.0.0-alpha.2 — all styles local; responsive, accessible. */
 :host{--bg:#050e1a;--surface:#0e1e34;--card:#102740;--edge:rgba(152,204,255,.17);--text:#eaf5ff;--muted:#9aafcb;--accent:#7edbfa;--mint:#73e0be;display:block;min-height:100vh;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 :host *{box-sizing:border-box}
 :host button,:host select{font:inherit}
@@ -150,3 +150,41 @@ footer strong{font-weight:750;margin-left:4px}
 .home-detail .kv span{overflow-wrap:anywhere}
 .home-detail .kv strong{font-size:11px;text-align:right;overflow-wrap:anywhere}
 @media(max-width:850px){.home-detail{grid-template-columns:1fr}}
+
+/* 1.0 alpha.2 — opt-in focus mode, first-run wizard and per-user settings */
+.setup-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:17px;align-items:start}
+.setup-steps>.card{height:100%;max-width:none}
+.setup-steps>.card:last-child{grid-column:1/-1}
+.setup-steps>.card h2{font-size:17px;line-height:1.35;margin-bottom:14px}
+.setup-steps>.card p{font-size:13px;color:var(--muted);line-height:1.65}
+.section-intro{color:#b0c8e1;max-width:800px;line-height:1.7}
+.stevora-preferences{display:grid;gap:15px;margin:18px 0 12px}
+.stevora-preferences>label:not(.check-row){display:grid;gap:7px;color:#bdd8ee;font-size:12px}
+.stevora-preferences select{background:#0b1c30;border:1px solid var(--edge);border-radius:11px;min-height:43px;padding:9px 12px;color:var(--text);font:inherit;max-width:100%;cursor:pointer}
+.stevora-preferences .check-row{display:flex;align-items:center;gap:11px;font-size:12px;color:#c5dbed}
+.stevora-preferences .check-row input{height:18px;width:18px;accent-color:#72d2fb}
+.stevora-preferences .button{justify-self:start;margin-top:5px}
+.stevora-preferences .button:disabled{opacity:.4;cursor:default}
+.os-personal-settings{max-width:none;margin-bottom:16px}
+.os-personal-settings .stevora-preferences{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
+.os-personal-settings>.button{margin-top:8px}
+.note-error{color:#ffbd9b;font-size:12px}
+.toolbar .shell-focus{margin:0;min-height:36px;padding:7px 12px;white-space:nowrap;font-size:11px}
+.shell.shell-compact{grid-template-columns:82px minmax(0,1fr)}
+.shell-compact .side{padding:19px 10px}
+.shell-compact .side .brand{padding-left:7px}
+.shell-compact .side .brand strong,.shell-compact .side .brand small,
+.shell-compact .side .sidebar-label,.shell-compact .side .side-footer,
+.shell-compact .side .nav-item>span:last-child{display:none}
+.shell-compact .side .nav-item{justify-content:center;padding:9px 10px}
+.shell-compact .side nav{max-height:calc(100vh - 130px)}
+:host(:fullscreen){width:100vw;height:100vh;overflow:auto}
+:host(:fullscreen) .shell{min-height:100vh}
+@media(max-width:1100px){.setup-steps{grid-template-columns:1fr}.setup-steps>.card:last-child{grid-column:auto}}
+@media(max-width:760px){
+ .shell.shell-compact{display:block}
+ .os-personal-settings .stevora-preferences{grid-template-columns:1fr}
+ .toolbar .shell-focus{font-size:10px;min-height:34px}
+ .setup-steps{grid-template-columns:1fr}
+ .setup-steps>.card{padding:21px}
+}

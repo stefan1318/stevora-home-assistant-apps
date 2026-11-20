@@ -58,6 +58,11 @@ const panelModel=(privileged)=>({
   }],
 });
 const serviceCalls=[];
+const preferences=new Map();
+const defaultPrefs=()=>({
+  language:"bg",default_view:"home",compact_nav:false,onboarding_complete:false
+});
+const readPrefs=(key)=>preferences.get(key)||{revision:0,preferences:defaultPrefs()};
 const mock=(privileged,room)=>({
   connection:{},
   user:{id:privileged?"admin-A":"viewer-B",is_admin:privileged},
@@ -69,6 +74,17 @@ const mock=(privileged,room)=>({
   }:{"light.allowed":{state:"off",attributes:{}}},
   callService:async(domain,service,data)=>{serviceCalls.push({domain,service,data});},
   callWS:async(request)=>{
+    const key=privileged?"admin-A":"viewer-B";
+    if(request.type==="stevora_os/preferences/get")
+      return {schema_version:"1", ...readPrefs(key)};
+    if(request.type==="stevora_os/preferences/update"){
+      const prev=readPrefs(key);
+      if(request.expected_revision!==prev.revision)throw Error("conflict");
+      const {type,expected_revision,...change}=request;
+      const next={revision:prev.revision+1,preferences:{...prev.preferences,...change}};
+      preferences.set(key,next);
+      return {schema_version:"1",...next};
+    }
     if(request.type==="stevora/manifest")return manifest(room,privileged);
     if(request.type==="stevora/panel/generate")return panelModel(privileged);
     if(request.type==="stevora/hub/scenes")return {
@@ -82,7 +98,7 @@ const mock=(privileged,room)=>({
     if(request.type==="stevora_os/system/status"){
       if(!privileged)throw Error("unauthorized");
       return {
-        schema_version:"1",preview_version:"1.0.0-alpha.1",core_version:"2026.11.1",
+        schema_version:"1",preview_version:"1.0.0-alpha.2",core_version:"2026.11.1",
         ha_state:"running",registered_entities:3,updates_available:1,updates_unknown:1,
         official_updates:{
           core:{status:"available",installed_version:"2026.11.1",latest_version:"<img src=x onerror=bad()>"},
@@ -102,6 +118,27 @@ await wait();
 assert.equal(panel._status,"ready");
 assert.ok(panel._model?.sections?.length);
 assert.ok(panel._system);
+assert.ok(panel._preferences, "Current HA user's preferences loaded");
+assert.equal(panel._view,"onboarding", "New users should see setup wizard");
+panel.render();
+assert.ok(panel.shadowRoot.html.includes("Първоначална настройка"));
+const setupForm={
+  querySelector:(selector)=>({
+    'select[name="language"]':{value:"en"},
+    'select[name="default_view"]':{value:"devices"},
+    'input[name="compact_nav"]':{checked:true},
+  })[selector]||null,
+};
+await panel._saveOnboarding(setupForm);
+await wait();
+assert.equal(panel._preferences.preferences.onboarding_complete,true);
+assert.equal(panel._preferences.preferences.default_view,"devices");
+assert.equal(panel._language,"en");
+assert.equal(panel._view,"devices");
+assert.equal(preferences.get("admin-A").revision,1);
+panel._view="home";
+panel.render();
+assert.ok(panel.shadowRoot.html.includes("home-detail"),"Home highlights should render");
 assert.ok(!panel._cards("all").some(c=>c.entity_id==="switch.backlight"),
   "Backlight entity must be filtered even if the source model erroneously includes it");
 assert.equal(panel._cards("lighting").length,1);
@@ -123,6 +160,14 @@ panel._view="rooms";
 panel.render();
 assert.ok(panel.shadowRoot.html.includes("&lt;script&gt;bad()&lt;/script&gt;"));
 assert.ok(!panel.shadowRoot.html.includes("<script>bad()"));
+// State patch must preserve climate temperature rather than overwrite with HVAC mode.
+const climateLabel={
+  textContent:"",getAttribute:(name)=>name==="data-live-entity"?"climate.living":null
+};
+panel.shadowRoot.querySelectorAll=(selector)=>
+  selector==="[data-live-entity]"?[climateLabel]:[];
+panel._patchLive();
+assert.equal(climateLabel.textContent,"25° · cool");
 panel._view="system";
 panel.render();
 assert.ok(panel.shadowRoot.html.includes("&lt;img src=x onerror=bad()&gt;"));
@@ -142,6 +187,9 @@ let release;
 const pending=new Promise(resolve=>{release=resolve;});
 const viewer=mock(false,"Bedroom");
 viewer.callWS=async(req)=>{
+  if(req.type==="stevora_os/preferences/get")return {
+    schema_version:"1",revision:0,preferences:defaultPrefs()
+  };
   if(req.type==="stevora/manifest")return pending;
   if(req.type==="stevora/panel/generate")return panelModel(false);
   if(req.type==="stevora/hub/scenes")return {installation_id:"home-B",items:[]};
@@ -152,11 +200,15 @@ panel.hass=viewer;
 assert.equal(panel._manifest,null,"Old manifest cleared immediately on HA session switch");
 assert.equal(panel._system,null,"Admin diagnostics cleared on HA session switch");
 assert.equal(panel._model,null,"Old control model must be cleared");
+assert.equal(panel._preferences,null,"Preferences from admin must clear on session switch");
 assert.ok(!panel.shadowRoot.html.includes("&lt;img src=x onerror=bad()&gt;"));
 release(manifest("Bedroom",false));
 await wait();
 assert.equal(panel._status,"ready");
 assert.equal(panel._cards().length,1);
+assert.equal(panel._preferences.preferences.language,"bg",
+  "Viewer must never inherit admin language and onboarding preferences");
+assert.equal(panel._view,"onboarding");
 panel._view="devices";
 panel.render();
 assert.ok(panel.shadowRoot.html.includes("Bedroom")===false || panel._manifest.rooms[0].name==="Bedroom");
@@ -170,4 +222,5 @@ assert.ok(!panel.shadowRoot.html.includes("updates_available"));
 panel.disconnectedCallback();
 assert.equal(panel._manifest,null);
 assert.equal(panel._model,null);
+assert.equal(panel._preferences,null);
 console.log("STEVORA OS 1.0 alpha runtime, actions, isolation and backlight safety PASS");

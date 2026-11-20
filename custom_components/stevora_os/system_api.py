@@ -9,7 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.const import __version__ as HA_VERSION
 
 STATUS_SCHEMA = "1"
-PREVIEW_VERSION = "1.0.0-alpha.1"
+PREVIEW_VERSION = "1.0.0-alpha.2"
 
 # Official HA OS deployments commonly expose these update entities.
 # An absent entity means 'not_detected', NOT 'up_to_date'.

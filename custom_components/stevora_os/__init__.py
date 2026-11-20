@@ -13,18 +13,23 @@ from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 from .system_api import register as register_system_status
+from .preferences import Preferences, register as register_preferences
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "stevora_os"
 PANEL_PATH = "stevora-os"
 PANEL_COMPONENT = "stevora-os-preview"
-PANEL_MODULE = "/stevora_os_static/stevora-os.js?v=1.0.0-alpha.1"
+PANEL_MODULE = "/stevora_os_static/stevora-os.js?v=1.0.0-alpha.2"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register a completely separate STEVORA OS preview panel."""
-    register_system_status(hass)
     state = hass.data.setdefault(DOMAIN, {})
+    preferences = Preferences(hass)
+    await preferences.async_load()
+    state["preferences"] = preferences
+    register_system_status(hass)
+    register_preferences(hass)
     if not state.get("static_registered"):
         await hass.http.async_register_static_paths(
             [
@@ -51,7 +56,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         sidebar_title="STEVORA OS",
         sidebar_icon="mdi:monitor-dashboard",
         require_admin=False,
-        config={"preview_version": "1.0.0-alpha.1"},
+        config={"preview_version": "1.0.0-alpha.2"},
     )
     state["status"] = "active"
     return True

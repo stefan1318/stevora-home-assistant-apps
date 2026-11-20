@@ -1,4 +1,4 @@
-/* STEVORA OS 1.0.0-alpha.1 unified frontend
+/* STEVORA OS 1.0.0-alpha.2 primary frontend + onboarding
  * Read-only shell backed by the existing permission-scoped STEVORA manifest.
  * No direct device control, no privileges, no external dependencies/CDNs.
  */
@@ -91,6 +91,40 @@
       onboardingInfo: "Universal Integration трябва да бъде инсталирана. STEVORA използва оригиналната HA автентикация.",
       integrationSettings: "Настройки на интеграциите",
       noControls: "Няма разрешени управления",
+      onboardTitle: "Първоначална настройка на STEVORA",
+      onboardSub: "Твоята STEVORA среда, персонализирана за този HA акаунт.",
+      onboardStep1: "1 · Свързана система",
+      onboardStep2: "2 · Изглед и език",
+      onboardStep3: "3 · Завършване",
+      onboardConnected: "Свързано към този Home Assistant сървър",
+      onboardConnectedNote: "Използва се твоят текущ HA вход. Не създаваме отделна парола за STEVORA.",
+      onboardManifestReady: "Стаите и устройствата се откриват автоматично през Universal Integration.",
+      onboardManifestMissing: "Universal Integration още не предоставя манифест. Завърши нейната настройка в HA.",
+      preferredHome: "Начален екран",
+      compactNav: "Компактна навигация",
+      enterFullscreen: "Цял екран",
+      exitFullscreen: "Изход от цял екран",
+      fullscreenUnavailable: "Този браузър не позволява режим „Цял екран“. На iPhone използвай Add to Home Screen за по-самостоятелен изглед.",
+      chooseStart: "Избери началния екран",
+      savePreferences: "Запази предпочитанията",
+      finishOnboarding: "Завърши началната настройка",
+      onboardingDone: "Първоначалната настройка е завършена",
+      reopenWizard: "Повтори настройката",
+      preferencesUnavailable: "Не могат да се заредят персоналните настройки.",
+      preferencesSaveFailed: "Неуспешно запазване на потребителските настройки. Опитай отново.",
+      savedPreferences: "Предпочитанията са запазени",
+      viewMode: "Режим на изгледа",
+      installationInfo: "Инсталиране на телефона",
+      installationHelp: "Отвори /stevora-os в Safari/Chrome и използвай „Добави към начален екран“ или „Инсталирай приложение“, ако браузърът предлага опцията. Оригиналният HA интерфейс остава за администриране.",
+      setupOptional: "Настройката на изгледа не променя устройството или системата.",
+      primaryFrontend: "Основна STEVORA среда",
+      accountSettings: "Лични настройки",
+      recoveryLink: "Аварийно администриране в HA",
+      setupUnavailable: "Без достъп до настройките, продължи да използваш системата в стандартен режим.",
+      roomCount: "Помещения",
+      deviceCount: "Устройства",
+      complete: "Завършено",
+      notComplete: "Не е завършено",
       systemOpen: "Отвори HA настройки", systemUnavailable: "Неизвестно / няма данни",
       integrationReady: "Конфигурирана", systemRefreshError: "Неуспешно зареждане на системните данни.",
     },
@@ -179,6 +213,40 @@
       onboardingInfo: "Universal Integration must be installed. STEVORA uses native HA authentication.",
       integrationSettings: "Integration settings",
       noControls: "No authorized controls",
+      onboardTitle: "Welcome to STEVORA",
+      onboardSub: "Your STEVORA experience, customized for this HA account.",
+      onboardStep1: "1 · Connected home",
+      onboardStep2: "2 · Appearance and language",
+      onboardStep3: "3 · Finish",
+      onboardConnected: "Connected to this Home Assistant server",
+      onboardConnectedNote: "Uses your existing HA login. STEVORA does not create another password.",
+      onboardManifestReady: "Rooms and devices are discovered automatically through Universal Integration.",
+      onboardManifestMissing: "Universal Integration has not provided a manifest. Complete its setup in HA.",
+      preferredHome: "Start page",
+      compactNav: "Compact navigation",
+      enterFullscreen: "Full screen",
+      exitFullscreen: "Exit full screen",
+      fullscreenUnavailable: "Full screen is not supported by this browser. On iPhone, use Add to Home Screen for a more standalone view.",
+      chooseStart: "Select start page",
+      savePreferences: "Save preferences",
+      finishOnboarding: "Complete setup",
+      onboardingDone: "First-run setup completed",
+      reopenWizard: "Run setup again",
+      preferencesUnavailable: "Could not load personal preferences.",
+      preferencesSaveFailed: "Could not save user preferences. Try again.",
+      savedPreferences: "Preferences saved",
+      viewMode: "View mode",
+      installationInfo: "Install on your phone",
+      installationHelp: "Open /stevora-os in Safari/Chrome and use Add to Home Screen or Install App if available. The original HA interface remains available for administration.",
+      setupOptional: "View preferences do not change devices or system settings.",
+      primaryFrontend: "Primary STEVORA experience",
+      accountSettings: "Personal settings",
+      recoveryLink: "Emergency HA administration",
+      setupUnavailable: "If preferences are unavailable, continue with the default layout.",
+      roomCount: "Rooms",
+      deviceCount: "Devices",
+      complete: "Completed",
+      notComplete: "Not completed",
       systemOpen: "Open HA settings", systemUnavailable: "Unknown / no data",
       integrationReady: "Configured", systemRefreshError: "Unable to load system diagnostics.",
     }
@@ -215,6 +283,12 @@
       this._systemRequest = 0;
       this._request = 0;
       this._connected = false;
+      this._preferences = null;
+      this._prefsError = "";
+      this._prefsBusy = false;
+      this._prefsRequest = 0;
+      this._visitedView = false;
+      this._fullscreenChange = () => this._patchFullscreen();
       this.shadowRoot.addEventListener("click", (event) => this._onClick(event));
       this.shadowRoot.addEventListener("change", (event) => this._onChange(event));
       this.shadowRoot.addEventListener("input", (event) => this._onInput(event));
@@ -243,6 +317,11 @@
         this._chat = [];
         this._conversationId = null;
         this._selectedRoom = "";
+        this._visitedView = false;
+        this._prefsRequest += 1;
+        this._preferences = null;
+        this._prefsBusy = false;
+        this._prefsError = "";
         this._busyEntities.clear();
         this._systemBusy = false;
         this._systemError = "";
@@ -251,10 +330,14 @@
         this._view = "home";
         this.render();
         void this.refresh();
+        void this._loadPreferences();
       } else if (!this._connection) {
         this._connection = connection;
         this._user = user;
-        if (this._connected) void this.refresh();
+        if (this._connected) {
+          void this.refresh();
+          void this._loadPreferences();
+        }
       } else {
         // State ticks only patch text nodes; preserve focus/navigation.
         this._patchLive();
@@ -265,13 +348,20 @@
 
     connectedCallback() {
       this._connected = true;
+      if (typeof document !== "undefined")
+        document.addEventListener("fullscreenchange", this._fullscreenChange);
       this.render();
+      if (this._hass && !this._preferences && !this._prefsBusy)
+        void this._loadPreferences();
       if (this._hass && !this._manifest && !this._busy) void this.refresh();
     }
 
     disconnectedCallback() {
       this._connected = false;
+      if (typeof document !== "undefined")
+        document.removeEventListener("fullscreenchange", this._fullscreenChange);
       this._request += 1;
+      this._prefsRequest += 1;
       this._systemRequest += 1;
       this._busy = false;
       this._systemBusy = false;
@@ -283,6 +373,100 @@
       this._admin = null;
       this._chat = [];
       this._conversationId = null;
+      this._preferences = null;
+      this._prefsBusy = false;
+      this._prefsError = "";
+    }
+
+    async _loadPreferences() {
+      if (!this._hass?.callWS) return;
+      const token = ++this._prefsRequest;
+      const connection = this._hass.connection, user = this._hass.user?.id;
+      this._prefsBusy = true;
+      this._prefsError = "";
+      try {
+        const result = await this._hass.callWS({type:"stevora_os/preferences/get"});
+        if (token !== this._prefsRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        if (!result || result.schema_version !== "1" || !result.preferences ||
+            !Number.isInteger(result.revision) || result.revision < 0)
+          throw new Error("Bad preference response");
+        const pref = result.preferences;
+        if (!["bg","en"].includes(pref.language) ||
+            !["home","rooms","devices","lighting","climate","scenes","automation",
+              "assist","system","setup","about"].includes(pref.default_view))
+          throw new Error("Unsupported preferences");
+        this._preferences = result;
+        const relocalize = this._language !== pref.language;
+        this._language = pref.language;
+        if (!this._visitedView && this._view === "home") {
+          this._view = pref.onboarding_complete ? pref.default_view : "onboarding";
+        }
+        this.render();
+        if (relocalize) void this.refresh();
+      } catch (_) {
+        if (token !== this._prefsRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        this._prefsError = COPY[this._language].preferencesUnavailable;
+        this.render();
+      } finally {
+        if (token === this._prefsRequest) this._prefsBusy = false;
+      }
+    }
+
+    async _updatePreferences(changes) {
+      if (!this._hass?.callWS || !this._preferences || this._prefsBusy) return false;
+      const token = ++this._prefsRequest;
+      const connection = this._hass.connection, user = this._hass.user?.id;
+      this._prefsBusy = true;
+      try {
+        const result = await this._hass.callWS({
+          type:"stevora_os/preferences/update",
+          expected_revision:this._preferences.revision,
+          ...changes
+        });
+        if (token !== this._prefsRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return false;
+        if (!result || result.schema_version !== "1" || !result.preferences)
+          throw new Error("Unexpected preference update");
+        this._preferences = result;
+        this._prefsError = "";
+        return true;
+      } catch (_) {
+        if (token === this._prefsRequest && connection === this._hass?.connection &&
+            user === this._hass?.user?.id)
+          this._prefsError = COPY[this._language].preferencesSaveFailed;
+        return false;
+      } finally {
+        if (token === this._prefsRequest) {
+          this._prefsBusy = false;
+          this.render();
+        }
+      }
+    }
+
+    _patchFullscreen() {
+      const button = this.shadowRoot?.querySelector?.("[data-fullscreen]");
+      if (button && typeof document !== "undefined")
+        button.textContent = document.fullscreenElement === this
+          ? COPY[this._language].exitFullscreen
+          : COPY[this._language].enterFullscreen;
+    }
+
+    _toggleFullscreen() {
+      if (typeof document === "undefined") return;
+      if (document.fullscreenElement === this) {
+        if (document.exitFullscreen) void document.exitFullscreen();
+      } else if (typeof this.requestFullscreen === "function") {
+        const action = this.requestFullscreen();
+        if (action?.catch) action.catch(() => {
+          this._actionNotice = COPY[this._language].fullscreenUnavailable;
+          this.render();
+        });
+      } else {
+        this._actionNotice = COPY[this._language].fullscreenUnavailable;
+        this.render();
+      }
     }
 
     async refresh() {
@@ -354,7 +538,7 @@
         const result = await this._hass.callWS({ type: "stevora_os/system/status" });
         if (token !== this._systemRequest || connection !== this._hass?.connection ||
             user !== this._hass?.user?.id || !this._hass?.user?.is_admin) return;
-        if (!result || result.schema_version !== "1" || result.preview_version !== "1.0.0-alpha.1")
+        if (!result || result.schema_version !== "1" || result.preview_version !== "1.0.0-alpha.2")
           throw new Error("Unsupported system snapshot schema");
         this._system = result;
       } catch (_error) {
@@ -381,10 +565,17 @@
 
     _onClick(event) {
       const target = event.target?.closest?.(
-        "[data-view], [data-refresh], [data-system-refresh], [data-room], [data-device-action], [data-scene-run]"
+        "[data-view], [data-refresh], [data-system-refresh], [data-room], [data-device-action], [data-scene-run], [data-fullscreen], [data-onboarding]"
       );
       if (!target) return;
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
+      if (target.hasAttribute("data-fullscreen")) { this._toggleFullscreen(); return; }
+      if (target.hasAttribute("data-onboarding")) {
+        this._visitedView = true;
+        this._view = "onboarding";
+        this.render();
+        return;
+      }
       if (target.hasAttribute("data-system-refresh")) { void this._refreshSystem(); return; }
       if (target.hasAttribute("data-room")) {
         const room = target.getAttribute("data-room");
@@ -405,6 +596,7 @@
       const view = target.getAttribute("data-view");
       if (!["home", "rooms", "devices", "lighting", "climate", "scenes",
             "automation", "assist", "system", "setup", "about"].includes(view)) return;
+      this._visitedView = true;
       this._view = view;
       if (view !== "devices") this._selectedRoom = "";
       this.render();
@@ -418,6 +610,7 @@
         const lang = input.value;
         if (!["bg", "en"].includes(lang) || lang === this._language) return;
         this._language = lang;
+        if (this._preferences) void this._updatePreferences({language: lang});
         this._model = null;
         this._manifest = null;
         this._hubDirectory = null;
@@ -449,11 +642,55 @@
 
     async _onSubmit(event) {
       const form = event.target;
-      if (form?.hasAttribute("data-translate-form")) {
+      if (form?.hasAttribute("data-onboarding-form")) {
+        await this._saveOnboarding(form);
+      } else if (form?.hasAttribute("data-personal-form")) {
+        await this._savePersonalSettings(form);
+      } else if (form?.hasAttribute("data-translate-form")) {
         await this._saveTranslation(form);
       } else if (form?.hasAttribute("data-assist-form")) {
         await this._sendAssist(form);
       }
+    }
+
+    async _saveOnboarding(form) {
+      const lang = form?.querySelector?.('select[name="language"]')?.value;
+      const page = form?.querySelector?.('select[name="default_view"]')?.value;
+      const compact = Boolean(form?.querySelector?.('input[name="compact_nav"]')?.checked);
+      if (!["bg","en"].includes(lang) ||
+          !["home","rooms","devices","lighting","climate","scenes","automation",
+            "assist","system","setup","about"].includes(page)) return;
+      const saved = await this._updatePreferences({
+        language:lang, default_view:page, compact_nav:compact, onboarding_complete:true
+      });
+      if (!saved) return;
+      this._language = lang;
+      this._visitedView = false;
+      this._view = page;
+      this._actionNotice = COPY[lang].onboardingDone;
+      this._model = null;
+      this._manifest = null;
+      void this.refresh();
+    }
+
+    async _savePersonalSettings(form) {
+      const lang = form?.querySelector?.('select[name="language"]')?.value;
+      const page = form?.querySelector?.('select[name="default_view"]')?.value;
+      const compact = Boolean(form?.querySelector?.('input[name="compact_nav"]')?.checked);
+      if (!["bg","en"].includes(lang) ||
+          !["home","rooms","devices","lighting","climate","scenes","automation",
+            "assist","system","setup","about"].includes(page)) return;
+      const saved = await this._updatePreferences({
+        language:lang, default_view:page, compact_nav:compact
+      });
+      if (!saved) return;
+      this._actionNotice = COPY[lang].savedPreferences;
+      if (lang !== this._language) {
+        this._language = lang;
+        this._manifest = null;
+        this._model = null;
+        void this.refresh();
+      } else this.render();
     }
 
     _findCard(entityId) {
@@ -817,6 +1054,65 @@
           escapeHTML(t.send)+'</button></form></div>';
     }
 
+    _preferenceForm(t, wizard = false) {
+      const preferences = this._preferences?.preferences || {
+        language: this._language, default_view: "home",
+        compact_nav: false, onboarding_complete: false,
+      };
+      const allowed = [
+        ["home", t.home], ["rooms", t.rooms], ["devices", t.devicesTitle],
+        ["lighting", t.lighting], ["climate", t.climate],
+        ["scenes", t.scenes], ["automation", t.automation],
+        ["assist", t.assist], ["system", t.system]
+      ];
+      const pageOptions = allowed.map(([id, name]) =>
+        '<option value="'+id+'" '+(preferences.default_view===id?'selected':'')+'>'+
+          escapeHTML(name)+'</option>').join("");
+      return '<form class="stevora-preferences" '+(wizard?'data-onboarding-form':'data-personal-form')+'>'+
+        '<label>'+escapeHTML(t.lang)+'<select name="language">'+
+        '<option value="bg" '+(preferences.language==="bg"?"selected":"")+'>BG</option>'+
+        '<option value="en" '+(preferences.language==="en"?"selected":"")+'>EN</option></select></label>'+
+        '<label>'+escapeHTML(t.preferredHome)+'<select name="default_view">'+pageOptions+'</select></label>'+
+        '<label class="check-row"><input type="checkbox" name="compact_nav" '+
+          (preferences.compact_nav?"checked":"")+'>'+
+          escapeHTML(t.compactNav)+'</label>'+
+        '<button class="button primary" type="submit" '+
+          (!this._preferences || this._prefsBusy?"disabled":"")+'>'+
+          escapeHTML(wizard?t.finishOnboarding:t.savePreferences)+'</button>'+
+        (this._prefsError?'<p class="note-error" role="alert">'+escapeHTML(this._prefsError)+'</p>':'')+
+        '</form>';
+    }
+
+    _onboardingView(t) {
+      const ready = this._status === "ready";
+      const modules = this._manifest?.modules || {};
+      const hubStatus = modules.home_hub?.status || "not_included";
+      const count = this._counts();
+      return '<header class="section-heading"><h1>'+escapeHTML(t.onboardTitle)+
+        '</h1><span>STEVORA OS 1.0</span></header>'+
+        '<p class="section-intro">'+escapeHTML(t.onboardSub)+'</p>'+
+        '<div class="setup-steps">'+
+        '<section class="card"><h2>'+escapeHTML(t.onboardStep1)+'</h2>'+
+        '<p>'+escapeHTML(t.onboardConnected)+'</p>'+
+        '<p>'+escapeHTML(t.onboardConnectedNote)+'</p>'+
+        '<div class="kv"><span>'+escapeHTML(t.roomCount)+'</span><strong>'+
+          (ready?count.rooms:"—")+'</strong></div>'+
+        '<div class="kv"><span>'+escapeHTML(t.deviceCount)+'</span><strong>'+
+          (ready?count.devices:"—")+'</strong></div>'+
+        '<div class="kv"><span>Home Hub</span><strong>'+escapeHTML(hubStatus)+'</strong></div>'+
+        '<p>'+escapeHTML(ready?t.onboardManifestReady:t.onboardManifestMissing)+'</p></section>'+
+        '<section class="card"><h2>'+escapeHTML(t.onboardStep2)+'</h2>'+
+        this._preferenceForm(t,true)+'</section>'+
+        '<section class="card"><h2>'+escapeHTML(t.onboardStep3)+'</h2>'+
+        '<p>'+escapeHTML(t.setupOptional)+'</p>'+
+        '<p>'+escapeHTML(t.installationHelp)+'</p>'+
+        '<button type="button" class="button secondary" data-fullscreen>'+
+          escapeHTML(t.enterFullscreen)+'</button>'+
+        (this._hass?.user?.is_admin ? '<a href="/config" class="button secondary">'+
+           escapeHTML(t.recoveryLink)+'</a>' : '')+
+        '</section></div>';
+    }
+
     _setupView(t) {
       const modules = this._manifest?.modules || {};
       const labels = {core:"STEVORA Core",home_panel:"Home Panel 7.1.1",
@@ -840,6 +1136,11 @@
           }).join("")+'</div>';
       } else if (this._hass?.user?.is_admin) editing='<p>'+escapeHTML(t.adminConfigMissing)+'</p>';
       return '<header class="section-heading"><h1>'+escapeHTML(t.settingsTitle)+'</h1></header>'+
+        '<section class="card os-personal-settings"><h2>'+escapeHTML(t.accountSettings)+'</h2>'+
+          this._preferenceForm(t,false)+
+          '<p>'+escapeHTML(t.installationHelp)+'</p>'+
+          '<button class="button secondary" type="button" data-onboarding>'+
+            escapeHTML(t.reopenWizard)+'</button></section>'+
         '<div class="os-system-grid"><div class="card"><h2>'+escapeHTML(t.editRooms)+'</h2>'+
           editing+'</div><div class="card"><h2>'+escapeHTML(t.modulesTitle)+'</h2>'+
           moduleRows+'<h2>'+escapeHTML(t.onboarding)+'</h2>'+
@@ -880,6 +1181,7 @@
       if (this._view === "climate") return this._deviceView(t, "climate");
       if (this._view === "scenes" || this._view === "automation") return this._sceneView(t);
       if (this._view === "assist") return this._assistView(t);
+      if (this._view === "onboarding") return this._onboardingView(t);
       if (this._view === "setup") return this._setupView(t);
       if (this._view === "home") return `
         <section class="hero">
@@ -906,7 +1208,7 @@
       if (this._view === "system") return this._systemContent(t, ready, hub);
       return `<section class="card about"><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
         <h1>${escapeHTML(t.aboutTitle)}</h1><p>${escapeHTML(t.aboutText)}</p>
-        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.1 Developer Preview</strong></div>
+        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.2 Developer Preview</strong></div>
         <div class="kv"><span>${escapeHTML(t.backend)}</span><strong>Home Assistant OS</strong></div></section>`;
     }
 
@@ -915,8 +1217,17 @@
       const node = this.shadowRoot.querySelector('[data-stat="available"]');
       if (node) node.textContent = String(this._counts().available);
       this.shadowRoot.querySelectorAll?.("[data-live-entity]")?.forEach((el)=>{
-        const id=el.getAttribute("data-live-entity"); const state=this._state(id);
-        if (id && state) el.textContent=String(state.state);
+        const id=el.getAttribute("data-live-entity");
+        const state=this._state(id);
+        if (!id || !state) return;
+        let value=state.state;
+        if (["unavailable","unknown"].includes(state.state)) {
+          value=COPY[this._language].unavailableDevice;
+        } else if (id.startsWith("climate.")) {
+          const current=state.attributes?.current_temperature;
+          value=(current == null ? "" : String(current)+"° · ")+state.state;
+        }
+        if (el.textContent !== value) el.textContent=value;
       });
     }
 
@@ -940,8 +1251,8 @@
         ? `<div class="notice error" role="alert">${escapeHTML(t.error)} · ${escapeHTML(this._error)}</div>`
         : this._status === "loading" ? `<div class="notice" role="status">${escapeHTML(t.loading)}</div>` : "";
       this.shadowRoot.innerHTML = `
-        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.1">
-        <div class="shell">
+        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.2">
+        <div class="shell ${this._preferences?.preferences?.compact_nav ? "shell-compact" : ""}">
           <aside class="side">
             <div class="brand"><span class="brand-mark" aria-hidden="true">S</span>
               <div><strong>STEVORA</strong><small>OS EXPERIENCE</small></div></div>
@@ -952,18 +1263,24 @@
           </aside>
           <main class="main">
             <header class="toolbar"><div class="mobile-brand">STEVORA <span>OS</span></div>
-              <div class="toolbar-actions"><label for="stevora-os-language">${escapeHTML(t.lang)}</label>
+              <div class="toolbar-actions">
+                <button type="button" class="button secondary shell-focus" data-fullscreen>
+                  ${escapeHTML(t.enterFullscreen)}</button>
+                <label for="stevora-os-language">${escapeHTML(t.lang)}</label>
                 <select id="stevora-os-language" aria-label="${escapeHTML(t.lang)}">
                   <option value="bg" ${this._language === "bg" ? "selected" : ""}>BG</option>
                   <option value="en" ${this._language === "en" ? "selected" : ""}>EN</option></select>
-                <span class="preview-pill">1.0 ALPHA</span></div></header>
+                <span class="preview-pill">1.0 α2</span></div></header>
             ${loadNote}${note}
+            ${this._prefsError && this._view !== "onboarding"
+                ? '<div class="notice error" role="alert">'+escapeHTML(this._prefsError)+'</div>' : ''}
             <div class="content">${this._content(t)}</div>
             <footer>STEVORA OS Experience · Powered by Home Assistant · <strong>Developer Preview</strong></footer>
           </main>
           <nav class="mobile-nav" aria-label="STEVORA OS mobile">${nav}</nav>
         </div>`;
       this._patchLive();
+      this._patchFullscreen();
     }
   }
   if (!customElements.get("stevora-os-preview"))
