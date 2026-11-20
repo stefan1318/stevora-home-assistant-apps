@@ -1,4 +1,4 @@
-# STEVORA Ecosystem — Universal Integration 0.3.0-beta.4
+# STEVORA Ecosystem — Universal Integration 0.3.0-beta.5
 
 **Status:** Home Hub major test candidate for an independent Home Assistant installation.
 **NOT production approved, NOT deployed to Home Assistant Dunav.**
@@ -59,11 +59,33 @@ run of `feature/stevora-home-hub-v1-20261119`; verify
 `SHA256SUMS.txt`. Install `custom_components/stevora/` on a separate
 test Home Assistant. Always take a full backup and a copy of the old
 integration directory before replacing files. Restart HA and verify
-`0.3.0-beta.4` and the Home Hub module's `active` status.
+`0.3.0-beta.5` and the Home Hub module's `active` status.
 
 **Do not install legacy `stevora_manifest` together with `stevora`**:
 both register the same WebSocket route. Do not modify existing memory
 bridge, voice assistants, BLE integrations or scenes during migration.
+
+## Beta.5 Stability & Lighting placement
+
+- A device manually categorized as `lighting` is now included in the virtual
+  Unassigned room when it has no HA area and there is no active room filter.
+  Existing room filters, HA disabled/hidden entities, STEVORA explicit excludes
+  and forbidden backlights are **never overridden**.
+- `stevora/admin/devices/update` verifies the *post-save manifest* and returns
+  per-device `included`, `reason`, `area_id`, `display_category` and
+  `in_lighting`. The manager displays placement confirmation or an actionable
+  exclusion reason instead of silently reporting success.
+- Routine HA `hass` state updates only patch the displayed values in place.
+  Full Shadow DOM rerender is never triggered by sensor state keys or changes
+  of feature attributes on ordinary HA ticks.
+- Real HA entity/device/area registry update events can trigger a coalesced
+  silent manifest refresh; if the projected manifest revision has not changed,
+  no full repaint is performed. Manual Refresh remains available.
+- No changes to HA services, user permission model, existing icon/profile
+  persistence, Home Hub or Hey Stevora modules.
+
+Acceptance and rollback:
+[STEVORA beta.5 checklist](../../docs/STE-01-STABILITY-CLASSIFICATION-BETA5-ACCEPTANCE-BG.md).
 
 ## Beta.4 capability-aware visual UI corrections
 
