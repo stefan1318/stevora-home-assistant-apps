@@ -1,4 +1,4 @@
-/* STEVORA OS 1.0.0-alpha.2 primary frontend + onboarding
+/* STEVORA OS 1.0.0-alpha.3 branded PWA + integration inventory
  * Read-only shell backed by the existing permission-scoped STEVORA manifest.
  * No direct device control, no privileges, no external dependencies/CDNs.
  */
@@ -125,6 +125,23 @@
       deviceCount: "Устройства",
       complete: "Завършено",
       notComplete: "Не е завършено",
+      integrations: "Интеграции",
+      integrationsTitle: "Интеграции в STEVORA",
+      integrationsNote: "Данни за инсталираните интеграции от Home Assistant. Само преглед; конфигурирането остава в официалния HA интерфейс.",
+      integrationsLoaded: "Заредени",
+      integrationsIssues: "Други състояния",
+      integrationsTotal: "Общо",
+      integrationsSearch: "Търси интеграция…",
+      integrationsNotReady: "Неуспешно зареждане на интеграциите.",
+      integrationsNoItems: "Няма интеграции за показване.",
+      integrationsAdmin: "Тази системна справка изисква администраторски права.",
+      integrationsRefresh: "Обнови списъка",
+      integrationsOfficial: "Отвори HA интеграции",
+      integrationsTruncated: "Показани са първите 400 интеграции от пълния списък.",
+      integrationsDisabled: "Изключена",
+      integrationsReadOnly: "За конфигуриране и премахване използвай официалния Home Assistant.",
+      pwaHelp: "STEVORA може да се добави към началния екран. Инсталацията на PWA зависи от браузъра и HTTPS достъпа.",
+      pwaSecure: "За надеждна инсталация на Android/desktop използвай HTTPS. STEVORA не кешира токени и данни офлайн.",
       systemOpen: "Отвори HA настройки", systemUnavailable: "Неизвестно / няма данни",
       integrationReady: "Конфигурирана", systemRefreshError: "Неуспешно зареждане на системните данни.",
     },
@@ -247,6 +264,23 @@
       deviceCount: "Devices",
       complete: "Completed",
       notComplete: "Not completed",
+      integrations: "Integrations",
+      integrationsTitle: "STEVORA integrations",
+      integrationsNote: "Installed integrations from Home Assistant. Read-only; configuration still uses the official HA interface.",
+      integrationsLoaded: "Loaded",
+      integrationsIssues: "Other states",
+      integrationsTotal: "Total",
+      integrationsSearch: "Search integrations…",
+      integrationsNotReady: "Could not load integrations.",
+      integrationsNoItems: "No integrations to show.",
+      integrationsAdmin: "This system inventory requires administrator access.",
+      integrationsRefresh: "Refresh integrations",
+      integrationsOfficial: "Open HA integrations",
+      integrationsTruncated: "Showing the first 400 integrations from the full inventory.",
+      integrationsDisabled: "Disabled",
+      integrationsReadOnly: "Use official Home Assistant to configure or remove integrations.",
+      pwaHelp: "STEVORA can be added to the home screen. PWA installation depends on browser capabilities and HTTPS access.",
+      pwaSecure: "Use HTTPS for reliable Android/desktop installation. STEVORA does not cache tokens or home data offline.",
       systemOpen: "Open HA settings", systemUnavailable: "Unknown / no data",
       integrationReady: "Configured", systemRefreshError: "Unable to load system diagnostics.",
     }
@@ -287,6 +321,12 @@
       this._prefsError = "";
       this._prefsBusy = false;
       this._prefsRequest = 0;
+      this._integrations = null;
+      this._integrationsBusy = false;
+      this._integrationsError = "";
+      this._integrationsRequest = 0;
+      this._brandNodes = [];
+      this._brandTitle = null;
       this._visitedView = false;
       this._fullscreenChange = () => this._patchFullscreen();
       this.shadowRoot.addEventListener("click", (event) => this._onClick(event));
@@ -319,6 +359,10 @@
         this._selectedRoom = "";
         this._visitedView = false;
         this._prefsRequest += 1;
+        this._integrationsRequest += 1;
+        this._integrations = null;
+        this._integrationsBusy = false;
+        this._integrationsError = "";
         this._preferences = null;
         this._prefsBusy = false;
         this._prefsError = "";
@@ -348,6 +392,7 @@
 
     connectedCallback() {
       this._connected = true;
+      this._mountBrandMetadata();
       if (typeof document !== "undefined")
         document.addEventListener("fullscreenchange", this._fullscreenChange);
       this.render();
@@ -358,6 +403,11 @@
 
     disconnectedCallback() {
       this._connected = false;
+      this._unmountBrandMetadata();
+      this._integrationsRequest += 1;
+      this._integrations = null;
+      this._integrationsBusy = false;
+      this._integrationsError = "";
       if (typeof document !== "undefined")
         document.removeEventListener("fullscreenchange", this._fullscreenChange);
       this._request += 1;
@@ -376,6 +426,69 @@
       this._preferences = null;
       this._prefsBusy = false;
       this._prefsError = "";
+    }
+
+    _mountBrandMetadata() {
+      // Use the STEVORA web manifest only while the STEVORA panel is mounted.
+      // Do not rewrite or remove Home Assistant's own manifest/icon metadata.
+      if (typeof document === "undefined" || !document.head ||
+          typeof document.createElement !== "function" || this._brandNodes.length) return;
+      const entries = [
+        ["link", {rel:"manifest",href:"/stevora_os_static/manifest.webmanifest?v=1.0.0-alpha.3"}],
+        ["link", {rel:"apple-touch-icon",sizes:"192x192",
+          href:"/stevora_os_static/icons/stevora-192.png"}],
+        ["link", {rel:"icon",type:"image/png",sizes:"192x192",
+          href:"/stevora_os_static/icons/stevora-192.png"}],
+        ["meta", {name:"apple-mobile-web-app-capable",content:"yes"}],
+        ["meta", {name:"apple-mobile-web-app-title",content:"STEVORA"}],
+        ["meta", {name:"theme-color",content:"#06152a"}],
+      ];
+      // Prepend in reverse order so our manifest is the first rel=manifest.
+      for (const [tag,attrs] of entries.slice().reverse()) {
+        const node=document.createElement(tag);
+        for(const [key,value] of Object.entries(attrs))node.setAttribute(key,value);
+        node.setAttribute("data-stevora-os-brand","1");
+        document.head.prepend(node);
+        this._brandNodes.push(node);
+      }
+      this._brandTitle=document.title;
+      document.title="STEVORA OS";
+    }
+
+    _unmountBrandMetadata() {
+      if (typeof document === "undefined") return;
+      for (const node of this._brandNodes) {
+        if (typeof node.remove === "function") node.remove();
+      }
+      this._brandNodes=[];
+      if (this._brandTitle !== null && document.title === "STEVORA OS")
+        document.title=this._brandTitle;
+      this._brandTitle=null;
+    }
+
+    async _refreshIntegrations() {
+      if (!this._hass?.user?.is_admin || !this._hass?.callWS) return;
+      const token=++this._integrationsRequest;
+      const connection=this._hass.connection, user=this._hass.user?.id;
+      this._integrationsBusy=true;
+      this._integrationsError="";
+      try {
+        const result=await this._hass.callWS({type:"stevora_os/system/integrations"});
+        if (token!==this._integrationsRequest || connection!==this._hass?.connection ||
+            user!==this._hass?.user?.id || !this._hass?.user?.is_admin) return;
+        if (!result || result.schema_version!=="1" || !Array.isArray(result.entries))
+          throw new Error("Invalid integration inventory");
+        this._integrations=result;
+      } catch (_) {
+        if (token!==this._integrationsRequest || connection!==this._hass?.connection ||
+            user!==this._hass?.user?.id) return;
+        this._integrationsError=COPY[this._language].integrationsNotReady;
+      } finally {
+        if(token===this._integrationsRequest) {
+          this._integrationsBusy=false;
+          this.render();
+        }
+      }
     }
 
     async _loadPreferences() {
@@ -538,7 +651,7 @@
         const result = await this._hass.callWS({ type: "stevora_os/system/status" });
         if (token !== this._systemRequest || connection !== this._hass?.connection ||
             user !== this._hass?.user?.id || !this._hass?.user?.is_admin) return;
-        if (!result || result.schema_version !== "1" || result.preview_version !== "1.0.0-alpha.2")
+        if (!result || result.schema_version !== "1" || result.preview_version !== "1.0.0-alpha.3")
           throw new Error("Unsupported system snapshot schema");
         this._system = result;
       } catch (_error) {
@@ -565,7 +678,7 @@
 
     _onClick(event) {
       const target = event.target?.closest?.(
-        "[data-view], [data-refresh], [data-system-refresh], [data-room], [data-device-action], [data-scene-run], [data-fullscreen], [data-onboarding]"
+        "[data-view], [data-refresh], [data-system-refresh], [data-integrations-refresh], [data-room], [data-device-action], [data-scene-run], [data-fullscreen], [data-onboarding]"
       );
       if (!target) return;
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
@@ -577,6 +690,7 @@
         return;
       }
       if (target.hasAttribute("data-system-refresh")) { void this._refreshSystem(); return; }
+      if (target.hasAttribute("data-integrations-refresh")) { void this._refreshIntegrations(); return; }
       if (target.hasAttribute("data-room")) {
         const room = target.getAttribute("data-room");
         if (!(this._manifest?.rooms || []).some((r) => r.id === room)) return;
@@ -595,13 +709,16 @@
       }
       const view = target.getAttribute("data-view");
       if (!["home", "rooms", "devices", "lighting", "climate", "scenes",
-            "automation", "assist", "system", "setup", "about"].includes(view)) return;
+            "automation", "assist", "system", "setup", "integrations", "about"].includes(view)) return;
       this._visitedView = true;
       this._view = view;
       if (view !== "devices") this._selectedRoom = "";
       this.render();
       if (view === "system" && this._hass?.user?.is_admin && !this._system && !this._systemBusy)
         void this._refreshSystem();
+      if (view === "integrations" && this._hass?.user?.is_admin &&
+          !this._integrations && !this._integrationsBusy)
+        void this._refreshIntegrations();
     }
 
     _onChange(event) {
@@ -633,6 +750,13 @@
 
     _onInput(event) {
       const input = event.target;
+      if (input?.hasAttribute("data-integrations-search")) {
+        const needle=String(input.value||"").trim().toLowerCase();
+        this.shadowRoot?.querySelectorAll?.("[data-integration-row]")?.forEach((row)=>{
+          row.hidden=!String(row.getAttribute("data-search")||"").includes(needle);
+        });
+        return;
+      }
       if (!input?.hasAttribute("data-device-search")) return;
       const needle = String(input.value || "").trim().toLowerCase();
       this.shadowRoot?.querySelectorAll?.("[data-device-card]")?.forEach((card) => {
@@ -1171,6 +1295,49 @@
         (eventRows || '<p>'+escapeHTML(t.noEvents)+'</p>')+'</article></section>';
     }
 
+    _integrationView(t) {
+      if (!this._hass?.user?.is_admin)
+        return '<section class="card"><h1>'+escapeHTML(t.integrationsTitle)+
+          '</h1><p>'+escapeHTML(t.integrationsAdmin)+'</p></section>';
+      const data=this._integrations;
+      const entries=data?.entries||[];
+      const rows=entries.map((entry)=>{
+        const disabled=Boolean(entry.disabled_by);
+        const state=disabled ? t.integrationsDisabled : String(entry.state||"unknown");
+        const ready=!disabled && entry.state==="loaded";
+        return '<div class="integration-row" data-integration-row data-search="'+
+          escapeHTML((entry.domain+" "+entry.title+" "+state).toLowerCase())+'">'+
+          '<div class="integration-icon">◈</div><div class="integration-text"><strong>'+
+          escapeHTML(entry.title)+'</strong><small>'+escapeHTML(entry.domain)+
+          '</small></div><span class="os-status '+(ready?"up_to_date":"unknown")+'">'+
+          escapeHTML(state)+'</span></div>';
+      }).join("");
+      const error=this._integrationsError
+        ? '<div class="notice error" role="alert">'+escapeHTML(this._integrationsError)+'</div>' : "";
+      return '<header class="section-heading"><h1>'+escapeHTML(t.integrationsTitle)+
+        '</h1><span>'+escapeHTML(t.managedByHA)+'</span></header>'+
+        '<p class="section-intro">'+escapeHTML(t.integrationsNote)+'</p>'+
+        '<section class="metrics">'+
+          this._stat(t.integrationsTotal,data?data.count_total:"—","integrations-total")+
+          this._stat(t.integrationsLoaded,data?data.count_loaded:"—","integrations-loaded")+
+          this._stat(t.integrationsIssues,data?data.count_not_loaded:"—","integrations-unloaded")+
+        '</section>'+error+
+        '<div class="card integrations-card">'+
+          '<div class="integrations-header"><label>'+escapeHTML(t.integrationsSearch)+
+            '<input type="search" data-integrations-search placeholder="'+
+            escapeHTML(t.integrationsSearch)+'"></label>'+
+            '<button type="button" data-integrations-refresh class="button secondary" '+
+            (this._integrationsBusy?"disabled":"")+'>'+
+            escapeHTML(t.integrationsRefresh)+'</button></div>'+
+          (data?.truncated?'<p>'+escapeHTML(t.integrationsTruncated)+'</p>':'')+
+          '<div class="integration-list">'+
+            (rows||'<div class="empty">'+escapeHTML(t.integrationsNoItems)+'</div>')+
+          '</div><p>'+escapeHTML(t.integrationsReadOnly)+'</p>'+
+          '<a class="button secondary" href="/config/integrations">'+
+            escapeHTML(t.integrationsOfficial)+'</a>'+
+        '</div>';
+    }
+
     _content(t) {
       const ready = this._status === "ready";
       const count = this._counts();
@@ -1183,6 +1350,7 @@
       if (this._view === "assist") return this._assistView(t);
       if (this._view === "onboarding") return this._onboardingView(t);
       if (this._view === "setup") return this._setupView(t);
+      if (this._view === "integrations") return this._integrationView(t);
       if (this._view === "home") return `
         <section class="hero">
           <div><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
@@ -1208,7 +1376,7 @@
       if (this._view === "system") return this._systemContent(t, ready, hub);
       return `<section class="card about"><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
         <h1>${escapeHTML(t.aboutTitle)}</h1><p>${escapeHTML(t.aboutText)}</p>
-        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.2 Developer Preview</strong></div>
+        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.3 Developer Preview</strong></div>
         <div class="kv"><span>${escapeHTML(t.backend)}</span><strong>Home Assistant OS</strong></div></section>`;
     }
 
@@ -1239,7 +1407,7 @@
         ["lighting","☼",t.lighting],["climate","◈",t.climate],
         ["scenes","✦",t.scenes],["automation","◇",t.automation],
         ["assist","◉",t.assist],["system","⚙",t.system],
-        ["setup","≡",t.setup],["about","ⓘ",t.about]
+        ["setup","≡",t.setup],["integrations","▦",t.integrations],["about","ⓘ",t.about]
       ];
       const nav = menu.map(([id, icon, name]) => `
         <button type="button" data-view="${id}" class="nav-item ${this._view === id ? "selected" : ""}"
@@ -1251,7 +1419,7 @@
         ? `<div class="notice error" role="alert">${escapeHTML(t.error)} · ${escapeHTML(this._error)}</div>`
         : this._status === "loading" ? `<div class="notice" role="status">${escapeHTML(t.loading)}</div>` : "";
       this.shadowRoot.innerHTML = `
-        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.2">
+        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.3">
         <div class="shell ${this._preferences?.preferences?.compact_nav ? "shell-compact" : ""}">
           <aside class="side">
             <div class="brand"><span class="brand-mark" aria-hidden="true">S</span>
