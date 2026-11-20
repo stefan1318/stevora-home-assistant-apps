@@ -1,3 +1,5 @@
+> **Product policy supersession (2026-11-20):** [STEVORA_ECOSYSTEM_POLICY.md](../../STEVORA_ECOSYSTEM_POLICY.md) defines STEVORA Ecosystem = STEVORA OS + Android + iOS. This Universal Integration is a **technical OS subsystem and legacy migration/test package**, not an independently marketed product or end-user installation requirement in the final STEVORA OS. Home Panel 7.1.1 Premium, Home Hub, Core, Frontend, People & Presence and Manifest are integrated into OS. The existing beta installation steps remain for isolated testing and rollback only.
+
 # STEVORA Ecosystem — Universal Integration 0.3.0-beta.5
 
 **Status:** Home Hub major test candidate for an independent Home Assistant installation.
