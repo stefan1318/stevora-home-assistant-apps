@@ -65,7 +65,11 @@
     "rpi4_64_boot_verified": false,
     "rpi5_64_boot_verified": false,
     "signed_ota_and_rollback_verified": false,
-    "licenses_and_trademarks_reviewed": false
+    "licenses_and_trademarks_reviewed": false,
+    "os_subsystems_integrated_and_permission_tested": false,
+    "mobile_clients_use_os_contract": false,
+    "hey_stevora_provider_and_entitlement_contract_tested": false,
+    "personal_memory_not_bundled_in_public_image": false
   },
   "artifacts": {
     "bootable_image": null,
@@ -77,5 +81,39 @@
     "url_path": "/stevora-os",
     "purpose": "reference-and-transitional-tests-only",
     "production_entrypoint": false
+  },
+  "product_structure": {
+    "ecosystem_products": [
+      "STEVORA OS",
+      "STEVORA App for Android",
+      "STEVORA App for iOS"
+    ],
+    "canonical_policy": "STEVORA_ECOSYSTEM_POLICY.md",
+    "os_is_source_of_truth": true,
+    "os_integrated_components": [
+      "Stevora Core",
+      "Stevora Universal Integration",
+      "Stevora Home Panel 7.1.1 Premium",
+      "Stevora Home Hub",
+      "Stevora Frontend",
+      "Stevora People & Presence",
+      "Stevora Manifest"
+    ],
+    "subsystem_product_status": "internal-os-only",
+    "mobile_architecture": "native-clients-of-stevora-os",
+    "shared_contract": "authenticated-versioned-stevora-os-api",
+    "hey_stevora": {
+      "product_status": "built-in-os-and-mobile-feature",
+      "providers": "configured-installed-voice-or-ai-assistants",
+      "entitlement": "customer-choice-and-purchased-package",
+      "unavailable_behavior": "explicit-not-available-no-fake-capabilities"
+    },
+    "memory_sync": {
+      "product_status": "private-optional-os-extension",
+      "scope": "owner-homes-only",
+      "bundled_in_public_image": false,
+      "enabled_by_default": false,
+      "cross_home_sync_by_default": false
+    }
   }
 }
