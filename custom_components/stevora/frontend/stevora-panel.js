@@ -1210,7 +1210,7 @@ class StevoraHomePanel extends HTMLElement {
       content = `${sectionTitle(this.t("Климатичен център","Climate center"),climates.length+" "+this.t("системи","systems"))}
         ${climates.length ? `<div class="v7-grid">${climates.map(climateWidget).join("")}</div>` : `<div class="v7-empty">${this.t("Няма открити климатични устройства","No climate entities discovered")}</div>`}`;
     } else if (this._view === "lighting") {
-      content = `${sectionTitle(this.t("Осветление и RGB","Lighting and RGB"),lightOn+" / "+lightCards.length+" ON")}
+      content = `${sectionTitle(this.t("Осветление и RGB","Lighting and RGB"))}<div data-live-light-count class="v7-light-count">${lightOn+" / "+lightCards.length+" ON"}</div>
         ${lightCards.length ? `<div class="v7-grid">${lightCards.map(lightingWidget).join("")}</div>` : `<div class="v7-empty">${this.t("Няма светлини","No lights")}</div>`}`;
     } else if (this._view === "devices") {
       content = `${sectionTitle(this.t("Всички устройства","All devices"),allCards.length+" "+this.t("устройства","entities"))}
