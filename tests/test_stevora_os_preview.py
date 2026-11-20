@@ -21,8 +21,9 @@ class TestStevoraOSPreview(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((MODULE / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "stevora_os")
-        self.assertEqual(manifest["version"], "0.1.0")
+        self.assertEqual(manifest["version"], "0.2.0")
         self.assertIn("panel_custom", manifest["dependencies"])
+        self.assertIn("websocket_api", manifest["dependencies"])
         self.assertNotIn("stevora", manifest["dependencies"])
 
     def test_python_is_valid(self):
@@ -32,10 +33,13 @@ class TestStevoraOSPreview(unittest.TestCase):
         self.assertIn("frontend.async_panel_exists", source)
         self.assertIn("require_admin=False", source)
         self.assertNotIn("async_remove_panel", source)
+        self.assertIn("register_system_status(hass)", source)
 
     def test_frontend_does_not_issue_device_commands(self):
         script = CODE.read_text(encoding="utf-8")
         self.assertIn('type: "stevora/manifest"', script)
+        self.assertIn('type: "stevora_os/system/status"', script)
+        self.assertIn("this._system = null", script)
         self.assertIn("this._manifest?.entities", script)
         self.assertNotIn("callService(", script)
         self.assertNotIn("localStorage", script)
@@ -59,11 +63,25 @@ class TestStevoraOSPreview(unittest.TestCase):
         self.assertTrue(keys(bg))
         self.assertEqual(keys(bg), keys(en))
 
+    def test_admin_only_read_only_system_api(self):
+        source = (MODULE / "system_api.py").read_text(encoding="utf-8")
+        ast.parse(source)
+        self.assertIn("@websocket_api.require_admin", source)
+        self.assertIn('STATUS_SCHEMA = "1"', source)
+        self.assertIn('PREVIEW_VERSION = "0.2.0"', source)
+        self.assertIn('hass.states.get(entity_id)', source)
+        self.assertIn('status": "not_detected"', source)
+        self.assertNotIn("async_call(", source)
+        self.assertNotIn("call_service(", source)
+        self.assertNotIn("async_update(", source)
+        self.assertNotIn("async_restart(", source)
+
     def test_responsive_css(self):
         css = STYLE.read_text(encoding="utf-8")
         self.assertIn("@media(max-width:760px)", css)
         self.assertIn("prefers-reduced-motion", css)
         self.assertIn("focus-visible", css)
+        self.assertIn(".os-system-grid", css)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-/* STEVORA OS Developer Preview 0.1.0
+/* STEVORA OS Developer Preview 0.2.0
  * Read-only shell backed by the existing permission-scoped STEVORA manifest.
  * No direct device control, no privileges, no external dependencies/CDNs.
  */
@@ -29,6 +29,17 @@
       lang: "Език", state: "Състояние", local: "Локална система",
       emptyHub: "Не е наличен", online: "Активен", inactive: "Неактивен",
       backToHome: "Към началото", homeLink: "STEVORA Home Panel",
+      systemCenter: "STEVORA System Center", officialUpdates: "Официални актуализации",
+      managedByHA: "Управлява се от Home Assistant", confirmed: "потвърдени", unknownCount: "неизвестни",
+      checkStatus: "Провери системата", adminOnly: "Подробната диагностика е достъпна само за администратори.",
+      waitingStatus: "Зареждане на системната диагностика…", noSystemStatus: "Системната диагностика не е налична.",
+      haCore: "Home Assistant Core", haState: "Състояние на Core", entityCount: "HA entities",
+      updateNotDetected: "Не е открито", updateUnknown: "Неизвестно", updateAvailable: "Налична актуализация",
+      updateCurrent: "Няма налична актуализация", currentVersion: "Инсталирана", newVersion: "Предлагана",
+      componentCore: "Core", componentOS: "Операционна система", componentSupervisor: "Supervisor",
+      systemReadOnly: "Информацията е само за преглед. Обновленията, архивите и рестартирането остават в официалния Home Assistant.",
+      systemOpen: "Отвори HA настройки", systemUnavailable: "Неизвестно / няма данни",
+      integrationReady: "Конфигурирана", systemRefreshError: "Неуспешно зареждане на системните данни.",
     },
     en: {
       home: "Home", rooms: "Rooms", system: "System", about: "About",
@@ -53,6 +64,17 @@
       lang: "Language", state: "Status", local: "Local system",
       emptyHub: "Not available", online: "Active", inactive: "Inactive",
       backToHome: "Back home", homeLink: "STEVORA Home Panel",
+      systemCenter: "STEVORA System Center", officialUpdates: "Official updates",
+      managedByHA: "Managed by Home Assistant", confirmed: "confirmed", unknownCount: "unknown",
+      checkStatus: "Check system", adminOnly: "Detailed system diagnostics are available to administrators only.",
+      waitingStatus: "Loading system diagnostics…", noSystemStatus: "System diagnostics unavailable.",
+      haCore: "Home Assistant Core", haState: "Core state", entityCount: "HA entities",
+      updateNotDetected: "Not detected", updateUnknown: "Unknown", updateAvailable: "Update available",
+      updateCurrent: "No update available", currentVersion: "Installed", newVersion: "Offered",
+      componentCore: "Core", componentOS: "Operating system", componentSupervisor: "Supervisor",
+      systemReadOnly: "Read-only information. Updates, backups and restarts remain in the official Home Assistant interface.",
+      systemOpen: "Open HA settings", systemUnavailable: "Unknown / no data",
+      integrationReady: "Configured", systemRefreshError: "Unable to load system diagnostics.",
     }
   };
   const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) =>
@@ -72,6 +94,10 @@
       this._busy = false;
       this._error = "";
       this._status = "idle";
+      this._system = null;
+      this._systemBusy = false;
+      this._systemError = "";
+      this._systemRequest = 0;
       this._request = 0;
       this._connected = false;
       this.shadowRoot.addEventListener("click", (event) => this._onClick(event));
@@ -91,6 +117,10 @@
         this._connection = connection;
         this._user = user;
         this._manifest = null;
+        this._systemRequest += 1;
+        this._system = null;
+        this._systemBusy = false;
+        this._systemError = "";
         this._error = "";
         this._status = "loading";
         this._view = "home";
@@ -117,8 +147,11 @@
     disconnectedCallback() {
       this._connected = false;
       this._request += 1;
+      this._systemRequest += 1;
       this._busy = false;
+      this._systemBusy = false;
       this._manifest = null;
+      this._system = null;
     }
 
     async refresh() {
@@ -139,6 +172,7 @@
           throw new Error("Invalid STEVORA manifest");
         this._manifest = result;
         this._status = "ready";
+        if (this._hass.user?.is_admin) void this._refreshSystem();
       } catch (_error) {
         if (token !== this._request || connection !== this._hass?.connection ||
             user !== this._hass?.user?.id) return;
@@ -148,6 +182,34 @@
       } finally {
         if (token === this._request) {
           this._busy = false;
+          this.render();
+        }
+      }
+    }
+
+    async _refreshSystem() {
+      if (!this._hass?.user?.is_admin || !this._hass.callWS) return;
+      const token = ++this._systemRequest;
+      const connection = this._hass.connection;
+      const user = this._hass.user?.id;
+      this._systemBusy = true;
+      this._systemError = "";
+      // Keep previously validated status visible during manual refresh.
+      this.render();
+      try {
+        const result = await this._hass.callWS({ type: "stevora_os/system/status" });
+        if (token !== this._systemRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id || !this._hass?.user?.is_admin) return;
+        if (!result || result.schema_version !== "1" || result.preview_version !== "0.2.0")
+          throw new Error("Unsupported system snapshot schema");
+        this._system = result;
+      } catch (_error) {
+        if (token !== this._systemRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        this._systemError = COPY[this._language].systemRefreshError;
+      } finally {
+        if (token === this._systemRequest) {
+          this._systemBusy = false;
           this.render();
         }
       }
@@ -164,13 +226,16 @@
     }
 
     _onClick(event) {
-      const target = event.target?.closest?.("[data-view], [data-refresh]");
+      const target = event.target?.closest?.("[data-view], [data-refresh], [data-system-refresh]");
       if (!target) return;
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
+      if (target.hasAttribute("data-system-refresh")) { void this._refreshSystem(); return; }
       const view = target.getAttribute("data-view");
       if (!["home", "rooms", "system", "about"].includes(view)) return;
       this._view = view;
       this.render();
+      if (view === "system" && this._hass?.user?.is_admin && !this._system && !this._systemBusy)
+        void this._refreshSystem();
     }
 
     _onChange(event) {
@@ -199,6 +264,61 @@
         <div class="stat-number" data-stat="${id}">${escapeHTML(value)}</div></div>`;
     }
 
+    _systemContent(t, ready, hub) {
+      const admin = Boolean(this._hass?.user?.is_admin);
+      const sys = admin ? this._system : null;
+      const updates = sys?.official_updates || {};
+      const stateLabel = (item) => ({
+        "available": t.updateAvailable, "up_to_date": t.updateCurrent,
+        "not_detected": t.updateNotDetected, "unknown": t.updateUnknown
+      })[item?.status] || t.systemUnavailable;
+      const status = this._systemBusy
+        ? `<div class="notice" role="status">${escapeHTML(t.waitingStatus)}</div>`
+        : this._systemError ? `<div class="notice error" role="alert">${escapeHTML(this._systemError)}</div>` : "";
+      const rows = [["core", t.componentCore], ["os", t.componentOS], ["supervisor", t.componentSupervisor]]
+        .map(([key, label]) => {
+          const item = updates[key] || { status: "not_detected" };
+          const kind = ["available", "up_to_date"].includes(item.status) ? item.status : "unknown";
+          return `<div class="os-update-row">
+            <div><strong>${escapeHTML(label)}</strong>
+              <div class="os-version">${escapeHTML(t.currentVersion)}: ${escapeHTML(item.installed_version || "—")}
+              · ${escapeHTML(t.newVersion)}: ${escapeHTML(item.latest_version || "—")}</div></div>
+            <span class="os-status ${kind}">${escapeHTML(stateLabel(item))}</span></div>`;
+        }).join("");
+      const summary = sys
+        ? `${Number(sys.updates_available) || 0} ${escapeHTML(t.confirmed)} ·
+            ${Number(sys.updates_unknown) || 0} ${escapeHTML(t.unknownCount)}`
+        : t.systemUnavailable;
+      return `<header class="section-heading"><h1>${escapeHTML(t.systemCenter)}</h1>
+          <span>${escapeHTML(t.managedByHA)}</span></header>
+        <section class="metrics">
+          ${this._stat(t.haCore, sys?.core_version || this._hass?.config?.version || t.unavailable, "version")}
+          ${this._stat(t.integration, ready ? t.integrationReady : t.unavailableStatus, "integration")}
+          ${this._stat(t.hub, ready ? hub : t.emptyHub, "hub")}
+          ${this._stat(t.access, admin ? t.administrator : t.user, "access")}
+        </section>
+        ${status}
+        ${admin ? `<section class="os-system-grid">
+          <article class="card"><h2>${escapeHTML(t.state)}</h2>
+            <div class="kv"><span>${escapeHTML(t.haState)}</span>
+              <strong>${escapeHTML(sys?.ha_state || "—")}</strong></div>
+            <div class="kv"><span>${escapeHTML(t.entityCount)}</span>
+              <strong>${sys && Number.isFinite(sys.registered_entities) ? sys.registered_entities : "—"}</strong></div>
+            <div class="kv"><span>${escapeHTML(t.oslayer)}</span>
+              <strong>0.2.0 Developer Preview</strong></div>
+            <button class="button secondary" data-system-refresh type="button">${escapeHTML(t.checkStatus)}</button>
+          </article>
+          <article class="card"><h2>${escapeHTML(t.officialUpdates)}</h2>
+            <p class="os-summary">${summary}</p>
+            <div class="os-updates">${rows}</div>
+            <p>${escapeHTML(t.systemReadOnly)}</p>
+            <a class="button secondary" href="/config">${escapeHTML(t.systemOpen)}</a>
+          </article></section>` :
+          `<article class="card"><h2>${escapeHTML(t.access)}</h2><p>${escapeHTML(t.adminOnly)}</p>
+            <p>${escapeHTML(t.systemReadOnly)}</p></article>`}
+      `;
+    }
+
     _content(t) {
       const ready = this._status === "ready";
       const count = this._counts();
@@ -225,21 +345,10 @@
       if (this._view === "rooms") return `
         <header class="section-heading"><h1>${escapeHTML(t.yourRooms)}</h1>
           <span>${escapeHTML(t.noDeviceControls)}</span></header>${this._rooms(t)}`;
-      if (this._view === "system") return `
-        <header class="section-heading"><h1>${escapeHTML(t.system)}</h1><span>${escapeHTML(t.backend)}</span></header>
-        <section class="metrics">
-          ${this._stat(t.server, this._hass?.config?.version || t.unavailable, "version")}
-          ${this._stat(t.integration, ready ? t.loaded : t.unavailableStatus, "integration")}
-          ${this._stat(t.hub, ready ? hub : "—", "hub")}
-          ${this._stat(t.access, this._hass?.user?.is_admin ? t.administrator : t.user, "access")}
-        </section>
-        <div class="card"><h2>${escapeHTML(t.settingsNote)}</h2>
-          <p>${escapeHTML(t.readOnly)}</p>
-          ${this._hass?.user?.is_admin ? `<a class="button secondary" href="/config">${escapeHTML(t.haSettings)}</a>` : ""}
-        </div>`;
+      if (this._view === "system") return this._systemContent(t, ready, hub);
       return `<section class="card about"><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
         <h1>${escapeHTML(t.aboutTitle)}</h1><p>${escapeHTML(t.aboutText)}</p>
-        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>0.1.0 Developer Preview</strong></div>
+        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>0.2.0 Developer Preview</strong></div>
         <div class="kv"><span>${escapeHTML(t.backend)}</span><strong>Home Assistant OS</strong></div></section>`;
     }
 
@@ -265,7 +374,7 @@
         ? `<div class="notice error" role="alert">${escapeHTML(t.error)} · ${escapeHTML(this._error)}</div>`
         : this._status === "loading" ? `<div class="notice" role="status">${escapeHTML(t.loading)}</div>` : "";
       this.shadowRoot.innerHTML = `
-        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=0.1.0">
+        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=0.2.0">
         <div class="shell">
           <aside class="side">
             <div class="brand"><span class="brand-mark" aria-hidden="true">S</span>
@@ -281,7 +390,7 @@
                 <select id="stevora-os-language" aria-label="${escapeHTML(t.lang)}">
                   <option value="bg" ${this._language === "bg" ? "selected" : ""}>BG</option>
                   <option value="en" ${this._language === "en" ? "selected" : ""}>EN</option></select>
-                <span class="preview-pill">0.1.0 PREVIEW</span></div></header>
+                <span class="preview-pill">0.2.0 PREVIEW</span></div></header>
             ${note}
             <div class="content">${this._content(t)}</div>
             <footer>STEVORA OS Experience · Powered by Home Assistant · <strong>Developer Preview</strong></footer>
