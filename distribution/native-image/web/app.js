@@ -70,10 +70,14 @@
     ws:null,connected:false,authorized:false,admin:false,id:1,pending:new Map(),
     entities:[],areas:[],registry:[],deviceRegistry:[],configEntries:[],apps:[],
     store:[],backups:[],system:{},userList:[],messages:[],installations:{},
-    room:"",filter:"",busy:false,error:"",lastError:"",selectedApp:"",
+    room:"",filter:"",busy:false,error:"",lastError:"",selectedApp:"",stevoraManifest:null,
   };
   const backlight = e => /back[ _-]?light|подсвет/i.test([e.entity_id,e.name,e.attributes?.friendly_name,e.original_name].join(" "));
-  const isAllowed = e => !!e && !backlight(e) && !["unavailable","unknown"].includes(e.state);
+  const isAllowed = e => !!e && !backlight(e) &&
+    !["unavailable","unknown"].includes(e.state) &&
+    !!state.stevoraManifest?.entities?.some(item=>item.entity_id===e.entity_id);
+  const controllable = e => isAllowed(e) &&
+    (state.stevoraManifest?.controllable_entities||[]).includes(e.entity_id);
   const validId = (id) => /^[a-z0-9_]+\.[a-z0-9_]+$/.test(id||"");
   const slug = s => /^[a-z0-9_]+$/.test(s||"");
   const count = () => state.entities.filter(e=>isAllowed(e)).length;
@@ -93,7 +97,7 @@
     state.ws=null;
     for(const pending of state.pending.values())pending.reject(new Error("Session ended"));
     state.pending.clear();
-    state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];
+    state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
     state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
     state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
   }
@@ -217,7 +221,11 @@
         tryCall({type:"config/entity_registry/list"},[]),
         tryCall({type:"config/device_registry/list"},[]),
       ]);
-      state.entities=(Array.isArray(entities)?entities:[]).filter(e=>!backlight(e));
+      const manifest=await tryCall({type:"stevora/manifest",language:locale},null);
+      state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
+      const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
+      state.entities=(Array.isArray(entities)?entities:[])
+        .filter(e=>readable.has(e.entity_id)&&!backlight(e));
       state.areas=Array.isArray(areas)?areas:[];
       state.registry=Array.isArray(registry)?registry:[];
       state.deviceRegistry=Array.isArray(devices)?devices:[];
@@ -247,7 +255,8 @@
     if(view==="backups"){const a=await supervisor("/backups").catch(()=>({}));state.backups=a.backups||[]}
     if(view==="users")state.userList=await tryCall({type:"config/auth/list"},[]);
   }
-  const areaName=id=>state.areas.find(a=>a.area_id===id)?.name||id||t("roomAll");
+  const areaName=id=>(state.stevoraManifest?.rooms||[]).find(r=>r.id===id)?.name ||
+    state.areas.find(a=>a.area_id===id)?.name||id||t("roomAll");
   function entityArea(e){
     const r=state.registry.find(x=>x.entity_id===e.entity_id);
     let areaId=r?.area_id;
@@ -281,16 +290,16 @@
     if(!matches(name+" "+id))return "";
     const action=(s,label,disabled=false)=>'<button data-entity="'+esc(id)+'" data-service="'+s+'" '+(disabled?"disabled":"")+'>'+esc(label)+'</button>';
     let buttons="";
-    if(["light","switch","fan"].includes(domain))buttons+=action("toggle",e.state==="off"?t("turnOn"):t("turnOff"));
+    if(["light","switch","fan"].includes(domain) && controllable(e))buttons+=action("toggle",e.state==="off"?t("turnOn"):t("turnOff"));
     if(domain==="climate"){
       const v=Number(e.attributes?.temperature),lo=Number(e.attributes?.min_temp??5),hi=Number(e.attributes?.max_temp??35);
       buttons+='<span class="temp-readout">'+esc(t("target"))+': '+(Number.isFinite(v)?v+"°":"—")+'</span>';
-      if(Number.isFinite(v)&&v>=lo&&v<=hi){
+      if(controllable(e)&&Number.isFinite(v)&&v>=lo&&v<=hi){
         buttons+=action("climate-down","−1°",v-1<lo)+action("climate-up","+1°",v+1>hi);
       }
     }
-    if(domain==="scene")buttons+=action("turn_on",t("activate"));
-    if(domain==="automation")buttons+=action("trigger",t("trigger"));
+    if(domain==="scene" && controllable(e))buttons+=action("turn_on",t("activate"));
+    if(domain==="automation" && controllable(e))buttons+=action("trigger",t("trigger"));
     const stateLabel=e.state==="off"?t("turnOff"):e.state;
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
     return '<article class="device-card"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><strong>'+esc(name)+'</strong><small>'+esc(id)+'</small></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
@@ -298,7 +307,7 @@
   function home(){
     const available=count();
     const climates=state.entities.filter(e=>e.entity_id.startsWith("climate.")&&isAllowed(e));
-    const rooms=state.areas;
+    const rooms=state.stevoraManifest?.rooms||state.areas;
     return hdr("STEVORA "+t("home"),t("managed"))+
     '<div class="metrics">'+stat(t("total"),state.entities.length)+stat(t("online"),available)+stat(t("rooms"),rooms.length)+stat(t("climate"),climates.length)+'</div>'+
     '<section class="panel"><h2>'+esc(t("rooms"))+'</h2><div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===a.area_id).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div></section>'+
@@ -403,7 +412,7 @@
   async function service(id,action){
     if(!validId(id))throw new Error("Invalid entity id");
     const e=state.entities.find(x=>x.entity_id===id);
-    if(!isAllowed(e))throw new Error("Unavailable or prohibited entity");
+    if(!controllable(e))throw new Error("Forbidden by STEVORA Manifest or unavailable entity");
     const domain=id.split(".")[0];
     const p={type:"call_service",domain,service:action,target:{entity_id:id}};
     if(action==="climate-up"||action==="climate-down"){
