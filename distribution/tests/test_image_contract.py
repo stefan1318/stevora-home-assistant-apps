@@ -59,6 +59,53 @@ class DistributionContractTest(unittest.TestCase):
         self.assertEqual(c["system_stack"]["device_backend"], "home-assistant-core")
         self.assertEqual(c["system_stack"]["privileged_access"], "server-side-authenticated-bridge")
 
+    def test_ecosystem_is_os_and_two_native_clients_only(self):
+        c = read_contract()
+        p = c["product_structure"]
+        self.assertEqual(
+            p["ecosystem_products"],
+            ["STEVORA OS", "STEVORA App for Android", "STEVORA App for iOS"],
+        )
+        self.assertTrue(p["os_is_source_of_truth"])
+        self.assertEqual(p["subsystem_product_status"], "internal-os-only")
+        self.assertEqual(p["mobile_architecture"], "native-clients-of-stevora-os")
+        self.assertEqual(p["shared_contract"], "authenticated-versioned-stevora-os-api")
+        self.assertEqual(len(p["os_integrated_components"]), 7)
+        self.assertEqual(set(p["os_integrated_components"]), {
+            "Stevora Core", "Stevora Universal Integration",
+            "Stevora Home Panel 7.1.1 Premium", "Stevora Home Hub",
+            "Stevora Frontend", "Stevora People & Presence", "Stevora Manifest",
+        })
+
+    def test_hey_stevora_is_embedded_but_provider_and_package_gated(self):
+        h = read_contract()["product_structure"]["hey_stevora"]
+        self.assertEqual(h["product_status"], "built-in-os-and-mobile-feature")
+        self.assertIn("installed", h["providers"])
+        self.assertIn("purchased-package", h["entitlement"])
+        self.assertIn("no-fake", h["unavailable_behavior"])
+
+    def test_memory_is_private_owner_only_optional_extension(self):
+        m = read_contract()["product_structure"]["memory_sync"]
+        self.assertEqual(m["scope"], "owner-homes-only")
+        self.assertEqual(m["product_status"], "private-optional-os-extension")
+        for forbidden in ("bundled_in_public_image", "enabled_by_default",
+                          "cross_home_sync_by_default"):
+            self.assertIs(m[forbidden], False)
+
+    def test_policy_file_and_release_gates_present(self):
+        policy = ROOT.parent / "STEVORA_ECOSYSTEM_POLICY.md"
+        body = policy.read_text(encoding="utf-8")
+        for name in ("STEVORA OS", "STEVORA Core",
+                     "STEVORA Universal Integration", "STEVORA Home Panel",
+                     "STEVORA Home Hub", "STEVORA People & Presence",
+                     "STEVORA Manifest", "Hey Stevora", "Memory & Sync"):
+            self.assertIn(name, body)
+        for gate in ("os_subsystems_integrated_and_permission_tested",
+                     "mobile_clients_use_os_contract",
+                     "hey_stevora_provider_and_entitlement_contract_tested",
+                     "personal_memory_not_bundled_in_public_image"):
+            self.assertIs(read_contract()["verified_release_gates"][gate], False)
+
     def test_dev_status_never_claims_ready_image(self):
         c = read_contract()
         self.assertEqual(c["status"], "architecture")
