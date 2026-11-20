@@ -102,7 +102,7 @@ assert.ok(panel.shadowRoot.html.includes("Bedroom"));
 assert.ok(!panel.shadowRoot.html.includes("<script>bad()"));
 panel._view = "system";
 panel.render();
-assert.ok(!panel.shadowRoot.html.includes("2026.11.1"), "Old admin system data must not remain visible");
+assert.ok(!panel.shadowRoot.html.includes("&lt;img src=x onerror=bad()&gt;"), "Old admin diagnostics must not remain visible");
 assert.ok(!panel.shadowRoot.html.includes('href="/config"'),
   "Read-only user cannot receive an HA admin navigation link");
 
