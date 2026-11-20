@@ -597,4 +597,48 @@ stableLive.hass = {connection:sameConn,user:{id:"u"},states:{
 assert.equal(refreshes,1); // Capability change warrants deliberate regeneration
 assert.equal(fullRenders,0);
 
+
+// Expanded controls must expose only HA-advertised fields; compact is not full.
+const fullLight = new Panel();
+fullLight._hass = {states:{
+  "light.color":{entity_id:"light.color",state:"on",
+    attributes:{supported_features:4,supported_color_modes:["rgb","color_temp"],
+      brightness:180,rgb_color:[100,150,200],color_temp_kelvin:3300,
+      min_color_temp_kelvin:2000,max_color_temp_kelvin:6500,
+      effect_list:["Rainbow"],effect:"Rainbow"}},
+}};
+const fullCard = {entity_id:"light.color",domain:"light",name:"Mood light",
+  layout:"expanded",controls:["toggle","brightness","color","color_temp","effect"],
+  available_controls:["toggle","brightness","color","color_temp","effect"]};
+const fullMarkup = fullLight.renderNativeCard(fullCard,new Set(["light.color"]));
+assert.match(fullMarkup,/is-expanded/);
+assert.match(fullMarkup,/data-lightcolor="light.color"/);
+assert.match(fullMarkup,/data-native-range="color_temp"/);
+assert.match(fullMarkup,/data-native-select="effect"/);
+assert.doesNotMatch(fullLight.renderNativeCard({...fullCard,layout:"compact"},new Set(["light.color"])),
+  /data-native-range="color_temp"/);
+fullLight._hass.states["light.color"].attributes.supported_features = 0;
+assert.doesNotMatch(fullLight.renderNativeCard(fullCard,new Set(["light.color"])),
+  /data-native-select="effect"/);
+
+// An info-only climate fixture must remain read-only even if the manifest
+// declares a temperature action (backend does not grant controls to info cards).
+const noControlsClimate = clima.renderClimateCenter({
+  entity_id:"climate.zone",domain:"climate",name:"AC",roomId:"a",
+  layout:"info",controls:["temperature","hvac_mode"],
+  available_controls:["temperature","hvac_mode"],
+},false);
+assert.doesNotMatch(noControlsClimate,/data-action="temperature-up"/);
+assert.doesNotMatch(noControlsClimate,/data-climate-select="hvac_mode"/);
+
+// The UI category field is a separate visual preference, never a service domain.
+const visualForm = classified.deviceEditors({
+  entities:[{entity_id:"switch.pendant",name:"Pendant lamp",available_controls:["toggle"]}],
+  device_profiles:{"switch.pendant":{display_category:"lighting"}},
+  translations:{entities:{}},rooms:[{id:"k",name:"Kitchen"}],
+});
+assert.match(visualForm,/data-profile-display-category="switch.pendant"/);
+assert.match(visualForm,/value="lighting" selected/);
+assert.doesNotMatch(visualForm,/value="brightness" data-control-for="switch.pendant"/);
+
 console.log("STEVORA panel runtime: PASS");
