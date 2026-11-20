@@ -65,6 +65,7 @@
       currentTemp: "Текуща",
       targetTemp: "Зададена",
       brightness: "Яркост",
+      speed: "Скорост",
       color: "Цвят",
       room: "Помещение",
       hubEvents: "Събития на Home Hub",
@@ -152,6 +153,7 @@
       currentTemp: "Current",
       targetTemp: "Target",
       brightness: "Brightness",
+      speed: "Speed",
       color: "Color",
       room: "Room",
       hubEvents: "Home Hub events",
@@ -740,7 +742,7 @@
       if (this._can(card,"percentage") && domain === "fan") {
         const p = Number(state?.attributes?.percentage);
         const pct = Number.isFinite(p) ? Math.max(0,Math.min(100,p)) : 0;
-        buttons.push('<label class="device-slider">'+escapeHTML(t.brightness)+
+        buttons.push('<label class="device-slider">'+escapeHTML(t.speed)+
           '<input type="range" min="0" max="100" step="1" value="'+pct+
           '" data-device-input="percentage" data-entity="'+idAttr+'"></label>');
       }
@@ -846,6 +848,28 @@
             escapeHTML(t.integrationSettings)+'</a>':'')+'</div></div>';
     }
 
+    _homeHighlights(t) {
+      const climates = this._cards("climate").slice(0,3);
+      const climateRows = climates.map((card) => {
+        const state = this._state(card.entity_id);
+        const current = state?.attributes?.current_temperature;
+        const target = state?.attributes?.temperature;
+        return '<div class="kv"><span>'+escapeHTML(card.name)+'</span><strong>'+
+          escapeHTML(current == null ? "—" : String(current)+"°")+
+          ' · '+escapeHTML(target == null ? "—" : String(target)+"°")+'</strong></div>';
+      }).join("");
+      const visible = new Set((this._manifest?.entities || []).map((entity)=>entity.entity_id));
+      const events = (this._hubEvents?.events || []).filter((event)=>
+        visible.has(event.entity_id) && !this._backlight(event.entity_id)).slice(-6).reverse();
+      const eventRows = events.map((event) =>
+        '<div class="kv"><span>'+escapeHTML(event.entity_id)+'</span><strong>'+
+          escapeHTML(event.kind || event.state || "—")+'</strong></div>').join("");
+      return '<section class="home-detail"><article class="card"><h2>'+
+        escapeHTML(t.climate)+'</h2>'+(climateRows || '<p>'+escapeHTML(t.noDevices)+'</p>')+
+        '</article><article class="card"><h2>'+escapeHTML(t.hubEvents)+'</h2>'+
+        (eventRows || '<p>'+escapeHTML(t.noEvents)+'</p>')+'</article></section>';
+    }
+
     _content(t) {
       const ready = this._status === "ready";
       const count = this._counts();
@@ -874,6 +898,7 @@
         </section>
         <div class="section-heading"><h2>${escapeHTML(t.yourRooms)}</h2><span>${escapeHTML(t.local)}</span></div>
         ${this._rooms(t)}
+        ${this._homeHighlights(t)}
       `;
       if (this._view === "rooms") return `
         <header class="section-heading"><h1>${escapeHTML(t.yourRooms)}</h1>
@@ -881,7 +906,7 @@
       if (this._view === "system") return this._systemContent(t, ready, hub);
       return `<section class="card about"><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
         <h1>${escapeHTML(t.aboutTitle)}</h1><p>${escapeHTML(t.aboutText)}</p>
-        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>0.2.0 Developer Preview</strong></div>
+        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.1 Developer Preview</strong></div>
         <div class="kv"><span>${escapeHTML(t.backend)}</span><strong>Home Assistant OS</strong></div></section>`;
     }
 
