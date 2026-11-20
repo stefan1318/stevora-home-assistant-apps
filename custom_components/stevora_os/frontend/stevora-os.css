@@ -1,4 +1,4 @@
-/* STEVORA OS Experience 0.2.0 — all styles local; responsive, accessible. */
+/* STEVORA OS Experience 1.0.0-alpha.1 — all styles local; responsive, accessible. */
 :host{--bg:#050e1a;--surface:#0e1e34;--card:#102740;--edge:rgba(152,204,255,.17);--text:#eaf5ff;--muted:#9aafcb;--accent:#7edbfa;--mint:#73e0be;display:block;min-height:100vh;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 :host *{box-sizing:border-box}
 :host button,:host select{font:inherit}
@@ -83,3 +83,63 @@ footer strong{font-weight:750;margin-left:4px}
 .os-system-grid button{margin-top:22px}
 @media(max-width:1020px){.os-system-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.os-update-row{align-items:flex-start;flex-direction:column}.os-status{align-self:flex-start}}
+
+/* 1.0 unified front-end: generated, per-home cards and native controls. */
+.side{gap:19px}
+.side nav{gap:3px;max-height:calc(100vh - 260px);overflow-y:auto;scrollbar-width:thin}
+.side .nav-item{min-height:40px;padding:9px 12px}
+.entity-card{min-width:0;display:flex;flex-direction:column;gap:13px;padding:19px 17px;border:1px solid var(--edge);border-radius:18px;background:linear-gradient(145deg,rgba(20,49,79,.95),rgba(10,24,43,.96));box-shadow:0 9px 29px rgba(0,0,0,.13)}
+.entity-card.unavailable{opacity:.7}
+.entity-head{display:flex;gap:11px;align-items:center;min-width:0}
+.entity-head>div{flex:1;min-width:0}
+.entity-icon{flex:none;display:grid;place-items:center;border-radius:14px;width:44px;height:44px;border:1px solid rgba(152,211,252,.18);background:linear-gradient(145deg,rgba(70,136,215,.28),rgba(25,59,101,.12));color:#a6e7fb;font-size:27px}
+.entity-head strong{display:block;font-size:14px;line-height:1.24;overflow-wrap:anywhere}
+.entity-head small{display:block;font-size:10px;color:var(--muted);line-height:1.3;margin-top:5px;overflow-wrap:anywhere}
+.entity-state{font-weight:730;color:#dceffc;font-size:23px;min-height:34px;margin-top:4px;overflow-wrap:anywhere}
+.entity-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:auto}
+.entity-actions .action{border:1px solid rgba(133,198,247,.21);background:#1a4067;color:#f0faff;border-radius:11px;min-height:40px;padding:9px 13px;cursor:pointer;font-size:12px;font-weight:680}
+.entity-actions .action.subtle{background:rgba(24,48,74,.38);color:#aaccec}
+.entity-actions .action:disabled{opacity:.4;cursor:default}
+.entity-actions .action:hover:not(:disabled){background:#285c8e}
+.device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:15px}
+.device-toolbar{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px;padding:15px;background:rgba(13,34,57,.64);border:1px solid var(--edge);border-radius:15px}
+.device-toolbar label{flex:1;display:grid;gap:7px;min-width:190px;font-size:11px;color:#a6c2df}
+.device-toolbar select,.device-toolbar input,.room-editor input,.chat-card input{min-width:0;width:100%;background:#0d2036;border:1px solid rgba(135,193,241,.26);border-radius:11px;color:#e9f4ff;padding:10px 12px;min-height:41px;font-size:13px}
+.device-toolbar input:focus,.device-toolbar select:focus,.room-editor input:focus,.chat-card input:focus{outline:2px solid #5cbff1;outline-offset:1px}
+.device-slider{display:flex;flex-direction:column;gap:8px;font-size:11px;color:#b4ccdf;width:100%}
+.device-slider input{width:100%;height:24px;accent-color:#79d0fb}
+.color-control{display:flex;gap:9px;align-items:center;font-size:11px;color:#b4ccdf}
+.color-control input{width:53px;height:37px;border-radius:10px;background:transparent;border:1px solid var(--edge);cursor:pointer}
+.temp-controls{display:flex;align-items:center;gap:13px}
+.temp-controls button{min-width:40px;min-height:40px;background:#224873;color:#dff7ff;border:1px solid var(--edge);border-radius:12px;font-size:22px;cursor:pointer}
+.temp-controls button:disabled{opacity:.35;cursor:default}
+.temp-controls strong{font-size:20px}
+.room{appearance:none;width:100%;text-align:left;cursor:pointer;color:var(--text);font:inherit}
+.room:hover{background:linear-gradient(150deg,#1b426c,#0e2641);border-color:rgba(131,203,252,.51)}
+.room:focus-visible{outline:2px solid #83e0ff;outline-offset:2px}
+.read-only{font-size:11px;color:var(--muted);padding:10px 0}
+.room-editor{display:grid;gap:12px;max-height:570px;overflow:auto}
+.room-editor form{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;padding:13px 0;border-top:1px solid var(--edge)}
+.room-editor form>strong{grid-column:1/-1;font-size:12px;color:#bcdcf3}
+.room-editor label{display:grid;gap:5px;font-size:11px;color:var(--muted);min-width:0}
+.room-editor button{white-space:nowrap}
+.chat-card{max-width:900px}
+.chat-history{display:flex;flex-direction:column;gap:11px;min-height:150px;max-height:510px;overflow-y:auto;margin:20px 0;border-radius:13px;border:1px solid var(--edge);background:rgba(5,20,36,.6);padding:17px}
+.chat-msg{white-space:pre-wrap;overflow-wrap:anywhere;max-width:85%;padding:12px 15px;border-radius:14px;font-size:13px;color:#e1f3ff;background:#17385b;align-self:flex-start}
+.chat-msg.is-user{align-self:flex-end;background:#285783}
+.chat-card form{display:flex;gap:10px}
+.chat-card .button{margin:0;white-space:nowrap}
+[data-device-card][hidden]{display:none!important}
+@media(max-width:1160px){.side nav{max-height:calc(100vh - 175px)}.side .nav-item{padding:9px}}
+@media(max-width:760px){
+ .device-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .entity-card{padding:15px;gap:10px}
+ .entity-icon{width:35px;height:35px;font-size:23px}
+ .entity-state{font-size:20px}
+ .entity-actions .action{padding:8px 10px;font-size:11px}
+ .mobile-nav{justify-content:flex-start;overflow-x:auto;gap:7px;overscroll-behavior-x:contain;scrollbar-width:thin;scroll-snap-type:x proximity}
+ .mobile-nav .nav-item{flex:none;scroll-snap-align:start;min-width:69px}
+ .room-editor form{grid-template-columns:1fr 1fr}
+ .room-editor form>button{grid-column:1/-1}
+}
+@media(max-width:500px){.device-grid{grid-template-columns:1fr}.device-toolbar label{min-width:100%}.chat-card form{flex-direction:column}}
