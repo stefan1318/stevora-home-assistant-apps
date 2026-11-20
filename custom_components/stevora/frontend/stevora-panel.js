@@ -269,6 +269,18 @@ class StevoraHomePanel extends HTMLElement {
     const profiles = config?.device_profiles || {};
     const labels = config?.translations?.entities || {};
     const rooms = config?.rooms || [];
+    const categories = [
+      ["auto",this.t("Автоматично","Automatic")],
+      ["lighting",this.t("Осветление","Lighting")],
+      ["switches",this.t("Превключватели","Switches")],
+      ["climate",this.t("Климат","Climate")],
+      ["fans",this.t("Вентилатори","Fans")],
+      ["covers",this.t("Щори","Covers")],
+      ["media",this.t("Мултимедия","Media")],
+      ["sensors",this.t("Сензори","Sensors")],
+      ["binary_sensors",this.t("Индикатори","Indicators")],
+      ["locks",this.t("Ключалки","Locks")],
+    ];
     const e = value => this.escape(value);
     const title = '<h3>' + this.t("Устройства и персонализация","Devices and personalization") + '</h3>' +
       '<p class="v7-editor-intro">' +
@@ -282,7 +294,8 @@ class StevoraHomePanel extends HTMLElement {
       const id = e(entity.entity_id);
       const profile = profiles[entity.entity_id] || {};
       const domain = entity.entity_id.split(".")[0];
-      const choices = this.domainControls(domain);
+      const choices = Array.isArray(entity.available_controls) ?
+        entity.available_controls : this.domainControls(domain);
       const mode = !Array.isArray(profile.controls) ? "auto" :
         profile.controls.length ? "custom" : "info";
       const icon = this.safeIcon(profile.icon, this.safeIcon(entity.icon,
@@ -311,6 +324,13 @@ class StevoraHomePanel extends HTMLElement {
         this.t("Търси лампа, вентилатор, климатик...","Find lamp, fan, climate...") + '"/>' +
         '<div class="v7-icon-grid" data-icon-grid="' + id + '"></div></div></div>' +
         '<div class="v7-editor-columns">' +
+        '<div class="v7-editor-field"><label>' + this.t("Тип в STEVORA","STEVORA category") + '</label>' +
+        '<select data-profile-display-category="' + id + '">' +
+        categories.map(([key,label])=>option(key,label,profile.display_category||"auto")).join("") +
+        '</select><small class="v7-muted">' +
+        this.t("Категорията променя подредбата, но не функциите на устройството.",
+          "Categories change placement, not actual HA device capabilities.") +
+        '</small></div>' +
         '<div class="v7-editor-field"><label>' + this.t("Стил на картата","Card style") + '</label>' +
         '<select data-profile-layout="' + id + '">' +
         option("compact",this.t("Компактен","Compact"),profile.layout || "compact") +
@@ -647,7 +667,16 @@ class StevoraHomePanel extends HTMLElement {
       ...card, roomId: room.id, roomName: room.name
     })));
     const byDomain = domain => allCards.filter(card => card.domain === domain);
-    const lightCards = byDomain("light");
+    // Presentation category may differ from the native HA entity domain.
+    // A switch explicitly classified as a lamp appears under Lighting but
+    // its services and capabilities remain those of a switch.
+    const byCategory = category => allCards.filter(card =>
+      (card.display_category || ({
+        light:"lighting",switch:"switches",climate:"climate",fan:"fans",
+        cover:"covers",media_player:"media",sensor:"sensors",
+        binary_sensor:"binary_sensors",lock:"locks",
+      })[card.domain]) === category);
+    const lightCards = byCategory("lighting");
     const climates = byDomain("climate");
     const statusCards = allCards.filter(card => ["sensor","binary_sensor"].includes(card.domain));
     const lightOn = lightCards.filter(card => this._hass?.states?.[card.entity_id]?.state === "on").length;
@@ -766,7 +795,7 @@ class StevoraHomePanel extends HTMLElement {
         this.t("Няма открити светлини","No discovered lights") + '</div>') +
       '<div class="v7-actions"><button class="v7-action subtle" data-view="lighting">' +
       this.t("Осветление и RGB","Lighting & RGB") + '</button></div></section>';
-    const lightingWidget = card => this.renderNativeCard(card, controllable, true);
+    const lightingWidget = card => this.renderNativeCard(card, controllable);
     const runSections = roomsToDisplay => roomsToDisplay.map(room =>
       `${sectionTitle(room.name, room.cards.length + " " + this.t("устройства","entities"))}${cardGrid(room.cards,this.t("Няма устройства в стаята","No entities in room"))}`
     ).join("");
@@ -1093,6 +1122,7 @@ class StevoraHomePanel extends HTMLElement {
       const field = key => this.shadowRoot.querySelector('[data-profile-' + key + '="' + CSS.escape(id) + '"]')?.value || "";
       const profile = {
         name:field("name"), icon:field("icon"), layout:field("layout") || "compact",
+        display_category:field("display-category") || "auto",
         area_id:field("area") || null,
         user_ids:field("users").split(",").map(x=>x.trim()).filter(Boolean),
       };
@@ -1102,7 +1132,12 @@ class StevoraHomePanel extends HTMLElement {
       if (mode === "custom") {
         profile.controls = [...this.shadowRoot.querySelectorAll(
           '[data-control-for="' + CSS.escape(id) + '"]:checked'
-        )].map(x => x.value).filter(x => this.domainControls(id.split(".")[0]).includes(x));
+        )].map(x => x.value).filter(x => {
+          const source = (this._admin?.rooms?.entities || []).find(item => item.entity_id === id);
+          const allowed = Array.isArray(source?.available_controls) ?
+            source.available_controls : this.domainControls(id.split(".")[0]);
+          return allowed.includes(x);
+        });
       }
       try {
         await this._hass.callWS({type:"stevora/admin/devices/update",
