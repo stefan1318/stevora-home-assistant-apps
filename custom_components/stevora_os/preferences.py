@@ -20,7 +20,7 @@ MAX_USERS = 500
 LANGUAGES = ("bg", "en")
 VIEWS = (
     "home", "rooms", "devices", "lighting", "climate", "scenes",
-    "automation", "assist", "system", "setup", "about",
+    "automation", "assist", "system", "setup", "integrations", "about",
 )
 DEFAULTS = {
     "language": "bg",
