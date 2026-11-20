@@ -166,6 +166,12 @@ panel._hass.states["light.kitchen"].attributes = {
 panel._panelModel.sections[0].cards[0].controls = ["toggle","color","brightness"];
 panel._view = "lighting";
 panel.render();
+// Compact is intentionally concise, even in Lighting: no advanced sliders.
+assert.match(panel.shadowRoot.innerHTML, /is-compact/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
+panel._panelModel.sections[0].cards[0].layout = "expanded";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /is-expanded/);
 assert.match(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
 assert.match(panel.shadowRoot.innerHTML, /data-lightcolor="light.kitchen"/);
 panel._manifest.controllable_entities = ["climate.bedroom"];
