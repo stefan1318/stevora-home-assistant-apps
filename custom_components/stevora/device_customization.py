@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 ALLOWED_LAYOUTS = frozenset({"info", "compact", "expanded"})
+ALLOWED_DISPLAY_CATEGORIES = frozenset({"auto", "lighting", "switches", "climate", "fans", "covers", "media", "sensors", "binary_sensors", "locks"})
 ALLOWED_CONTROLS = {
     "light": frozenset({"toggle", "brightness", "color", "color_temp", "effect"}),
     "switch": frozenset({"toggle"}),
@@ -47,7 +48,7 @@ def permitted_controls(entity_id, supported_features=0, attributes=None, source_
 def validate_profile(entity_id, profile, valid_areas):
     if not isinstance(profile, dict):
         return "Profile must be an object"
-    if set(profile) - {"name", "icon", "layout", "controls", "area_id", "user_ids"}:
+    if set(profile) - {"name", "icon", "layout", "controls", "area_id", "user_ids", "display_category"}:
         return "Unsupported profile field"
     name = profile.get("name", "")
     icon = profile.get("icon", "")
@@ -61,6 +62,8 @@ def validate_profile(entity_id, profile, valid_areas):
         return "Icon must be an mdi: identifier"
     if layout not in ALLOWED_LAYOUTS:
         return "Invalid layout"
+    if profile.get("display_category", "auto") not in ALLOWED_DISPLAY_CATEGORIES:
+        return "Invalid display category"
     if not isinstance(controls, list) or len(controls) != len(set(map(str, controls))):
         return "Invalid controls"
     if any(not isinstance(item, str) or item not in permitted_controls(entity_id) for item in controls):
@@ -77,6 +80,7 @@ def normalize_profile(profile):
         "name": profile.get("name", "").strip(),
         "icon": profile.get("icon", "").strip(),
         "layout": profile.get("layout", "compact"),
+        "display_category": profile.get("display_category", "auto"),
         "area_id": profile.get("area_id"),
         "user_ids": list(profile.get("user_ids", [])),
     }
