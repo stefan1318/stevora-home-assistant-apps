@@ -542,6 +542,114 @@ class StevoraHomePanel extends HTMLElement {
     return controls.filter(key => projected.includes(key));
   }
 
+  climateTelemetry(card) {
+    const state = this._hass?.states?.[card?.entity_id];
+    const attrs = state?.attributes || {};
+    const cards = (this._panelModel?.sections || []).flatMap(room =>
+      (room.cards || []).map(item => ({...item,roomId:room.id})));
+    const roomId = card?.roomId || cards.find(item => item.entity_id === card?.entity_id)?.roomId;
+    const roomSensor = kind => cards.find(item =>
+      item.roomId === roomId && item.domain === "sensor" &&
+      this._hass?.states?.[item.entity_id]?.attributes?.device_class === kind &&
+      !["unknown","unavailable"].includes(this._hass?.states?.[item.entity_id]?.state));
+    const sensorTemp = roomSensor("temperature");
+    const sample = sensorTemp && this._hass?.states?.[sensorTemp.entity_id];
+    const sensorUnit = sample?.attributes?.unit_of_measurement;
+    const sensorNumber = Number(sample?.state);
+    const unit = this.temperatureUnit();
+    const normalized = !sample || !Number.isFinite(sensorNumber) ? NaN :
+      sensorUnit === unit || (unit === "°C" && sensorUnit === "C") ? sensorNumber :
+      sensorUnit === "°F" && unit === "°C" ? (sensorNumber - 32) * 5 / 9 :
+      sensorUnit === "°C" && unit === "°F" ? (sensorNumber * 9 / 5 + 32) : NaN;
+    const fromDevice = attrs.current_temperature == null ? NaN : Number(attrs.current_temperature);
+    const current = Number.isFinite(normalized) ? normalized : fromDevice;
+    const humiditySensor = roomSensor("humidity");
+    const humiditySample = humiditySensor && this._hass?.states?.[humiditySensor.entity_id];
+    const humidityNumber = Number(humiditySample?.state);
+    const fromDeviceHumidity = attrs.current_humidity == null ? NaN : Number(attrs.current_humidity);
+    const humidity = Number.isFinite(humidityNumber) ? humidityNumber : fromDeviceHumidity;
+    const target = attrs.temperature == null ? NaN : Number(attrs.temperature);
+    return {state,attrs,current,target,humidity,unit};
+  }
+
+  renderClimateCenter(card, summaryOnly = false) {
+    if (!card) return '<section class="v7-card v7-climate">' +
+      this.t("Няма климатично устройство","No climate device") + '</section>';
+    const info = this.climateTelemetry(card);
+    const {state,attrs,current,target,humidity,unit} = info;
+    const e = value => this.escape(value);
+    const id = e(card.entity_id);
+    const online = state && !["unavailable","unknown"].includes(state.state);
+    const controls = online && card.layout !== "info" &&
+      this._manifest?.controllable_entities?.includes(card.entity_id) ?
+      this.supportedControls(card).filter(x => (card.controls || []).includes(x)) : [];
+    const can = key => controls.includes(key);
+    const tempLabel = Number.isFinite(current) ? current.toFixed(1) : "—";
+    const targetLabel = Number.isFinite(target) ? target.toFixed(0) : "—";
+    const humidityLabel = Number.isFinite(humidity) ? humidity.toFixed(0) + "%" : "—";
+    const mode = this.nativeStateLabel(state,"climate");
+    const selection = (control,attr,serviceLabel) => {
+      const values = attrs[attr];
+      if (summaryOnly || !can(control) || !Array.isArray(values) || !values.length) return "";
+      const currentValue = control === "hvac_mode" ? state?.state :
+        attrs[control] || "";
+      return '<label class="v7-climate-picker"><span>' + this.t(...serviceLabel) +
+        '</span><select data-climate-select="' + control + '" data-id="' + id + '">' +
+        values.map(value => '<option value="' + e(value) + '"' +
+          (value === currentValue ? " selected" : "") + '>' +
+          e(String(value).replaceAll("_"," ")) + '</option>').join("") +
+        '</select></label>';
+    };
+    const meter = Number.isFinite(target) ? Math.max(0,Math.min(100,
+      (target - (Number(attrs.min_temp) || 16)) /
+      Math.max(1,(Number(attrs.max_temp) || 30) - (Number(attrs.min_temp) || 16)) * 100
+    )) : 0;
+    return '<section class="v7-card v7-climate-center' +
+      (summaryOnly ? ' is-summary' : '') + '" data-live-climate="' + id + '">' +
+      '<div class="v7-climate-top"><span class="v7-climate-device-icon">' +
+      '<ha-icon icon="mdi:air-conditioner"></ha-icon></span><div class="v7-climate-title">' +
+      '<strong>' + e(card.name) + '</strong><small>' + e(mode) + '</small></div>' +
+      '<span class="v7-climate-status">' +
+      (online ? this.t("На линия","Online") : this.t("Недостъпно","Unavailable")) +
+      '</span></div>' +
+      '<div class="v7-climate-dashboard">' +
+      '<div class="v7-climate-ring" style="--climate-fill:' + meter + '%">' +
+      '<div class="v7-climate-ring-inner"><span class="v7-climate-caption">' +
+      this.t("В стаята","Room temp") + '</span><div class="v7-climate-large">' +
+      e(tempLabel) + '<small>' + unit + '</small></div></div></div>' +
+      '<div class="v7-climate-reading">' +
+      '<div class="v7-climate-reading-item"><span>' + this.t("Зададена","Target") +
+      '</span><strong>' + e(targetLabel) + unit + '</strong></div>' +
+      '<div class="v7-climate-reading-item"><span>' + this.t("Влажност","Humidity") +
+      '</span><strong>' + e(humidityLabel) + '</strong></div>' +
+      '<div class="v7-climate-reading-item"><span>' + this.t("Режим","Mode") +
+      '</span><strong>' + e(mode) + '</strong></div></div></div>' +
+      (summaryOnly ?
+        '<button type="button" class="v7-action subtle" data-view="climate">' +
+        this.t("Отвори Climate Center","Open Climate Center") + '</button>' :
+        '<div class="v7-climate-controls">' +
+          (can("temperature") && Number.isFinite(target) ?
+          '<div class="v7-climate-adjust"><span>' + this.t("Зададена температура","Target temperature") +
+          '</span><div class="v7-climate-adjust-buttons">' +
+          '<button class="v7-action" type="button" data-action="temperature-down" data-id="' + id +
+          '" aria-label="' + this.t("Намали с 1 градус","Decrease by one degree") +
+          '"><ha-icon icon="mdi:minus"></ha-icon></button>' +
+          '<strong>' + e(targetLabel) + unit + '</strong>' +
+          '<button class="v7-action" type="button" data-action="temperature-up" data-id="' + id +
+          '" aria-label="' + this.t("Увеличи с 1 градус","Increase by one degree") +
+          '"><ha-icon icon="mdi:plus"></ha-icon></button></div></div>' : '') +
+          '<div class="v7-climate-modes">' +
+          selection("hvac_mode","hvac_modes",["Работен режим","Operating mode"]) +
+          selection("fan_mode","fan_modes",["Скорост на въздуха","Fan mode"]) +
+          selection("preset_mode","preset_modes",["Режим","Preset"]) +
+          selection("swing_mode","swing_modes",["Посока на струята","Swing mode"]) +
+          '</div>' +
+          ((card.layout !== "info" && controls.length) ?
+            '<button type="button" class="v7-action subtle" data-action="details" data-id="' + id +
+            '">' + this.t("Още настройки","More options") + '</button>' : '') +
+          '</div>') + '</section>';
+  }
+
   renderNativeCard(card, controllable, expandedControls = false) {
     const state = this._hass?.states?.[card.entity_id];
     if (!state) return "";
@@ -779,46 +887,7 @@ class StevoraHomePanel extends HTMLElement {
         <span class="v7-room-count">${room.cards.length} ${this.t("устройства", "entities")}</span>
       </button>`
     ).join("")}</div>`;
-    const climateWidget = (card, summaryOnly = false) => {
-      if (!card) return `<div class="v7-card v7-climate"><div class="v7-card-title">◉ ${this.t("Климат", "Climate")}</div><div class="v7-empty">${this.t("Няма климатично устройство", "No climate device")}</div></div>`;
-      const state = ent(card);
-      const attrs = state?.attributes || {};
-      const target = Number(attrs.temperature);
-      // Prefer a real room temperature sensor when one is exposed by HA.
-      // Never rely on Dunav-specific HomePod entity IDs.
-      const roomSensor = deviceClass => statusCards.find(item =>
-        item.roomId === card.roomId &&
-        ent(item)?.attributes?.device_class === deviceClass &&
-        !["unavailable","unknown"].includes(ent(item)?.state));
-      const sensor = roomSensor("temperature");
-      const sensorState = sensor ? ent(sensor) : null;
-      const numericSensor = sensorState?.state == null ? NaN : Number(sensorState.state);
-      const sensorUnit = sensorState?.attributes?.unit_of_measurement;
-      const displayUnit = this.temperatureUnit();
-      const sensorValue = sensorUnit === displayUnit ||
-        (displayUnit === "°C" && sensorUnit === "C") ? numericSensor :
-        sensorUnit === "°F" && displayUnit === "°C" ? (numericSensor - 32) * 5 / 9 :
-        sensorUnit === "°C" && displayUnit === "°F" ? (numericSensor * 9 / 5 + 32) : NaN;
-      const current = Number.isFinite(sensorValue) ? sensorValue : Number(attrs.current_temperature);
-      const humidity = roomSensor("humidity");
-      const humidityValue = humidity ? Number(ent(humidity)?.state) : NaN;
-      const showTarget = attrs.temperature !== undefined && attrs.temperature !== null && Number.isFinite(target);
-      const showCurrent = Number.isFinite(sensorValue) ||
-        (attrs.current_temperature !== undefined && attrs.current_temperature !== null && Number.isFinite(current));
-      return `<section class="v7-card v7-climate ${summaryOnly ? "v7-climate-summary" : ""}">
-        <div class="v7-card-title">◉ ${this.escape(card.name)}</div>
-        <div class="v7-climate-value">${showCurrent ? this.escape(current.toFixed(1)) : (showTarget ? this.escape(target.toFixed(0)) : "—")}<span class="v7-value-suffix">${this.temperatureUnit()}</span></div>
-        <div class="v7-climate-meta">${this.t("Зададена температура", "Target temperature")}: ${showTarget ? this.escape(target.toFixed(0)) + this.temperatureUnit() : "—"} · ${this.escape(this.nativeStateLabel(state,"climate"))}${Number.isFinite(humidityValue) ? " · " + this.t("Влажност","Humidity") + " " + this.escape(humidityValue.toFixed(0)) + "%" : ""}</div>
-        <div class="v7-actions">
-          ${!summaryOnly && can(card, "temperature") ? `<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1${this.temperatureUnit()}</button>
-          <button class="v7-action" data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1${this.temperatureUnit()}</button>` : ""}
-          ${!summaryOnly && online(card) && controllable.has(card.entity_id) && (card.controls || []).length
-            ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Разширен контрол", "Advanced controls")}</button>`
-            : ""}
-          ${summaryOnly ? `<button class="v7-action subtle" data-view="climate">${this.t("Отвори климатичния център", "Open climate center")}</button>` : ""}
-        </div>
-      </section>`;
-    };
+    const climateWidget = (card, summaryOnly = false) => this.renderClimateCenter(card, summaryOnly);
     // On Home, RGB fixtures are informational (state + current color);
     // full sliders and color control remain inside Lighting/Rooms.
     const quickLights = () => '<section class="v7-card">' +
