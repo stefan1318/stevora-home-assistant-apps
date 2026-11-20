@@ -30,6 +30,7 @@ class StevoraHomePanel extends HTMLElement {
     this._chatConversationId = null;
     this._chatBusy = false;
     this._chatError = "";
+    this._profileFeedback = null;
   }
 
   set hass(value) {
@@ -51,6 +52,7 @@ class StevoraHomePanel extends HTMLElement {
       this._chatConversationId = null;
       this._chatBusy = false;
       this._chatError = "";
+      this._profileFeedback = null;
       this._admin = null;
       this._selectedRoom = "";
       this._stateSignature = null;
@@ -316,6 +318,32 @@ class StevoraHomePanel extends HTMLElement {
         (current === value ? " selected" : "") + '>' + e(text) + '</option>';
       const showLabel = this.t("Персонализирай устройството","Customize device");
       const translations = labels[entity.entity_id] || {};
+      const verification = this._profileFeedback?.entity_id === entity.entity_id ?
+        this._profileFeedback.result : null;
+      const reason = verification?.reason || entity.reason || "unknown";
+      const included = verification ? verification.included : entity.included;
+      const place = verification?.area_id || entity.area_id;
+      const reasonLabels = {
+        unassigned: this.t("Няма стая. Избери помещение или разреши неприписаните устройства.","No room. Choose a room or enable unassigned devices."),
+        outside_selected_rooms: this.t("Извън избраните помещения. Избери разрешено помещение.","Outside selected rooms. Choose an enabled room."),
+        explicitly_excluded: this.t("Изключено е във Visibility. Смени на Default или Include.","Excluded by Visibility. Change to Default or Include."),
+        hidden: this.t("Устройството е скрито в Home Assistant.","Device is hidden in Home Assistant."),
+        disabled: this.t("Устройството е деактивирано в Home Assistant.","Device is disabled in Home Assistant."),
+        unsupported_domain: this.t("Типът не се поддържа.","Entity domain is unsupported."),
+        backlight: this.t("Подсветките са изключени от STEVORA.","Backlights are excluded from STEVORA."),
+        not_discovered: this.t("Устройството не е открито в manifest.","Device not found in manifest."),
+      };
+      const showLighting = profile.display_category === "lighting";
+      const success = verification ? verification.in_lighting :
+        showLighting && included;
+      const statusText = success ?
+        this.t("Потвърдено в Осветление","Verified in Lighting") :
+        (showLighting && included ?
+          this.t("Включено в панела","Included in panel") :
+          reasonLabels[reason] || (included ?
+            this.t("Налично в STEVORA","Available in STEVORA") :
+            this.t("Не е включено в панела","Not included in the panel")));
+      const statusClass = (showLighting && !success) || !included ? "warning" : "ok";
       return '<details class="v7-device-editor" data-editor-key="device:' + id + '">' +
         '<summary><span class="v7-editor-device-icon"><ha-icon icon="' + e(icon) + '"></ha-icon></span>' +
         '<span class="v7-editor-title"><strong>' + e(entity.name) + '</strong><small>' +
@@ -378,6 +406,11 @@ class StevoraHomePanel extends HTMLElement {
         '<button type="button" class="v7-action subtle" data-translation-save-entity="' + id + '">' +
         this.t("Запази BG/EN","Save BG/EN") + '</button>' +
         '<small class="v7-editor-id">' + id + '</small></details>' +
+        '<div class="v7-profile-status ' + statusClass + '" role="status">' +
+        '<ha-icon icon="' + (statusClass === "ok" ? "mdi:check-circle-outline" : "mdi:alert-circle-outline") +
+        '"></ha-icon><span>' + e(statusText) +
+        (place ? ' · ' + e(rooms.find(r=>r.id === place)?.name || place) : '') +
+        '</span></div>' +
         '<button type="button" class="v7-action v7-editor-save" data-profile-save="' + id + '">' +
         this.t("Запази устройството","Save device") + '</button></div></details>';
     }).join("") + '</div>';
@@ -1464,8 +1497,9 @@ class StevoraHomePanel extends HTMLElement {
         });
       }
       try {
-        await this._hass.callWS({type:"stevora/admin/devices/update",
+        const saved = await this._hass.callWS({type:"stevora/admin/devices/update",
           expected_revision:this._admin.rooms.revision,profiles:{[id]:profile}});
+        this._profileFeedback = {entity_id:id, result:saved?.devices?.[id] || null};
         this._resetEditorValues = true;
         await this.refresh();
       } catch(error) { this._adminError = String(error?.message || error); this.render(); }
