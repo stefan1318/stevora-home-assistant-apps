@@ -31,6 +31,9 @@ class StevoraHomePanel extends HTMLElement {
     this._chatBusy = false;
     this._chatError = "";
     this._profileFeedback = null;
+    this._registryConnection = null;
+    this._registryUnsubs = [];
+    this._registryRefreshScheduled = false;
   }
 
   set hass(value) {
@@ -41,6 +44,7 @@ class StevoraHomePanel extends HTMLElement {
       (old.user?.id && value.user?.id && old.user.id !== value.user.id)
     ));
     if (sessionChanged) {
+      this.stopRegistrySubscriptions();
       // Never render a previous home's manifest against the new home's states.
       this._manifest = null;
       this._panelModel = null;
@@ -62,39 +66,69 @@ class StevoraHomePanel extends HTMLElement {
       this.render();
       return;
     }
-    if (!old && value) void this.refresh();
-    else if (value && this.isConnected) {
-      const signature = Object.keys(value.states || {}).sort().join("|");
-      const inventoryChanged = this._stateSignature !== null &&
-        signature !== this._stateSignature;
-      this._stateSignature = signature;
-      // Full render is reserved for navigation/configuration changes.
-      // State ticks patch only live text/attributes of existing cards:
-      // no Shadow DOM replacement, focus loss, scroll jumps or flicker.
-      const changedFeatures = Object.keys(value.states || {}).some(id => {
-        const before = old?.states?.[id]?.attributes || {};
-        const after = value.states[id]?.attributes || {};
-        return ["supported_features","supported_color_modes","hvac_modes",
-          "fan_modes","preset_modes","swing_modes","effect_list","source_list"]
-          .some(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
-      });
-      if (inventoryChanged || changedFeatures) {
-        void this.refresh();
-        return;
-      }
-      if (this._mode === "stevora") {
-        if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
-        return;
-      }
-      this.render();
+    if (!old && value) {
+      void this.refresh();
+      return;
+    }
+    if (value && this.isConnected && this._mode === "stevora") {
+      // Routine HA state ticks must never replace the entire DOM.
+      // Genuine registry events and explicit actions update the structure.
+      if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
     }
   }
 
-  connectedCallback() { this.render(); }
+  connectedCallback() {
+    this.render();
+    if (this._mode === "stevora") void this.listenForRegistryChanges();
+  }
 
-  async refresh() {
+  disconnectedCallback() { this.stopRegistrySubscriptions(); }
+
+  stopRegistrySubscriptions() {
+    for (const unsubscribe of this._registryUnsubs) {
+      try { unsubscribe(); } catch (_) { /* HA connection may have closed */ }
+    }
+    this._registryUnsubs = [];
+    this._registryConnection = null;
+    this._registryRefreshScheduled = false;
+  }
+
+  async listenForRegistryChanges() {
+    const connection = this._hass?.connection;
+    if (!connection?.subscribeEvents || this._registryConnection === connection) return;
+    this.stopRegistrySubscriptions();
+    this._registryConnection = connection;
+    for (const eventType of ["entity_registry_updated", "device_registry_updated",
+                             "area_registry_updated"]) {
+      try {
+        const unsubscribe = await connection.subscribeEvents(() => {
+          if (this._hass?.connection !== connection || !this.isConnected ||
+              this._registryRefreshScheduled) return;
+          this._registryRefreshScheduled = true;
+          Promise.resolve().then(() => {
+            this._registryRefreshScheduled = false;
+            if (this._hass?.connection !== connection || !this.isConnected) return;
+            if (this._busy) { this._refreshQueued = true; return; }
+            void this.refresh({silent:true});
+          });
+        }, eventType);
+        if (this._registryConnection !== connection) {
+          if (typeof unsubscribe === "function") unsubscribe();
+          return;
+        }
+        if (typeof unsubscribe === "function") this._registryUnsubs.push(unsubscribe);
+      } catch (_) {
+        // Refresh remains available if a server doesn't publish this event.
+      }
+    }
+  }
+
+  async refresh({silent=false}={}) {
     if (!this._hass || this._busy) return;
     this._busy = true;
+    const previousRevision = this._manifest?.revision;
+    const previousInstallation = this._manifest?.installation_id;
+    let unchanged = false;
     const connection = this._hass.connection;
     const userId = this._hass.user?.id;
     const sessionChanged = () => (
@@ -110,11 +144,15 @@ class StevoraHomePanel extends HTMLElement {
           model?.revision !== manifest?.revision) {
         throw new Error("Panel manifest changed during refresh");
       }
+      unchanged = !!(silent && this._mode === "stevora" &&
+        previousInstallation === manifest.installation_id &&
+        previousRevision === manifest.revision);
       this._manifest = manifest;
       this._panelModel = model;
       this._language = manifest.preferred_language === "en" ? "en" : "bg";
       this._error = "";
       this._mode = "stevora";
+      void this.listenForRegistryChanges();
       try {
         const [rooms, assistants] = await Promise.all([
           this._hass.callWS({type:"stevora/admin/rooms/get"}),
@@ -165,8 +203,12 @@ class StevoraHomePanel extends HTMLElement {
       this._busy = false;
       const queued = this._refreshQueued;
       this._refreshQueued = false;
-      this.render();
-      if (queued) void this.refresh();
+      if (unchanged && this._mode === "stevora") {
+        if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
+      } else {
+        this.render();
+      }
+      if (queued) void this.refresh({silent:true});
     }
   }
 
