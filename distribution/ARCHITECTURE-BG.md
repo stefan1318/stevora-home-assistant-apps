@@ -2,6 +2,9 @@
 
 **Решение:** STEVORA OS 1.0 е **самостоятелна инсталационна дистрибуция**, а не custom panel, dashboard, PWA shortcut или add-on, отварян на `/stevora-os`. Работещите прототипи 0.1.0–1.0.0-alpha.3 са източник на бизнес логика и тестове, **не** готовият продукт.
 
+**Нов продуктов стандарт от 20.11.2026:** [STEVORA_ECOSYSTEM_POLICY.md](../STEVORA_ECOSYSTEM_POLICY.md) е задължителната обща политика. **STEVORA Ecosystem = STEVORA OS + Android + iOS.** Universal Integration, Core, Manifest, Home Panel 7.1.1 Premium, Home Hub, Frontend и People & Presence са вградени OS подсистеми. Hey Stevora е обща вградена OS/мобилна функция; личният Memory & Sync е допълнителен модул само за домовете на собственика. Историческото техническо разделяне не определя продукти.
+
+
 **Текущ статус:** архитектурно пренасочване / DEV. Няма генериран и проверен STEVORA OS bootable image. Не инсталирай нищо от тази папка на Dunav.
 
 ## 1. Задължителен резултат
@@ -22,8 +25,8 @@ HA Core, Supervisor и HA OS базовите компоненти се изпо
        ├── [Supervisor — Core, Apps/Add-ons, OS/host/backup lifecycle]
        ├── [HA Core — users/auth, integrations, entity registries, automations]
        ├── [STEVORA system bridge — protected server-side Supervisor API]
-       ├── [STEVORA Universal Integration + Home Hub / Hey Stevora]
-       └── [STEVORA Frontend (root /) — standalone full system UI]
+       ├── [STEVORA Core + Universal Adapter + Manifest + Hub + People & Presence]
+       └── [STEVORA Frontend (root /) — integrated OS UI incl. Hey Stevora]
                     └── home, rooms, devices, integrations, Apps,
                         settings, network, automations, users,
                         diagnostics, updates, backups, security
@@ -74,16 +77,22 @@ HA Core, Supervisor и HA OS базовите компоненти се изпо
 
 **Никой модул не се приема за „готов“ само защото линк сочи към стандартен HA екран**. Reused underlying functional component within branded STEVORA shell е допустим, ако действително поддържа оригиналните операции, права и екрани и е изцяло визуално интегриран.
 
-## 4. Разделяне на репозиторий и releases
+## 4. Единен продукт, модулен технически код
 
-Предложена структура (може да се раздели в отделни GitHub repositories):
+**STEVORA OS е единственият системен продукт**. Core, Universal Integration, Home Panel 7.1.1 Premium, Home Hub, Frontend, People & Presence и Manifest са OS подсистеми с общ инсталационен образ, конфигурация, версии на API и системно управление. Клиентът не ги инсталира или купува като самостоятелни продукти.
 
-- `stevora-os`: fork на Home Assistant Operating System, Buildroot/boot/OTA/image.
-- `stevora-frontend`: fork на Home Assistant frontend + STEVORA app shell / pages / translations.
-- `stevora-system-bridge`: Supervisor service + permissions, audit, admin endpoints.
-- `stevora-home-assistant-apps`: Universal Integration, Home Hub и досегашните прототипи. Този repo остава източник на съществуващите работещи функции и миграционни тестове.
+**STEVORA Ecosystem включва STEVORA OS и нативните приложения Android/iOS**, които черпят устройствата, настройките и разрешенията от OS. Hey Stevora е вградена функция на OS и двата клиента върху реално инсталираните voice/AI assistants и клиентския пакет. Memory & Sync е личен, незадължителен OS модул само за одобрени домове на собственика и не е публично bundled.
 
-Няма възможност да се създаде repo/fork с текущата GitHub връзка, затова тази архитектура първо е документирана в изолиран development branch на съществуващия repo. **Не представяй този branch като самостоятелен OS fork.**
+Различни хранилища и компилации са допустими **само като техническа организация**:
+
+- stevora-os (техническа цел: stevora/stevora OS) — native boot, Buildroot, OTA, hardware release image;
+- stevora-frontend — source на основния интегриран OS shell, **не отделен продукт**;
+- stevora-system-bridge — защитен backend към Supervisor;
+- stevora-home-assistant-apps — миграционен код за OS Core/Universal Adapter/Panel/Hub/Manifest и тестове;
+- Ha_android, HA_iOS — платформи за OS-connected мобилни клиенти;
+- stevora-memory-sync — частни бележки и лично OS разширение, без публична продуктова дистрибуция.
+
+Техническите приложения могат да пазят вътрешни версии и rollback артефакти, но **системните функционални и UI решения имат единен STEVORA OS roadmap, Definition of Done и release gate**. Историческите Universal Integration / Panel / Hub beta releases остават за backward compatibility и миграция. Не трябва да се рекламират като вече интегрирана OS функция.
 
 ## 5. Ред за реализация
 

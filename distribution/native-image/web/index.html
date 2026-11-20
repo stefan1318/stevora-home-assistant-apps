@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071426">
+  <meta name="robots" content="noindex, nofollow">
+  <title>STEVORA OS — Native Developer Preview</title>
+  <link rel="icon" href="/stevora-192.png" type="image/png" sizes="192x192">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top">
+      <div class="brand"><img alt="STEVORA" src="/stevora-192.png" width="48" height="48"><div><strong>STEVORA <em>OS</em></strong><small>Native Developer Preview 0.1</small></div></div>
+      <span class="stage">OEM BOOT TEST</span>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="kicker"><span class="pulse" aria-hidden="true"></span> FIRST NATIVE IMAGE</div>
+        <h1>Твоят дом. Твоята система.</h1>
+        <p>Това е първият самостоятелен STEVORA OS тестов образ. Началният интерфейс се зарежда директно от операционния хост на основния адрес <code>/</code> — без Home Assistant custom panel или PWA shortcut.</p>
+        <div class="test"><span>Native gateway</span><strong>AVAILABLE AT ROOT /</strong></div>
+      </section>
+      <section class="overview" aria-labelledby="capabilities">
+        <h2 id="capabilities">Планирани системни модули</h2>
+        <p>Следващите модули изискват отделна backend интеграция. Този образ все още не ги активира.</p>
+        <div class="features">
+          <article><span class="glyph">⌂</span><h3>Home & Rooms</h3><p>Пренос на готовите STEVORA управления и откриване на устройства</p><small>Неактивно в DP 0.1</small></article>
+          <article><span class="glyph">⚙</span><h3>System Settings</h3><p>Собствени настройки, потребители, мрежа, storage, диагностика</p><small>Неактивно в DP 0.1</small></article>
+          <article><span class="glyph">▣</span><h3>Apps & Integrations</h3><p>Истински Supervisor Apps и Home Assistant configuration flows</p><small>Неактивно в DP 0.1</small></article>
+          <article><span class="glyph">↗</span><h3>Backups & Updates</h3><p>Защитени backend операции, audit и безопасно възстановяване</p><small>Неактивно в DP 0.1</small></article>
+        </div>
+      </section>
+      <section class="notice" role="note">
+        <h2>Граница на тази версия</h2>
+        <p><strong>Тест само на стартирането, собственото лого, хост адреса и независимия frontend процес.</strong> В DP 0.1 няма логин, управление на устройства, system bridge, Apps или архивиране през STEVORA. Home Assistant Core/Supervisor продължават да работят отделно на техническите си адреси; това не е готовата STEVORA OS 1.0.</p>
+      </section>
+    </main>
+    <footer><span>STEVORA OS • Native DP 0.1</span><span>Buildroot host image · Open-source Home Assistant foundation</span></footer>
+  </div>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # [STE-00] STEVORA OS 1.0 — Full Frontend Edition
 
+**Product policy override — 2026-11-20:** [STEVORA_ECOSYSTEM_POLICY.md](../STEVORA_ECOSYSTEM_POLICY.md) is canonical. Home Panel/Hub/Core/Manifest/Universal Integration/Frontend/People & Presence are **internally integrated STEVORA OS subsystems**, not independent installable products. Android and iOS are OS clients; Hey Stevora is an embedded capability; Memory is a private owner-only optional OS extension. The earlier separate-module wording below refers solely to technical implementation and migration, not the product model.
+
 **Status:** Architecture approved in principle; implementation **GATED** pending real independent HA OS VM acceptance of STEVORA OS Developer Preview 0.2.0. This file is a build contract, not a claim of full implementation. No merge to `main`, no changes to Dunav.
 
 ## Goal
