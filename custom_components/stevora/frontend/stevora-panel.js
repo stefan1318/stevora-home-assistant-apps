@@ -468,6 +468,60 @@ class StevoraHomePanel extends HTMLElement {
     return localized[raw] ? this.t(...localized[raw]) : String(raw);
   }
 
+
+  // HA-supported features and live attributes determine *which* controls
+  // can be safely displayed. A manifest control is permission, not proof that
+  // the hardware supports a specific service.
+  deviceSupportsControl(domain, key, state) {
+    const attrs = state?.attributes || {};
+    const numeric = field => attrs[field] !== null && attrs[field] !== undefined &&
+      Number.isFinite(Number(attrs[field]));
+    const options = field => Array.isArray(attrs[field]) &&
+      attrs[field].some(x => typeof x === "string" && x.trim());
+    const modes = Array.isArray(attrs.supported_color_modes) ? attrs.supported_color_modes : [];
+    const features = Number(attrs.supported_features);
+    const knownFeatures = attrs.supported_features !== undefined &&
+      attrs.supported_features !== null && Number.isInteger(features);
+    const feature = mask => !knownFeatures || !!(features & mask);
+    switch (domain + ":" + key) {
+      case "light:toggle": case "switch:toggle": case "fan:toggle": return true;
+      case "light:brightness":
+        return numeric("brightness") || modes.some(m => !["onoff","unknown"].includes(m));
+      case "light:color":
+        return modes.some(m => ["rgb","rgbw","rgbww","hs","xy"].includes(m));
+      case "light:color_temp":
+        return modes.includes("color_temp") &&
+          numeric("min_color_temp_kelvin") && numeric("max_color_temp_kelvin") &&
+          Number(attrs.min_color_temp_kelvin) < Number(attrs.max_color_temp_kelvin);
+      case "light:effect": return options("effect_list");
+      case "climate:temperature": return numeric("temperature");
+      case "climate:hvac_mode": return options("hvac_modes");
+      case "climate:fan_mode": return options("fan_modes");
+      case "climate:preset_mode": return options("preset_modes");
+      case "climate:swing_mode": return options("swing_modes");
+      case "fan:percentage": return feature(1) && (numeric("percentage") || knownFeatures);
+      case "fan:preset_mode": return options("preset_modes");
+      case "fan:oscillate": return feature(2) && typeof attrs.oscillating === "boolean";
+      case "fan:direction": return feature(4) && typeof attrs.direction === "string";
+      case "cover:open": return feature(1);
+      case "cover:close": return feature(2);
+      case "cover:stop": return feature(8);
+      case "cover:position": return feature(4) && numeric("current_position");
+      case "cover:tilt": return feature(128) && numeric("current_tilt_position");
+      case "media_player:play_pause": return true;
+      case "media_player:volume": return numeric("volume_level");
+      case "media_player:source": return options("source_list");
+      // Do not provide one-tap locking or unlocking in STEVORA.
+      default: return false;
+    }
+  }
+
+  controlOptions(state, attr) {
+    const values = state?.attributes?.[attr];
+    return Array.isArray(values) ? values.filter(x =>
+      typeof x === "string" && x.length > 0 && x.length <= 80).slice(0,50) : [];
+  }
+
   renderNativeCard(card, controllable, expandedControls = false) {
     const state = this._hass?.states?.[card.entity_id];
     if (!state) return "";
