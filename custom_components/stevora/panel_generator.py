@@ -6,7 +6,6 @@ STEVORA manifest. It never writes Home Assistant dashboards or registries.
 from __future__ import annotations
 
 import re
-from .device_capabilities import display_category
 
 PANEL_VERSION = "7.1.1"
 BACKLIGHT_MARKERS = ("backlight", "back light", "подсвет")
@@ -75,11 +74,20 @@ def generate_panel(manifest: dict) -> dict:
         icon = entity.get("icon") or DOMAIN_ICONS[domain]
         if not isinstance(icon, str) or not icon.startswith("mdi:"):
             icon = DOMAIN_ICONS[domain]
+        category = entity.get("display_category", "auto")
+        if category not in ("lighting", "switches", "climate", "fans", "covers",
+                            "media", "sensors", "binary_sensors", "locks"):
+            category = {
+                "light": "lighting", "switch": "switches", "climate": "climate",
+                "fan": "fans", "cover": "covers", "media_player": "media",
+                "sensor": "sensors", "binary_sensor": "binary_sensors",
+                "lock": "locks",
+            }[domain]
         sections[area]["cards"].append({
             "entity_id": entity_id,
             "name": entity.get("name") or entity_id,
             "domain": domain,
-            "display_category": display_category(entity_id, entity.get("display_category", "auto")),
+            "display_category": category,
             "icon": icon,
             "layout": layout,
             "controls": controls,
