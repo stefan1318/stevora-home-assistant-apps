@@ -1,0 +1,40 @@
+name: STEVORA OS Native Distribution Contract
+
+on:
+  push:
+    branches:
+      - feature/stevora-os-native-image-distribution-20261120
+    paths:
+      - 'distribution/**'
+      - '.github/workflows/stevora-os-image-contract.yml'
+  pull_request:
+    paths:
+      - 'distribution/**'
+      - '.github/workflows/stevora-os-image-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  distribution-contract:
+    name: Native image requirements (no image build yet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify target is real STEVORA image + root UI
+        run: python -m unittest discover -s distribution/tests -p 'test_*.py' -v
+      - name: Explicitly prevent fake release artifact
+        run: |
+          python - <<'PY'
+          import json
+          with open('distribution/image-contract.json', encoding='utf-8') as f:
+              spec = json.load(f)
+          assert spec['status'] == 'architecture', "Releases must use a real signed-image workflow"
+          assert spec['artifacts']['bootable_image'] is None, "Do not claim an unbuilt OS image"
+          print("Architecture contract valid. Boot image is NOT built.")
+          PY

@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "product": "STEVORA OS",
+  "edition": "native-image",
+  "version": "1.0.0-dev",
+  "status": "architecture",
+  "primary_user_interface": {
+    "type": "own-root-frontend",
+    "url_path": "/",
+    "legacy_panel_allowed_in_release": false,
+    "standalone_pwa_only": false,
+    "stock_ha_shell_visible": false
+  },
+  "system_stack": {
+    "host": "fork-of-home-assistant-operating-system",
+    "device_backend": "home-assistant-core",
+    "system_backend": "home-assistant-supervisor",
+    "privileged_access": "server-side-authenticated-bridge",
+    "frontend_strategy": "independent-fork-build",
+    "update_channel": "stevora-signed-ota"
+  },
+  "targets": [
+    {
+      "id": "ova",
+      "platform": "vm-x86_64",
+      "required": true
+    },
+    {
+      "id": "rpi4_64",
+      "platform": "raspberry-pi-4-64",
+      "required": true
+    },
+    {
+      "id": "rpi5_64",
+      "platform": "raspberry-pi-5-64",
+      "required": true
+    }
+  ],
+  "required_capabilities": [
+    "home",
+    "rooms",
+    "devices",
+    "climate",
+    "lighting",
+    "scenes",
+    "automations-edit",
+    "integrations-configure",
+    "apps-install-manage",
+    "users-permissions",
+    "settings-network-storage",
+    "system-health",
+    "backups-restore",
+    "core-supervisor-os-updates",
+    "logs",
+    "onboarding",
+    "recovery"
+  ],
+  "verified_release_gates": {
+    "native_root_frontend": false,
+    "core_auth_permissions_verified": false,
+    "integrations_and_apps_management_verified": false,
+    "system_bridge_authorization_verified": false,
+    "own_image_contains_frontend_and_boots": false,
+    "ova_boot_and_recovery_verified": false,
+    "rpi4_64_boot_verified": false,
+    "rpi5_64_boot_verified": false,
+    "signed_ota_and_rollback_verified": false,
+    "licenses_and_trademarks_reviewed": false
+  },
+  "artifacts": {
+    "bootable_image": null,
+    "ota_bundle": null,
+    "frontend_package": null,
+    "system_bridge": null
+  },
+  "legacy_prototype": {
+    "url_path": "/stevora-os",
+    "purpose": "reference-and-transitional-tests-only",
+    "production_entrypoint": false
+  }
+}
