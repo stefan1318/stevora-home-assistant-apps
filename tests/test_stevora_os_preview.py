@@ -122,7 +122,7 @@ class TestStevoraOSPreview(unittest.TestCase):
             self.assertTrue(filepath.is_file(), icon["src"])
         iconfile = MODULE / "frontend" / "icons" / "stevora-192.png"
         data = iconfile.read_bytes()
-        self.assertEqual(data[:8], b"\\x89PNG\\r\\n\\x1a\\n")
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(int.from_bytes(data[16:20], "big"), 192)
         self.assertEqual(int.from_bytes(data[20:24], "big"), 192)
         for filename in ("stevora-512.svg", "stevora-maskable-512.svg"):
