@@ -1054,6 +1054,65 @@
           escapeHTML(t.send)+'</button></form></div>';
     }
 
+    _preferenceForm(t, wizard = false) {
+      const preferences = this._preferences?.preferences || {
+        language: this._language, default_view: "home",
+        compact_nav: false, onboarding_complete: false,
+      };
+      const allowed = [
+        ["home", t.home], ["rooms", t.rooms], ["devices", t.devicesTitle],
+        ["lighting", t.lighting], ["climate", t.climate],
+        ["scenes", t.scenes], ["automation", t.automation],
+        ["assist", t.assist], ["system", t.system]
+      ];
+      const pageOptions = allowed.map(([id, name]) =>
+        '<option value="'+id+'" '+(preferences.default_view===id?'selected':'')+'>'+
+          escapeHTML(name)+'</option>').join("");
+      return '<form class="stevora-preferences" '+(wizard?'data-onboarding-form':'data-personal-form')+'>'+
+        '<label>'+escapeHTML(t.lang)+'<select name="language">'+
+        '<option value="bg" '+(preferences.language==="bg"?"selected":"")+'>BG</option>'+
+        '<option value="en" '+(preferences.language==="en"?"selected":"")+'>EN</option></select></label>'+
+        '<label>'+escapeHTML(t.preferredHome)+'<select name="default_view">'+pageOptions+'</select></label>'+
+        '<label class="check-row"><input type="checkbox" name="compact_nav" '+
+          (preferences.compact_nav?"checked":"")+'>'+
+          escapeHTML(t.compactNav)+'</label>'+
+        '<button class="button primary" type="submit" '+
+          (!this._preferences || this._prefsBusy?"disabled":"")+'>'+
+          escapeHTML(wizard?t.finishOnboarding:t.savePreferences)+'</button>'+
+        (this._prefsError?'<p class="note-error" role="alert">'+escapeHTML(this._prefsError)+'</p>':'')+
+        '</form>';
+    }
+
+    _onboardingView(t) {
+      const ready = this._status === "ready";
+      const modules = this._manifest?.modules || {};
+      const hubStatus = modules.home_hub?.status || "not_included";
+      const count = this._counts();
+      return '<header class="section-heading"><h1>'+escapeHTML(t.onboardTitle)+
+        '</h1><span>STEVORA OS 1.0</span></header>'+
+        '<p class="section-intro">'+escapeHTML(t.onboardSub)+'</p>'+
+        '<div class="setup-steps">'+
+        '<section class="card"><h2>'+escapeHTML(t.onboardStep1)+'</h2>'+
+        '<p>'+escapeHTML(t.onboardConnected)+'</p>'+
+        '<p>'+escapeHTML(t.onboardConnectedNote)+'</p>'+
+        '<div class="kv"><span>'+escapeHTML(t.roomCount)+'</span><strong>'+
+          (ready?count.rooms:"—")+'</strong></div>'+
+        '<div class="kv"><span>'+escapeHTML(t.deviceCount)+'</span><strong>'+
+          (ready?count.devices:"—")+'</strong></div>'+
+        '<div class="kv"><span>Home Hub</span><strong>'+escapeHTML(hubStatus)+'</strong></div>'+
+        '<p>'+escapeHTML(ready?t.onboardManifestReady:t.onboardManifestMissing)+'</p></section>'+
+        '<section class="card"><h2>'+escapeHTML(t.onboardStep2)+'</h2>'+
+        this._preferenceForm(t,true)+'</section>'+
+        '<section class="card"><h2>'+escapeHTML(t.onboardStep3)+'</h2>'+
+        '<p>'+escapeHTML(t.setupOptional)+'</p>'+
+        '<p>'+escapeHTML(t.installationHelp)+'</p>'+
+        '<button type="button" class="button secondary" data-fullscreen>'+
+          escapeHTML(t.enterFullscreen)+'</button>'+
+        (this._hass?.user?.is_admin ? '<a href="/config" class="button secondary">'+
+           escapeHTML(t.recoveryLink)+'</a>' : '')+
+        '</section></div>';
+    }
+
     _setupView(t) {
       const modules = this._manifest?.modules || {};
       const labels = {core:"STEVORA Core",home_panel:"Home Panel 7.1.1",
@@ -1077,6 +1136,11 @@
           }).join("")+'</div>';
       } else if (this._hass?.user?.is_admin) editing='<p>'+escapeHTML(t.adminConfigMissing)+'</p>';
       return '<header class="section-heading"><h1>'+escapeHTML(t.settingsTitle)+'</h1></header>'+
+        '<section class="card os-personal-settings"><h2>'+escapeHTML(t.accountSettings)+'</h2>'+
+          this._preferenceForm(t,false)+
+          '<p>'+escapeHTML(t.installationHelp)+'</p>'+
+          '<button class="button secondary" type="button" data-onboarding>'+
+            escapeHTML(t.reopenWizard)+'</button></section>'+
         '<div class="os-system-grid"><div class="card"><h2>'+escapeHTML(t.editRooms)+'</h2>'+
           editing+'</div><div class="card"><h2>'+escapeHTML(t.modulesTitle)+'</h2>'+
           moduleRows+'<h2>'+escapeHTML(t.onboarding)+'</h2>'+
@@ -1117,6 +1181,7 @@
       if (this._view === "climate") return this._deviceView(t, "climate");
       if (this._view === "scenes" || this._view === "automation") return this._sceneView(t);
       if (this._view === "assist") return this._assistView(t);
+      if (this._view === "onboarding") return this._onboardingView(t);
       if (this._view === "setup") return this._setupView(t);
       if (this._view === "home") return `
         <section class="hero">
@@ -1143,7 +1208,7 @@
       if (this._view === "system") return this._systemContent(t, ready, hub);
       return `<section class="card about"><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
         <h1>${escapeHTML(t.aboutTitle)}</h1><p>${escapeHTML(t.aboutText)}</p>
-        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.1 Developer Preview</strong></div>
+        <div class="kv"><span>${escapeHTML(t.version)}</span><strong>1.0.0-alpha.2 Developer Preview</strong></div>
         <div class="kv"><span>${escapeHTML(t.backend)}</span><strong>Home Assistant OS</strong></div></section>`;
     }
 
@@ -1177,8 +1242,8 @@
         ? `<div class="notice error" role="alert">${escapeHTML(t.error)} · ${escapeHTML(this._error)}</div>`
         : this._status === "loading" ? `<div class="notice" role="status">${escapeHTML(t.loading)}</div>` : "";
       this.shadowRoot.innerHTML = `
-        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.1">
-        <div class="shell">
+        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.2">
+        <div class="shell ${this._preferences?.preferences?.compact_nav ? "shell-compact" : ""}">
           <aside class="side">
             <div class="brand"><span class="brand-mark" aria-hidden="true">S</span>
               <div><strong>STEVORA</strong><small>OS EXPERIENCE</small></div></div>
@@ -1189,18 +1254,24 @@
           </aside>
           <main class="main">
             <header class="toolbar"><div class="mobile-brand">STEVORA <span>OS</span></div>
-              <div class="toolbar-actions"><label for="stevora-os-language">${escapeHTML(t.lang)}</label>
+              <div class="toolbar-actions">
+                <button type="button" class="button secondary shell-focus" data-fullscreen>
+                  ${escapeHTML(t.enterFullscreen)}</button>
+                <label for="stevora-os-language">${escapeHTML(t.lang)}</label>
                 <select id="stevora-os-language" aria-label="${escapeHTML(t.lang)}">
                   <option value="bg" ${this._language === "bg" ? "selected" : ""}>BG</option>
                   <option value="en" ${this._language === "en" ? "selected" : ""}>EN</option></select>
-                <span class="preview-pill">1.0 ALPHA</span></div></header>
+                <span class="preview-pill">1.0 α2</span></div></header>
             ${loadNote}${note}
+            ${this._prefsError && this._view !== "onboarding"
+                ? '<div class="notice error" role="alert">'+escapeHTML(this._prefsError)+'</div>' : ''}
             <div class="content">${this._content(t)}</div>
             <footer>STEVORA OS Experience · Powered by Home Assistant · <strong>Developer Preview</strong></footer>
           </main>
           <nav class="mobile-nav" aria-label="STEVORA OS mobile">${nav}</nav>
         </div>`;
       this._patchLive();
+      this._patchFullscreen();
     }
   }
   if (!customElements.get("stevora-os-preview"))
