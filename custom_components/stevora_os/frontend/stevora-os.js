@@ -378,25 +378,215 @@
     }
 
     _onClick(event) {
-      const target = event.target?.closest?.("[data-view], [data-refresh], [data-system-refresh]");
+      const target = event.target?.closest?.(
+        "[data-view], [data-refresh], [data-system-refresh], [data-room], [data-device-action], [data-scene-run]"
+      );
       if (!target) return;
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
       if (target.hasAttribute("data-system-refresh")) { void this._refreshSystem(); return; }
+      if (target.hasAttribute("data-room")) {
+        const room = target.getAttribute("data-room");
+        if (!(this._manifest?.rooms || []).some((r) => r.id === room)) return;
+        this._selectedRoom = room;
+        this._view = "devices";
+        this.render();
+        return;
+      }
+      if (target.hasAttribute("data-device-action")) {
+        void this._deviceAction(target.getAttribute("data-entity"), target.getAttribute("data-device-action"));
+        return;
+      }
+      if (target.hasAttribute("data-scene-run")) {
+        void this._runScene(target.getAttribute("data-scene-run"));
+        return;
+      }
       const view = target.getAttribute("data-view");
-      if (!["home", "rooms", "devices", "lighting", "climate", "scenes", "automation", "assist", "system", "setup", "about"].includes(view)) return;
+      if (!["home", "rooms", "devices", "lighting", "climate", "scenes",
+            "automation", "assist", "system", "setup", "about"].includes(view)) return;
       this._view = view;
+      if (view !== "devices") this._selectedRoom = "";
       this.render();
       if (view === "system" && this._hass?.user?.is_admin && !this._system && !this._systemBusy)
         void this._refreshSystem();
     }
 
     _onChange(event) {
-      if (event.target?.id !== "stevora-os-language") return;
-      const lang = event.target.value;
-      if (!["bg", "en"].includes(lang) || lang === this._language) return;
-      this._language = lang;
-      this._manifest = null;
-      void this.refresh();
+      const input = event.target;
+      if (input?.id === "stevora-os-language") {
+        const lang = input.value;
+        if (!["bg", "en"].includes(lang) || lang === this._language) return;
+        this._language = lang;
+        this._model = null;
+        this._manifest = null;
+        this._hubDirectory = null;
+        this._hubEvents = null;
+        this._admin = null;
+        void this.refresh();
+        return;
+      }
+      if (input?.hasAttribute("data-room-select")) {
+        const room = input.value;
+        if (room && !(this._manifest?.rooms || []).some((r) => r.id === room)) return;
+        this._selectedRoom = room;
+        this.render();
+        return;
+      }
+      if (input?.hasAttribute("data-device-input")) {
+        void this._deviceInput(input);
+      }
+    }
+
+    _onInput(event) {
+      const input = event.target;
+      if (!input?.hasAttribute("data-device-search")) return;
+      const needle = String(input.value || "").trim().toLowerCase();
+      this.shadowRoot?.querySelectorAll?.("[data-device-card]")?.forEach((card) => {
+        card.hidden = !String(card.getAttribute("data-search") || "").includes(needle);
+      });
+    }
+
+    async _onSubmit(event) {
+      const form = event.target;
+      if (form?.hasAttribute("data-translate-form")) {
+        await this._saveTranslation(form);
+      } else if (form?.hasAttribute("data-assist-form")) {
+        await this._sendAssist(form);
+      }
+    }
+
+    _findCard(entityId) {
+      return this._cards("all").find((card) => card.entity_id === entityId) || null;
+    }
+
+    async _runService(entityId, domain, service, data) {
+      const key = String(entityId);
+      if (this._busyEntities.has(key) || !this._hass?.callService) return;
+      const connection = this._hass.connection, user = this._hass.user?.id;
+      this._busyEntities.add(key);
+      try {
+        await this._hass.callService(domain, service, {entity_id: entityId, ...data});
+        if (connection !== this._hass?.connection || user !== this._hass?.user?.id) return;
+        this._actionNotice = "";
+      } catch (_) {
+        if (connection !== this._hass?.connection || user !== this._hass?.user?.id) return;
+        this._actionNotice = COPY[this._language].serviceError;
+      } finally {
+        this._busyEntities.delete(key);
+        this.render();
+      }
+    }
+
+    async _deviceAction(entityId, action) {
+      const card = this._findCard(entityId);
+      if (!card || this._backlight(entityId)) return;
+      const domain = card.domain;
+      if (action === "details") {
+        this.dispatchEvent(new CustomEvent("hass-more-info", {
+          detail: { entityId }, bubbles: true, composed: true,
+        }));
+        return;
+      }
+      if (!this._state(entityId) || ["unavailable","unknown"].includes(this._state(entityId).state)) return;
+      if (action === "toggle" && this._can(card,"toggle") && ["light","switch","fan"].includes(domain))
+        return void this._runService(entityId,domain,"toggle",{});
+      if (["temp-up","temp-down"].includes(action) && domain === "climate" && this._can(card,"temperature")) {
+        const state = this._state(entityId), temp = Number(state?.attributes?.temperature);
+        if (!Number.isFinite(temp) || temp <= 0) return;
+        const min = Number(state.attributes.min_temp), max = Number(state.attributes.max_temp);
+        const lower = Number.isFinite(min) ? min : 5, upper = Number.isFinite(max) ? max : 35;
+        const target = temp + (action === "temp-up" ? 1 : -1);
+        if (target < lower || target > upper) return;
+        return void this._runService(entityId,"climate","set_temperature",{temperature:target});
+      }
+      if (action === "open" && domain === "cover" && this._can(card,"open"))
+        return void this._runService(entityId,"cover","open_cover",{});
+      if (action === "close" && domain === "cover" && this._can(card,"close"))
+        return void this._runService(entityId,"cover","close_cover",{});
+      if (action === "play_pause" && domain === "media_player" && this._can(card,"play_pause"))
+        return void this._runService(entityId,"media_player","media_play_pause",{});
+    }
+
+    async _deviceInput(input) {
+      const entityId = input?.getAttribute("data-entity");
+      const control = input?.getAttribute("data-device-input");
+      const card = this._findCard(entityId);
+      if (!this._can(card, control)) return;
+      if (!this._state(entityId) || ["unavailable","unknown"].includes(this._state(entityId).state)) return;
+      if (control === "brightness" && card.domain === "light") {
+        const value = Number(input.value);
+        if (Number.isInteger(value) && value>=1 && value<=100)
+          await this._runService(entityId,"light","turn_on",{brightness_pct:value});
+      } else if (control === "color" && card.domain === "light") {
+        const color = String(input.value || "");
+        if (!/^#[0-9a-fA-F]{6}$/.test(color)) return;
+        const rgb = [1,3,5].map((n)=>parseInt(color.substring(n,n+2),16));
+        await this._runService(entityId,"light","turn_on",{rgb_color:rgb});
+      } else if (control === "percentage" && card.domain === "fan") {
+        const value = Number(input.value);
+        if (Number.isInteger(value) && value>=0 && value<=100)
+          await this._runService(entityId,"fan","set_percentage",{percentage:value});
+      }
+    }
+
+    async _runScene(id) {
+      const item = (this._hubDirectory?.items || []).find((value)=>value.entity_id === id);
+      if (!item || item.domain !== "scene" || item.action_allowed !== true || this._backlight(id)) return;
+      if (!/^scene\.[a-z0-9_]+$/.test(id)) return;
+      await this._runService(id,"scene","turn_on",{});
+    }
+
+    async _saveTranslation(form) {
+      if (!this._hass?.user?.is_admin || !this._admin || !this._manifest) return;
+      const roomId = form.getAttribute("data-room-id");
+      if (!(this._manifest.rooms || []).some((r)=>r.id===roomId)) return;
+      const bg = String(form.querySelector('input[name="bg"]')?.value || "").trim();
+      const en = String(form.querySelector('input[name="en"]')?.value || "").trim();
+      if (bg.length>80 || en.length>80) return;
+      const connection=this._hass.connection, user=this._hass.user?.id;
+      try {
+        await this._hass.callWS({
+          type:"stevora/admin/translations/update",
+          expected_revision:this._admin.revision,
+          rooms:{[roomId]:{bg,en}}, entities:{}
+        });
+        if (connection!==this._hass?.connection || user!==this._hass?.user?.id) return;
+        this._actionNotice=COPY[this._language].saved;
+        await this.refresh();
+      } catch (_) {
+        if (connection!==this._hass?.connection || user!==this._hass?.user?.id) return;
+        this._actionNotice=COPY[this._language].serviceError;
+        this.render();
+      }
+    }
+
+    async _sendAssist(form) {
+      if (this._chatBusy || !this._hass?.callWS) return;
+      const field=form.querySelector('input[name="message"]');
+      const message=String(field?.value || "").trim().slice(0,500);
+      if (!message) return;
+      const connection=this._hass.connection, user=this._hass.user?.id;
+      this._chatBusy=true;
+      this._chat.push({role:"user",text:message});
+      this._chat=this._chat.slice(-24);
+      this.render();
+      try {
+        const result=await this._hass.callWS({
+          type:"conversation/process",text:message,
+          language:this._language,
+          ...(this._conversationId ? {conversation_id:this._conversationId}:{})
+        });
+        if (connection!==this._hass?.connection || user!==this._hass?.user?.id) return;
+        if (typeof result?.conversation_id==="string") this._conversationId=result.conversation_id;
+        const speech=result?.response?.speech?.plain?.speech;
+        this._chat.push({role:"assistant",text:typeof speech==="string"?speech:COPY[this._language].msgFailed});
+      } catch (_) {
+        if (connection!==this._hass?.connection || user!==this._hass?.user?.id) return;
+        this._chat.push({role:"assistant",text:COPY[this._language].msgFailed});
+      } finally {
+        this._chatBusy=false;
+        this._chat=this._chat.slice(-24);
+        this.render();
+      }
     }
 
     _rooms(t) {
@@ -405,9 +595,9 @@
       const entities = this._manifest?.entities || [];
       return `<div class="rooms">${rooms.map((room) => {
         const count = entities.filter((ent) => ent.area_id === room.id).length;
-        return `<article class="room"><div class="room-icon" aria-hidden="true">⌂</div>
+        return `<button type="button" data-room="${escapeHTML(room.id)}" class="room"><div class="room-icon" aria-hidden="true">⌂</div>
           <h3>${escapeHTML(room.name || room.id)}</h3>
-          <p>${count} ${escapeHTML(t.devices.toLowerCase())}</p></article>`;
+          <p>${count} ${escapeHTML(t.devices.toLowerCase())}</p></button>`;
       }).join("")}</div>`;
     }
 
@@ -671,7 +861,7 @@
         <section class="hero">
           <div><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
           <h1>${escapeHTML(t.welcome)}</h1><p>${escapeHTML(t.intro)}</p>
-          <div class="hero-actions"><a href="/stevora" class="button primary">${escapeHTML(t.homepanel)}</a>
+          <div class="hero-actions"><button type="button" class="button primary" data-view="devices">${escapeHTML(t.devicesTitle)}</button>
           <button data-refresh type="button" class="button secondary">${escapeHTML(t.refresh)}</button></div></div>
           <div class="hero-graphic" aria-hidden="true"><div class="orbit one"></div><div class="orbit two"></div>
             <div class="orbit-core">S</div></div>
@@ -696,9 +886,13 @@
     }
 
     _patchLive() {
-      if (!this.shadowRoot || !this._manifest || this._view !== "home") return;
+      if (!this.shadowRoot || !this._manifest) return;
       const node = this.shadowRoot.querySelector('[data-stat="available"]');
       if (node) node.textContent = String(this._counts().available);
+      this.shadowRoot.querySelectorAll?.("[data-live-entity]")?.forEach((el)=>{
+        const id=el.getAttribute("data-live-entity"); const state=this._state(id);
+        if (id && state) el.textContent=String(state.state);
+      });
     }
 
     render() {
@@ -716,7 +910,8 @@
                 aria-current="${this._view === id ? "page" : "false"}">
           <span class="nav-icon" aria-hidden="true">${icon}</span><span>${escapeHTML(name)}</span>
         </button>`).join("");
-      const note = this._status === "error"
+      const note = this._actionNotice ? `<div class="notice" role="status">${escapeHTML(this._actionNotice)}</div>` : "";
+      const loadNote = this._status === "error"
         ? `<div class="notice error" role="alert">${escapeHTML(t.error)} · ${escapeHTML(this._error)}</div>`
         : this._status === "loading" ? `<div class="notice" role="status">${escapeHTML(t.loading)}</div>` : "";
       this.shadowRoot.innerHTML = `
@@ -737,7 +932,7 @@
                   <option value="bg" ${this._language === "bg" ? "selected" : ""}>BG</option>
                   <option value="en" ${this._language === "en" ? "selected" : ""}>EN</option></select>
                 <span class="preview-pill">1.0 ALPHA</span></div></header>
-            ${note}
+            ${loadNote}${note}
             <div class="content">${this._content(t)}</div>
             <footer>STEVORA OS Experience · Powered by Home Assistant · <strong>Developer Preview</strong></footer>
           </main>
