@@ -247,6 +247,13 @@ assert.ok(panel.shadowRoot.html.includes("Bedroom")===false || panel._manifest.r
 const before=serviceCalls.length;
 await panel._deviceAction("light.allowed","toggle");
 assert.equal(serviceCalls.length,before,"Viewer cannot perform action without scoped controls");
+panel._view="integrations";
+panel.render();
+assert.ok(panel.shadowRoot.html.includes("administrator") ||
+          panel.shadowRoot.html.includes("администратор"),
+          "Non-admin integration view must indicate access restriction");
+assert.ok(!panel.shadowRoot.html.includes("STEVORA Universal"));
+assert.ok(!panel.shadowRoot.html.includes("&lt;script&gt;bad()&lt;/script&gt;"));
 panel._view="system";
 panel.render();
 assert.ok(!panel.shadowRoot.html.includes('href="/config"'));
