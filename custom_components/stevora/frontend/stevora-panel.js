@@ -535,7 +535,7 @@ class StevoraHomePanel extends HTMLElement {
     const offline = ["unavailable","unknown"].includes(state.state);
     const allowed = !offline && controllable.has(card.entity_id) && card.layout !== "info"
       ? (card.controls || []) : [];
-    const has = key => allowed.includes(key);
+    const has = key => allowed.includes(key) && this.deviceSupportsControl(domain,key,state);
     const id = e(card.entity_id);
     const smallButton = (action, iconName, caption) =>
       '<button type="button" class="v7-device-action" data-action="' + action +
@@ -584,36 +584,87 @@ class StevoraHomePanel extends HTMLElement {
         (state.state === "on" ? "on" : "") + '"></span>' +
         e(this.nativeStateLabel(state,domain)) + '</div>';
     }
-    const sliders = [];
+    const controls = [];
+    const slider = (key, label, value, min, max, step, postfix = "%") => {
+      const n = Math.max(min,Math.min(max,Number(value)));
+      return '<div class="v7-device-slider"><label>' + e(label) +
+        '<strong>' + e(Math.round(n)) + e(postfix) + '</strong></label>' +
+        '<input type="range" min="' + e(min) + '" max="' + e(max) +
+        '" step="' + e(step) + '" value="' + e(n) + '" data-device-range="' +
+        e(key) + '" data-id="' + id + '" aria-label="' + e(label) +
+        '"/></div>';
+    };
+    const select = (key, label, items, current) => {
+      if (!items.length) return "";
+      const all = [...new Set(items.map(String))];
+      return '<div class="v7-device-select"><label>' + e(label) +
+        '</label><select data-device-select="' + e(key) + '" data-id="' + id +
+        '" aria-label="' + e(label) + '">' +
+        all.map(option => '<option value="' + e(option) + '"' +
+          (String(current) === option ? ' selected' : '') + '>' +
+          e(this.nativeStateLabel({state:option,attributes:{}},domain)) +
+          '</option>').join("") + '</select></div>';
+    };
+    if (domain === "light") {
+      if (has("brightness")) {
+        const bright = number("brightness");
+        // Off RGB lights commonly omit brightness but retain capability.
+        const pct = bright === null ? 100 : Math.round(bright * 100 / 255);
+        controls.push(slider("brightness",this.t("Яркост","Brightness"),pct,1,100,1));
+      }
+      if (has("color")) {
+        const rgb = attrs.rgb_color;
+        const valid = Array.isArray(rgb) && rgb.length === 3 &&
+          rgb.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
+        const hex = valid ? "#" + rgb.map(x => x.toString(16).padStart(2,"0")).join("") : "#8fc4ff";
+        controls.push('<div class="v7-device-color"><label>' +
+          this.t("RGB цвят","RGB color") + '</label><input type="color" value="' +
+          hex + '" data-lightcolor="' + id + '" aria-label="' +
+          this.t("Избери цвят","Choose color") + '"/></div>');
+      }
+      if (has("color_temp")) {
+        const min = Number(attrs.min_color_temp_kelvin), max = Number(attrs.max_color_temp_kelvin);
+        const current = number("color_temp_kelvin");
+        controls.push(slider("color_temp",this.t("Бяла светлина","White temperature"),
+          current === null ? Math.round((min+max)/2) : current, min,max,25," K"));
+      }
+      if (has("effect")) controls.push(select("effect",this.t("Ефекти","Effects"),
+        this.controlOptions(state,"effect_list"),attrs.effect));
+    } else if (domain === "climate") {
+      for (const [key,label,options,value] of [
+        ["hvac_mode",this.t("Режим","Mode"),"hvac_modes",state.state],
+        ["fan_mode",this.t("Вентилатор","Fan speed"),"fan_modes",attrs.fan_mode],
+        ["preset_mode",this.t("Готов режим","Preset"),"preset_modes",attrs.preset_mode],
+        ["swing_mode",this.t("Посока на въздуха","Swing"),"swing_modes",attrs.swing_mode],
+      ]) if (has(key)) controls.push(select(key,label,this.controlOptions(state,options),value));
+    } else if (domain === "fan") {
+      if (has("percentage")) controls.push(slider("percentage",
+        this.t("Скорост на вентилатора","Fan speed"),number("percentage") ?? 100,0,100,
+        number("percentage_step") || 5));
+      if (has("preset_mode")) controls.push(select("preset_mode",
+        this.t("Готов режим","Preset"),this.controlOptions(state,"preset_modes"),attrs.preset_mode));
+      if (has("oscillate")) controls.push(select("oscillate",
+        this.t("Осцилация","Oscillation"),["on","off"],attrs.oscillating ? "on":"off"));
+      if (has("direction")) controls.push(select("direction",
+        this.t("Посока","Direction"),["forward","reverse"],attrs.direction));
+    } else if (domain === "cover") {
+      if (has("position")) controls.push(slider("position",
+        this.t("Отворено","Open"),number("current_position"),0,100,1));
+      if (has("tilt")) controls.push(slider("tilt",
+        this.t("Наклон","Tilt"),number("current_tilt_position"),0,100,1));
+    } else if (domain === "media_player") {
+      if (has("volume")) controls.push(slider("volume",
+        this.t("Сила на звука","Volume"),Math.round(number("volume_level")*100),0,100,1));
+      if (has("source")) controls.push(select("source",
+        this.t("Източник","Source"),this.controlOptions(state,"source_list"),attrs.source));
+    }
     const full = expandedControls || card.layout === "expanded";
-    if (domain === "light" && full) {
-      const bright = number("brightness");
-      if (has("brightness") && bright !== null) {
-        const pct = Math.round(bright * 100 / 255);
-        sliders.push('<div class="v7-device-slider"><label>' +
-          this.t("Яркост","Brightness") + ' <strong>' + pct + '%</strong></label>' +
-          '<input type="range" class="v7-slider" min="1" max="100" value="' + pct +
-          '" data-lightbrightness="' + id + '"/></div>');
-      }
-      const modes = attrs.supported_color_modes || [];
-      if (has("color") && Array.isArray(modes) &&
-          modes.some(x => ["rgb","rgbw","rgbww","hs","xy"].includes(x))) {
-        const valid = Array.isArray(attrs.rgb_color) && attrs.rgb_color.length === 3 &&
-          attrs.rgb_color.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
-        const hex = valid ? "#" + attrs.rgb_color.map(x => x.toString(16).padStart(2,"0")).join("") : "#8fc4ff";
-        sliders.push('<div class="v7-device-slider v7-device-color"><label>' +
-          this.t("Цвят","Color") + '</label><input type="color" value="' + hex +
-          '" data-lightcolor="' + id + '" aria-label="' + this.t("Избери цвят","Choose color") +
-          '"/></div>');
-      }
-    }
-    if (domain === "fan" && full && has("percentage") && number("percentage") !== null) {
-      sliders.push('<div class="v7-device-slider"><label>' +
-        this.t("Скорост на вентилатора","Fan speed") +
-        '</label><input type="range" min="0" max="100" step="5" value="' +
-        Math.round(number("percentage")) + '" data-fanpercentage="' + id +
-        '" aria-label="' + this.t("Скорост","Speed") + '"/></div>');
-    }
+    const controlMarkup = controls.length ? (full ?
+      '<div class="v7-device-sliders">' + controls.join("") + '</div>' :
+      '<details class="v7-control-disclosure" data-editor-key="controls:' + id +
+      '"><summary><ha-icon icon="mdi:tune-variant"></ha-icon>' +
+      this.t("Управление","Controls") + ' <span class="v7-drawer-chevron">⌄</span></summary>' +
+      '<div class="v7-device-sliders">' + controls.join("") + '</div></details>') : "";
     const status = offline ? this.t("Офлайн","Offline") :
       state.state === "on" || state.state === "playing"
         ? this.t("Активно","Active") : this.t("На линия","Available");
@@ -634,8 +685,8 @@ class StevoraHomePanel extends HTMLElement {
           switch:"Switch",media_player:"Media",lock:"Security",
           sensor:"Sensor",binary_sensor:"Status"})[domain] || "Device"
       )) + '</small></span><span class="v7-device-chip">' + status + '</span></div>' +
-      center + (sliders.length ? '<div class="v7-device-sliders">' + sliders.join("") + '</div>' : '') +
-      '<div class="v7-device-actions">' + allActions.join("") + '</div></article>';
+      center + controlMarkup +
+      (allActions.length ? '<div class="v7-device-actions">' + allActions.join("") + '</div>' : '') + '</article>';
   }
 
   inventory() {
