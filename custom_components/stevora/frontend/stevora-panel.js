@@ -1304,15 +1304,89 @@ class StevoraHomePanel extends HTMLElement {
       const manifestEntry = this._manifest.entities?.find(x => x.entity_id === entityId);
       const sourceNames = [entityId, state.attributes?.friendly_name, card.name,
         manifestEntry?.name, manifestEntry?.original_name, manifestEntry?.source_name];
-      return !sourceNames.some(value => /back[ _-]?light|подсвет/i.test(String(value || "")));
+      return this.deviceSupportsControl(card.domain,control,state) &&
+        !sourceNames.some(value => /back[ _-]?light|подсвет/i.test(String(value || "")));
     };
-    this.shadowRoot.querySelectorAll("[data-fanpercentage]").forEach(slider => slider.onchange = async () => {
-      const id = slider.dataset.fanpercentage;
-      const percent = Number(slider.value);
-      if (!controlAllowed(id, "percentage") || id.split(".")[0] !== "fan" ||
-          !Number.isFinite(percent) || percent < 0 || percent > 100) return;
+    // All sliders use one validated, capability-aware HA-native service path.
+    // A DOM edit never grants new permission or a hardware feature.
+    this.shadowRoot.querySelectorAll("[data-device-range]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.id;
+      const key = input.dataset.deviceRange;
+      const state = this._hass?.states?.[id];
+      const domain = id?.split(".")[0];
+      const value = Number(input.value);
+      if (!controlAllowed(id,key) || !Number.isFinite(value)) return;
+      const number = n => Number.isFinite(n) ? n : null;
+      let service = null, data = null;
+      if (domain === "light" && key === "brightness" &&
+          Number.isInteger(value) && value >= 1 && value <= 100) {
+        service = ["light","turn_on"];
+        data = {brightness_pct:value};
+      } else if (domain === "light" && key === "color_temp" &&
+          Number.isInteger(value) &&
+          value >= Number(state.attributes?.min_color_temp_kelvin) &&
+          value <= Number(state.attributes?.max_color_temp_kelvin)) {
+        service = ["light","turn_on"];
+        data = {color_temp_kelvin:value};
+      } else if (domain === "fan" && key === "percentage" &&
+          Number.isInteger(value) && value >= 0 && value <= 100) {
+        service = ["fan","set_percentage"];
+        data = {percentage:value};
+      } else if (domain === "cover" && key === "position" &&
+          Number.isInteger(value) && value >= 0 && value <= 100) {
+        service = ["cover","set_cover_position"];
+        data = {position:value};
+      } else if (domain === "cover" && key === "tilt" &&
+          Number.isInteger(value) && value >= 0 && value <= 100) {
+        service = ["cover","set_cover_tilt_position"];
+        data = {tilt_position:value};
+      } else if (domain === "media_player" && key === "volume" &&
+          Number.isInteger(value) && value >= 0 && value <= 100) {
+        service = ["media_player","volume_set"];
+        data = {volume_level:number(value/100)};
+      }
+      if (!service || !data) return;
       try {
-        await this._hass.callService("fan","set_percentage",{entity_id:id,percentage:percent});
+        await this._hass.callService(service[0],service[1],{entity_id:id,...data});
+        this._error = "";
+      } catch(error) {
+        this._error = String(error?.message || error);
+        this.render();
+      }
+    });
+    this.shadowRoot.querySelectorAll("[data-device-select]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.id;
+      const key = input.dataset.deviceSelect;
+      const domain = id?.split(".")[0];
+      const state = this._hass?.states?.[id];
+      if (!controlAllowed(id,key)) return;
+      const selectActions = {
+        "light:effect":["light","turn_on","effect","effect_list"],
+        "climate:hvac_mode":["climate","set_hvac_mode","hvac_mode","hvac_modes"],
+        "climate:fan_mode":["climate","set_fan_mode","fan_mode","fan_modes"],
+        "climate:preset_mode":["climate","set_preset_mode","preset_mode","preset_modes"],
+        "climate:swing_mode":["climate","set_swing_mode","swing_mode","swing_modes"],
+        "fan:preset_mode":["fan","set_preset_mode","preset_mode","preset_modes"],
+        "media_player:source":["media_player","select_source","source","source_list"],
+      };
+      let payload;
+      let action = selectActions[domain + ":" + key];
+      const value = String(input.value);
+      if (action && this.controlOptions(state,action[3]).includes(value)) {
+        payload = {[action[2]]:value};
+      } else if (domain === "fan" && key === "oscillate" &&
+          ["on","off"].includes(value) && typeof state?.attributes?.oscillating === "boolean") {
+        action = ["fan","oscillate"];
+        payload = {oscillating:value === "on"};
+      } else if (domain === "fan" && key === "direction" &&
+          ["forward","reverse"].includes(value) &&
+          typeof state?.attributes?.direction === "string") {
+        action = ["fan","set_direction"];
+        payload = {direction:value};
+      }
+      if (!action || !payload) return;
+      try {
+        await this._hass.callService(action[0],action[1],{entity_id:id,...payload});
         this._error = "";
       } catch(error) {
         this._error = String(error?.message || error);
@@ -1320,16 +1394,7 @@ class StevoraHomePanel extends HTMLElement {
       }
     });
     const canModifyLight = (id, control) =>
-      id.split(".")[0] === "light" && controlAllowed(id, control);
-    this.shadowRoot.querySelectorAll("[data-lightbrightness]").forEach(input => input.onchange = async () => {
-      const id = input.dataset.lightbrightness;
-      const percent = Number(input.value);
-      if (!canModifyLight(id, "brightness") || !Number.isInteger(percent) || percent < 1 || percent > 100) return;
-      try {
-        await this._hass.callService("light", "turn_on", {entity_id:id, brightness_pct:percent});
-        this._error = "";
-      } catch (error) { this._error = String(error?.message || error); this.render(); }
-    });
+      id?.split(".")[0] === "light" && controlAllowed(id, control);
     this.shadowRoot.querySelectorAll("[data-lightcolor]").forEach(input => input.onchange = async () => {
       const id = input.dataset.lightcolor;
       const hex = String(input.value || "");
@@ -1350,6 +1415,10 @@ class StevoraHomePanel extends HTMLElement {
       if (!card) return;
       const domain = card.domain;
       if (action === "details") {
+        if (!["sensor","binary_sensor"].includes(domain) &&
+            (card.layout === "info" ||
+             !this._manifest?.controllable_entities?.includes(entity) ||
+             !Array.isArray(card.controls) || !card.controls.length)) return;
         // HA More Info is the familiar native control panel. HA decides which
         // services this authenticated user can actually invoke.
         this.dispatchEvent(new CustomEvent("hass-more-info", {
