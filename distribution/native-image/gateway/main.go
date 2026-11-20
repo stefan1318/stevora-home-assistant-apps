@@ -123,9 +123,17 @@ func newRouter(staticRoot string,core *url.URL) http.Handler {
   }
   if file=="/index.html" {
    w.Header().Set("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' wss:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+   w.Header().Set("Content-Type","text/html; charset=utf-8")
+   entry,err:=os.Open(filepath.Join(staticRoot,"index.html"))
+   if err!=nil {http.NotFound(w,r);return}
+   defer entry.Close()
+   meta,err:=entry.Stat();if err!=nil {http.Error(w,"Unable to serve STEVORA",500);return}
+   // FileServer redirects every /index.html to /. ServeContent prevents a
+   // self-redirect loop when serving our root SPA and its nested routes.
+   http.ServeContent(w,r,"stevora-root",meta.ModTime(),entry)
+   return
   }
   if strings.HasSuffix(file,".js"){w.Header().Set("Content-Type","application/javascript; charset=utf-8")}
-  // http.FileServer calls http.ServeContent and supports conditional requests.
   clone:=r.Clone(r.Context());clone.URL.Path=file
   fs.ServeHTTP(w,clone)
  })
