@@ -229,3 +229,79 @@
 .v7-light-name-wrap .v7-light-name{overflow-wrap:anywhere}
 .v7-card-title ha-icon{--mdc-icon-size:16px}
 @media(max-width:760px){.v7-bottom button ha-icon{--mdc-icon-size:22px}}
+
+
+/* 7.1.1 UX fidelity / 0.3.0-beta.4 — distinct card density and climate center */
+.v7-grid>.v7-device.is-expanded{grid-column:span 2;min-height:275px;background:radial-gradient(ellipse at 95% 0,rgba(41,122,211,.17),transparent 55%),linear-gradient(160deg,#18314e,#0b2038)}
+.v7-grid>.v7-device.is-compact{min-height:162px;gap:11px}
+.v7-device.is-compact .v7-device-state{font-size:clamp(19px,2vw,25px)}
+.v7-device.is-expanded .v7-device-state{font-size:29px}
+.v7-device.is-expanded .v7-device-actions{margin-top:12px}
+.v7-native-advanced{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:13px;padding:16px;border-radius:14px;background:rgba(7,20,36,.35);border:1px solid rgba(126,188,255,.12)}
+.v7-native-field{display:flex;flex-direction:column;gap:9px;min-width:0;color:#bdcfe8;font-size:12px}
+.v7-native-field>span{display:flex;justify-content:space-between;align-items:center}
+.v7-native-field select{width:100%;min-width:0;min-height:42px;background:#112b49;border-radius:10px;border:1px solid rgba(135,187,245,.25);color:#eaf8ff;padding:9px;font-size:13px}
+.v7-native-field input[type="range"]{width:100%;min-height:29px;accent-color:#7edaff}
+.v7-native-check{display:flex;align-items:center;gap:10px;color:#b2d6f0;padding:12px 8px;font-size:13px;cursor:pointer}
+.v7-native-check input{width:19px;height:19px;accent-color:#76cfff}
+.v7-device[aria-busy="true"]{opacity:.68}
+.v7-device.is-offline .v7-native-advanced{opacity:.5}
+.v7-editor-field small.v7-muted{font-size:10px;line-height:1.5;color:#90afc9}
+.v7-device-editor[hidden]{display:none!important}
+
+/* Original STEVORA Climate Center hierarchy: room reading + humidity,
+   separate target and mode, optional controls without redundant graphs.
+   All readings are based on current scoped HA states, never hardcoded IDs. */
+.v7-climate-center{position:relative;overflow:hidden;padding:clamp(18px,2.5vw,28px);background:
+  radial-gradient(circle at 82% 9%,rgba(90,165,255,.24),transparent 44%),
+  radial-gradient(ellipse at 20% 93%,rgba(11,139,190,.11),transparent 43%),
+  linear-gradient(145deg,#162d4d,#0a192c 71%,#0b1d35);border-color:rgba(127,195,255,.24)}
+.v7-climate-center::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;box-shadow:inset 0 1px rgba(220,247,255,.05)}
+.v7-climate-top{display:flex;align-items:center;gap:13px;min-width:0}
+.v7-climate-device-icon{display:grid;place-items:center;flex:none;width:47px;height:47px;color:#9bddff;border:1px solid rgba(125,198,252,.2);border-radius:15px;background:rgba(60,124,192,.17)}
+.v7-climate-device-icon ha-icon{--mdc-icon-size:26px}
+.v7-climate-title{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.v7-climate-title strong{font-size:15px;color:#f0f8ff;letter-spacing:-.02em;overflow-wrap:anywhere}
+.v7-climate-title small{font-size:11px;color:#9db9d6}
+.v7-climate-status{padding:6px 11px;border-radius:50px;color:#a4e7d2;background:rgba(71,165,130,.11);border:1px solid rgba(130,219,187,.19);font-size:10px;font-weight:740}
+.v7-climate-dashboard{display:grid;grid-template-columns:minmax(175px,1fr) minmax(150px,1.12fr);gap:clamp(12px,2.7vw,30px);align-items:center;margin:22px 0}
+.v7-climate-ring{position:relative;width:clamp(170px,20vw,210px);height:clamp(170px,20vw,210px);margin:auto;border-radius:50%;background:conic-gradient(from -145deg,#72d5ff var(--climate-fill),rgba(103,165,230,.14) var(--climate-fill));box-shadow:0 0 58px rgba(58,129,217,.15),inset 0 0 25px rgba(12,45,83,.28)}
+.v7-climate-ring::before{content:"";position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 48% 24%,#1b3b5b,#0c1c32 68%);box-shadow:inset 0 2px 19px rgba(0,0,0,.28)}
+.v7-climate-ring-inner{position:absolute;inset:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.v7-climate-caption{font-size:11px;color:#a1c6e5;text-transform:uppercase;letter-spacing:.09em}
+.v7-climate-large{font-size:clamp(36px,3.7vw,52px);font-weight:780;line-height:1;letter-spacing:-.055em;white-space:nowrap;color:#f6fbff}
+.v7-climate-large small{font-size:16px;color:#9dc5e6;margin-left:3px;font-weight:500}
+.v7-climate-reading{display:grid;gap:13px}
+.v7-climate-reading-item{border:1px solid rgba(141,196,246,.12);border-radius:13px;padding:12px 14px;background:rgba(7,24,44,.24);display:flex;flex-direction:column;gap:5px}
+.v7-climate-reading-item>span{font-size:11px;color:#94b2d0}
+.v7-climate-reading-item>strong{font-size:clamp(17px,2vw,23px);letter-spacing:-.03em;color:#e4f7ff}
+.v7-climate-controls{display:grid;gap:15px;border-top:1px solid rgba(142,195,250,.12);padding-top:17px}
+.v7-climate-adjust{display:flex;gap:15px;justify-content:space-between;align-items:center;flex-wrap:wrap;color:#afcbea;font-size:12px}
+.v7-climate-adjust-buttons{display:flex;gap:10px;align-items:center}
+.v7-climate-adjust-buttons strong{font-size:22px;color:#ecfaff;min-width:68px;text-align:center}
+.v7-climate-adjust-buttons .v7-action{width:46px;height:46px;padding:0;display:grid;place-items:center;border-radius:14px;background:rgba(49,110,183,.34)}
+.v7-climate-adjust-buttons ha-icon{--mdc-icon-size:21px}
+.v7-climate-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:12px}
+.v7-climate-picker{display:grid;gap:7px;color:#acccea;font-size:11px}
+.v7-climate-picker select{background:#102945;color:#e3f6ff;border-radius:11px;border:1px solid rgba(141,193,253,.22);min-height:44px;padding:8px 11px;font-size:12px}
+.v7-climate-center.is-summary{min-height:unset}
+.v7-climate-center.is-summary .v7-climate-dashboard{grid-template-columns:minmax(150px,.7fr) 1fr;margin:14px 0}
+.v7-climate-center.is-summary .v7-climate-ring{width:150px;height:150px}
+.v7-climate-center.is-summary .v7-climate-ring::before{inset:12px}
+.v7-climate-center.is-summary .v7-climate-large{font-size:35px}
+.v7-climate-center.is-summary .v7-climate-reading{gap:8px}
+.v7-climate-center.is-summary .v7-climate-reading-item{padding:9px 12px}
+.v7-climate-center.is-summary .v7-climate-reading-item strong{font-size:17px}
+.v7-climate-center .v7-action.subtle{margin-top:7px}
+@media(max-width:1050px){.v7-grid>.v7-device.is-expanded{grid-column:span 1}}
+@media(max-width:560px){
+  .v7-climate-center{padding:16px}
+  .v7-climate-dashboard,.v7-climate-center.is-summary .v7-climate-dashboard{grid-template-columns:1fr;gap:15px}
+  .v7-climate-ring,.v7-climate-center.is-summary .v7-climate-ring{width:170px;height:170px}
+  .v7-climate-reading{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .v7-climate-reading-item,.v7-climate-center.is-summary .v7-climate-reading-item{padding:9px 8px}
+  .v7-climate-reading-item strong,.v7-climate-center.is-summary .v7-climate-reading-item strong{font-size:14px;overflow-wrap:anywhere}
+  .v7-climate-adjust{justify-content:center}
+  .v7-climate-modes{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){.v7-climate-center,.v7-device{transition:none}}
