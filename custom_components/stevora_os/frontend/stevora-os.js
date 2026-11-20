@@ -1,4 +1,4 @@
-/* STEVORA OS 1.0.0-alpha.1 unified frontend
+/* STEVORA OS 1.0.0-alpha.2 primary frontend + onboarding
  * Read-only shell backed by the existing permission-scoped STEVORA manifest.
  * No direct device control, no privileges, no external dependencies/CDNs.
  */
@@ -215,6 +215,12 @@
       this._systemRequest = 0;
       this._request = 0;
       this._connected = false;
+      this._preferences = null;
+      this._prefsError = "";
+      this._prefsBusy = false;
+      this._prefsRequest = 0;
+      this._visitedView = false;
+      this._fullscreenChange = () => this._patchFullscreen();
       this.shadowRoot.addEventListener("click", (event) => this._onClick(event));
       this.shadowRoot.addEventListener("change", (event) => this._onChange(event));
       this.shadowRoot.addEventListener("input", (event) => this._onInput(event));
@@ -243,6 +249,11 @@
         this._chat = [];
         this._conversationId = null;
         this._selectedRoom = "";
+        this._visitedView = false;
+        this._prefsRequest += 1;
+        this._preferences = null;
+        this._prefsBusy = false;
+        this._prefsError = "";
         this._busyEntities.clear();
         this._systemBusy = false;
         this._systemError = "";
@@ -251,10 +262,14 @@
         this._view = "home";
         this.render();
         void this.refresh();
+        void this._loadPreferences();
       } else if (!this._connection) {
         this._connection = connection;
         this._user = user;
-        if (this._connected) void this.refresh();
+        if (this._connected) {
+          void this.refresh();
+          void this._loadPreferences();
+        }
       } else {
         // State ticks only patch text nodes; preserve focus/navigation.
         this._patchLive();
@@ -265,13 +280,20 @@
 
     connectedCallback() {
       this._connected = true;
+      if (typeof document !== "undefined")
+        document.addEventListener("fullscreenchange", this._fullscreenChange);
       this.render();
+      if (this._hass && !this._preferences && !this._prefsBusy)
+        void this._loadPreferences();
       if (this._hass && !this._manifest && !this._busy) void this.refresh();
     }
 
     disconnectedCallback() {
       this._connected = false;
+      if (typeof document !== "undefined")
+        document.removeEventListener("fullscreenchange", this._fullscreenChange);
       this._request += 1;
+      this._prefsRequest += 1;
       this._systemRequest += 1;
       this._busy = false;
       this._systemBusy = false;
@@ -283,6 +305,100 @@
       this._admin = null;
       this._chat = [];
       this._conversationId = null;
+      this._preferences = null;
+      this._prefsBusy = false;
+      this._prefsError = "";
+    }
+
+    async _loadPreferences() {
+      if (!this._hass?.callWS) return;
+      const token = ++this._prefsRequest;
+      const connection = this._hass.connection, user = this._hass.user?.id;
+      this._prefsBusy = true;
+      this._prefsError = "";
+      try {
+        const result = await this._hass.callWS({type:"stevora_os/preferences/get"});
+        if (token !== this._prefsRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        if (!result || result.schema_version !== "1" || !result.preferences ||
+            !Number.isInteger(result.revision) || result.revision < 0)
+          throw new Error("Bad preference response");
+        const pref = result.preferences;
+        if (!["bg","en"].includes(pref.language) ||
+            !["home","rooms","devices","lighting","climate","scenes","automation",
+              "assist","system","setup","about"].includes(pref.default_view))
+          throw new Error("Unsupported preferences");
+        this._preferences = result;
+        const relocalize = this._language !== pref.language;
+        this._language = pref.language;
+        if (!this._visitedView && this._view === "home") {
+          this._view = pref.onboarding_complete ? pref.default_view : "onboarding";
+        }
+        this.render();
+        if (relocalize) void this.refresh();
+      } catch (_) {
+        if (token !== this._prefsRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        this._prefsError = COPY[this._language].preferencesUnavailable;
+        this.render();
+      } finally {
+        if (token === this._prefsRequest) this._prefsBusy = false;
+      }
+    }
+
+    async _updatePreferences(changes) {
+      if (!this._hass?.callWS || !this._preferences || this._prefsBusy) return false;
+      const token = ++this._prefsRequest;
+      const connection = this._hass.connection, user = this._hass.user?.id;
+      this._prefsBusy = true;
+      try {
+        const result = await this._hass.callWS({
+          type:"stevora_os/preferences/update",
+          expected_revision:this._preferences.revision,
+          ...changes
+        });
+        if (token !== this._prefsRequest || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return false;
+        if (!result || result.schema_version !== "1" || !result.preferences)
+          throw new Error("Unexpected preference update");
+        this._preferences = result;
+        this._prefsError = "";
+        return true;
+      } catch (_) {
+        if (token === this._prefsRequest && connection === this._hass?.connection &&
+            user === this._hass?.user?.id)
+          this._prefsError = COPY[this._language].preferencesSaveFailed;
+        return false;
+      } finally {
+        if (token === this._prefsRequest) {
+          this._prefsBusy = false;
+          this.render();
+        }
+      }
+    }
+
+    _patchFullscreen() {
+      const button = this.shadowRoot?.querySelector?.("[data-fullscreen]");
+      if (button && typeof document !== "undefined")
+        button.textContent = document.fullscreenElement === this
+          ? COPY[this._language].exitFullscreen
+          : COPY[this._language].enterFullscreen;
+    }
+
+    _toggleFullscreen() {
+      if (typeof document === "undefined") return;
+      if (document.fullscreenElement === this) {
+        if (document.exitFullscreen) void document.exitFullscreen();
+      } else if (typeof this.requestFullscreen === "function") {
+        const action = this.requestFullscreen();
+        if (action?.catch) action.catch(() => {
+          this._actionNotice = COPY[this._language].fullscreenUnavailable;
+          this.render();
+        });
+      } else {
+        this._actionNotice = COPY[this._language].fullscreenUnavailable;
+        this.render();
+      }
     }
 
     async refresh() {
