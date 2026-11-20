@@ -1217,8 +1217,17 @@
       const node = this.shadowRoot.querySelector('[data-stat="available"]');
       if (node) node.textContent = String(this._counts().available);
       this.shadowRoot.querySelectorAll?.("[data-live-entity]")?.forEach((el)=>{
-        const id=el.getAttribute("data-live-entity"); const state=this._state(id);
-        if (id && state) el.textContent=String(state.state);
+        const id=el.getAttribute("data-live-entity");
+        const state=this._state(id);
+        if (!id || !state) return;
+        let value=state.state;
+        if (["unavailable","unknown"].includes(state.state)) {
+          value=COPY[this._language].unavailableDevice;
+        } else if (id.startsWith("climate.")) {
+          const current=state.attributes?.current_temperature;
+          value=(current == null ? "" : String(current)+"° · ")+state.state;
+        }
+        if (el.textContent !== value) el.textContent=value;
       });
     }
 
