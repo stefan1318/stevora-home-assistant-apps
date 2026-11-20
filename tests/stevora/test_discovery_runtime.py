@@ -104,6 +104,62 @@ class DiscoveryRuntimeTests(unittest.TestCase):
         self.assertEqual(manifest_b["modules"]["hey_stevora"]["status"], "not_included")
         self.assertNotEqual(manifest_a["revision"], manifest_b["revision"])
 
+    def test_visual_lighting_category_and_real_feature_catalog(self):
+        hass = _Hass(
+            [("living", "Living Room")],
+            [("switch.table_lamp", "living"), ("light.rgb", "living"),
+             ("fan.basic", "living")],
+            "visual", True,
+        )
+        hass.data["stevora"]["_admin_managers"] = types.SimpleNamespace(data={
+            "visibility": {}, "room_aliases": {}, "room_order": [],
+            "entity_aliases": {}, "translations": {},
+            "device_profiles": {
+                "switch.table_lamp": {"display_category": "lighting"},
+            },
+        })
+        live = {
+            "switch.table_lamp": types.SimpleNamespace(attributes={"supported_features": 0}),
+            "light.rgb": types.SimpleNamespace(attributes={
+                "supported_features": 4,
+                "supported_color_modes": ["rgb", "color_temp"],
+                "effect_list": ["Rainbow"],
+            }),
+            "fan.basic": types.SimpleNamespace(attributes={"supported_features": 0}),
+        }
+        hass.states = types.SimpleNamespace(get=lambda entity_id: live.get(entity_id))
+        entry = types.SimpleNamespace(entry_id="visual", data={
+            "language": "bg", "auto_discovery": True,
+        }, options={})
+        result = self.discovery.build_manifest(hass, entry)
+        self.assertEqual(
+            sorted(result["domain_mappings"]["lighting"]),
+            ["light.rgb", "switch.table_lamp"],
+        )
+        entities = {x["entity_id"]:x for x in result["entities"]}
+        self.assertEqual(entities["switch.table_lamp"]["domain"], "switch")
+        self.assertEqual(entities["switch.table_lamp"]["display_category"], "lighting")
+        self.assertEqual(entities["switch.table_lamp"]["available_controls"], ["toggle"])
+        self.assertEqual(entities["fan.basic"]["available_controls"], ["toggle"])
+        self.assertEqual(
+            entities["light.rgb"]["available_controls"],
+            ["brightness", "color", "color_temp", "effect", "toggle"],
+        )
+        result_again = self.discovery.build_manifest(hass, entry)
+        self.assertEqual(result["revision"], result_again["revision"])
+
+    def test_native_feature_bits_gate_fan_and_climate(self):
+        cap = self.discovery.available_controls
+        fan = types.SimpleNamespace(attributes={"supported_features": 1 | 2 | 8,
+                "percentage": 50, "preset_modes": ["auto"]})
+        climate = types.SimpleNamespace(attributes={"supported_features": 1 | 8 | 32,
+                "temperature": 22, "hvac_modes": ["heat","cool","off"],
+                "fan_modes": ["auto","high"], "swing_modes": ["on","off"]})
+        self.assertEqual(cap("fan.living",fan), ["oscillate","percentage","preset_mode","toggle"])
+        self.assertEqual(cap("climate.living",climate),
+                         ["fan_mode","hvac_mode","swing_mode","temperature"])
+        self.assertEqual(cap("light.ambient",source_name="Mirror back-light"), [])
+
     def test_room_filter_is_installation_specific(self):
         hass = _Hass(
             [("living", "Living Room"), ("kitchen", "Kitchen")],
