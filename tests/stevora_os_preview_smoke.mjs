@@ -17,6 +17,18 @@ class Element {
   }
 }
 const elements=new Map();
+const nativeLink={attrs:{rel:"manifest",href:"/manifest.json"},native:true};
+const head={nodes:[nativeLink],prepend(node){this.nodes.unshift(node);}};
+globalThis.document={
+  head,title:"Home Assistant",fullscreenElement:null,
+  createElement:(tag)=>({
+    tag,attrs:{},
+    setAttribute(k,v){this.attrs[k]=v;},
+    remove(){const i=head.nodes.indexOf(this);if(i!==-1)head.nodes.splice(i,1);},
+  }),
+  addEventListener:()=>{},removeEventListener:()=>{},
+};
+
 globalThis.HTMLElement=Element;
 globalThis.customElements={
   get:(name)=>elements.get(name),
@@ -95,6 +107,14 @@ const mock=(privileged,room)=>({
       if(!privileged)throw Error("unauthorized");
       return {revision:1,translations:{rooms:{},entities:{}},rooms:[{id:"living",name:room}]};
     }
+    if(request.type==="stevora_os/system/integrations"){
+      if(!privileged)throw Error("forbidden");
+      return {schema_version:"1",count_total:2,count_loaded:1,count_not_loaded:1,truncated:false,
+        entries:[
+          {domain:"stevora",title:"STEVORA Universal",entry_id:"one",state:"loaded"},
+          {domain:"mqtt",title:"<script>bad()</script>",entry_id:"two",state:"setup_retry"},
+        ]};
+    }
     if(request.type==="stevora_os/system/status"){
       if(!privileged)throw Error("unauthorized");
       return {
@@ -114,6 +134,10 @@ const mock=(privileged,room)=>({
 const panel=new Klass();
 panel.hass=mock(true,"<script>bad()</script>");
 panel.connectedCallback();
+assert.equal(document.title,"STEVORA OS");
+assert.equal(head.nodes[0].attrs.rel,"manifest");
+assert.ok(head.nodes[0].attrs.href.includes("stevora_os_static/manifest.webmanifest"));
+assert.ok(head.nodes.includes(nativeLink),"Existing HA manifest must remain untouched");
 await wait();
 assert.equal(panel._status,"ready");
 assert.ok(panel._model?.sections?.length);
@@ -172,6 +196,13 @@ panel._view="system";
 panel.render();
 assert.ok(panel.shadowRoot.html.includes("&lt;img src=x onerror=bad()&gt;"));
 assert.ok(!panel.shadowRoot.html.includes("<img src=x onerror=bad()>"));
+await panel._refreshIntegrations();
+assert.ok(panel._integrations,"Admin must receive integration inventory");
+panel._view="integrations";
+panel.render();
+assert.ok(panel.shadowRoot.html.includes("STEVORA Universal"));
+assert.ok(panel.shadowRoot.html.includes("&lt;script&gt;bad()&lt;/script&gt;"));
+assert.ok(!panel.shadowRoot.html.includes("<script>bad()"));
 panel._view="scenes";
 panel.render();
 assert.ok(panel.shadowRoot.html.includes("scene.evening"));
@@ -201,6 +232,7 @@ assert.equal(panel._manifest,null,"Old manifest cleared immediately on HA sessio
 assert.equal(panel._system,null,"Admin diagnostics cleared on HA session switch");
 assert.equal(panel._model,null,"Old control model must be cleared");
 assert.equal(panel._preferences,null,"Preferences from admin must clear on session switch");
+assert.equal(panel._integrations,null,"Integration inventory must clear on user switch");
 assert.ok(!panel.shadowRoot.html.includes("&lt;img src=x onerror=bad()&gt;"));
 release(manifest("Bedroom",false));
 await wait();
@@ -220,6 +252,8 @@ panel.render();
 assert.ok(!panel.shadowRoot.html.includes('href="/config"'));
 assert.ok(!panel.shadowRoot.html.includes("updates_available"));
 panel.disconnectedCallback();
+assert.equal(document.title,"Home Assistant","Document title should revert");
+assert.deepEqual(head.nodes,[nativeLink],"STEVORA PWA metadata removed without touching HA link");
 assert.equal(panel._manifest,null);
 assert.equal(panel._model,null);
 assert.equal(panel._preferences,null);
