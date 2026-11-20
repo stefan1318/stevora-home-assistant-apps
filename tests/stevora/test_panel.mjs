@@ -594,7 +594,8 @@ assert.equal(refreshes,0);
 stableLive.hass = {connection:sameConn,user:{id:"u"},states:{
   "switch.pendant":{state:"on",attributes:{supported_features:1}},
 }};
-assert.equal(refreshes,1); // Capability change warrants deliberate regeneration
+assert.equal(refreshes,0); // HA state ticks never trigger full regeneration.
+assert.equal(livePatches,2); // In-place update, even when attributes change.
 assert.equal(fullRenders,0);
 
 
@@ -640,5 +641,72 @@ const visualForm = classified.deviceEditors({
 assert.match(visualForm,/data-profile-display-category="switch.pendant"/);
 assert.match(visualForm,/value="lighting" selected/);
 assert.doesNotMatch(visualForm,/value="brightness" data-control-for="switch.pendant"/);
+
+
+// Explicit save feedback is grounded in post-save manifest projection.
+classified._admin = {rooms:{
+  entities:[{entity_id:"switch.pendant",name:"Pendant lamp",included:true,reason:"included",area_id:"k"}],
+  device_profiles:{"switch.pendant":{display_category:"lighting"}},
+  translations:{entities:{}},rooms:[{id:"k",name:"Kitchen"}],
+}};
+classified._profileFeedback = {entity_id:"switch.pendant",
+  result:{included:true,reason:"included",area_id:"k",
+    display_category:"lighting",in_lighting:true}};
+assert.match(classified.deviceEditors(classified._admin.rooms),/Verified in Lighting|Потвърдено в Осветление/);
+classified._profileFeedback.result = {included:false,reason:"outside_selected_rooms",
+  display_category:null,in_lighting:false};
+assert.match(classified.deviceEditors(classified._admin.rooms),
+  /Outside selected rooms|Извън избраните помещения/);
+
+// Dozens of state publications and extra irrelevant sensors cannot cause a
+// repaint or reload; only a real HA registry update can request a silent refresh.
+const stableStress = new Panel();
+const stressConnection = {};
+let redraws = 0, updates = 0, reloads = 0;
+stableStress._mode = "stevora";
+stableStress._view = "lighting";
+stableStress._manifest = {installation_id:"stable-house"};
+stableStress._panelModel = {sections:[]};
+stableStress._hass = {connection:stressConnection,user:{id:"person"},
+  states:{"switch.pendant":{state:"off",attributes:{supported_features:0}}}};
+stableStress.render = ()=>{redraws++;};
+stableStress.patchLiveStates = ()=>{updates++;};
+stableStress.refresh = async ()=>{reloads++;};
+for (let count=0;count<100;count++){
+  stableStress.hass = {connection:stressConnection,user:{id:"person"},
+    states:{"switch.pendant":{state:count%2?"on":"off",
+      attributes:{supported_features:count%5}},
+    ["sensor.unrelated_"+count]:{state:count,attributes:{}}}};
+}
+assert.equal(redraws,0);
+assert.equal(reloads,0);
+assert.equal(updates,100);
+
+// Registry event callbacks are deduplicated in the same event burst and
+// deregistered when panel detaches.
+const subscriptionHandlers = {};
+const unsubscribed = [];
+const eventsConnection = {
+  subscribeEvents:async (fn,event)=> {
+    subscriptionHandlers[event] = fn;
+    return ()=>unsubscribed.push(event);
+  },
+};
+const eventsPanel = new Panel();
+eventsPanel._hass = {connection:eventsConnection,user:{id:"person"},states:{}};
+eventsPanel._manifest = {installation_id:"registry-house"};
+eventsPanel._mode = "stevora";
+const refreshOptions=[];
+eventsPanel.refresh = async options => refreshOptions.push(options);
+await eventsPanel.listenForRegistryChanges();
+assert.equal(Object.keys(subscriptionHandlers).length,3);
+subscriptionHandlers.entity_registry_updated({});
+subscriptionHandlers.device_registry_updated({});
+subscriptionHandlers.area_registry_updated({});
+await Promise.resolve();
+assert.equal(refreshOptions.length,1);
+assert.equal(refreshOptions[0].silent,true);
+eventsPanel.disconnectedCallback();
+assert.equal(unsubscribed.length,3);
 
 console.log("STEVORA panel runtime: PASS");
