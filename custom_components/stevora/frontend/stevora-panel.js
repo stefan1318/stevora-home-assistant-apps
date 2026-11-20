@@ -488,6 +488,60 @@ class StevoraHomePanel extends HTMLElement {
     return localized[raw] ? this.t(...localized[raw]) : String(raw);
   }
 
+  supportedControls(card) {
+    // State capabilities are the source of truth, not visual category.
+    const entity = this._hass?.states?.[card.entity_id];
+    const attrs = entity?.attributes || {};
+    const features = Number.isInteger(attrs.supported_features) ?
+      attrs.supported_features : null;
+    const flag = value => features !== null && Boolean(features & value);
+    const list = key => Array.isArray(attrs[key]) && attrs[key].length > 0;
+    const present = key => attrs[key] !== undefined && attrs[key] !== null;
+    const domain = card.domain;
+    const controls = [];
+    if (domain === "switch") controls.push("toggle");
+    if (domain === "light") {
+      controls.push("toggle");
+      const modes = attrs.supported_color_modes || [];
+      if (modes.some(m => ["brightness","color_temp","hs","rgb","rgbw","rgbww","xy","white"].includes(m)) ||
+          (!modes.length && present("brightness"))) controls.push("brightness");
+      if (modes.some(m => ["hs","rgb","rgbw","rgbww","xy"].includes(m))) controls.push("color");
+      if (modes.includes("color_temp") || present("min_color_temp_kelvin")) controls.push("color_temp");
+      if (flag(4) && list("effect_list")) controls.push("effect");
+    }
+    if (domain === "fan") {
+      controls.push("toggle");
+      if (flag(1) || (features === null && present("percentage"))) controls.push("percentage");
+      if (flag(2)) controls.push("oscillate");
+      if (flag(4)) controls.push("direction");
+      if (flag(8) && list("preset_modes")) controls.push("preset_mode");
+    }
+    if (domain === "climate") {
+      if (list("hvac_modes")) controls.push("hvac_mode");
+      if (flag(1) || (features === null && present("temperature"))) controls.push("temperature");
+      if (flag(8) && list("fan_modes")) controls.push("fan_mode");
+      if (flag(16) && list("preset_modes")) controls.push("preset_mode");
+      if (flag(32) && list("swing_modes")) controls.push("swing_mode");
+    }
+    if (domain === "cover") {
+      const allowedFlags = {open:1,close:2,position:4,stop:8,tilt:128};
+      for (const [key,value] of Object.entries(allowedFlags))
+        if (flag(value) || features === null && (card.controls || []).includes(key))
+          controls.push(key);
+    }
+    if (domain === "media_player") {
+      if (flag(1) || flag(16384) || features === null && (card.controls || []).includes("play_pause"))
+        controls.push("play_pause");
+      if (flag(4)) controls.push("volume");
+      if (flag(2048) && list("source_list")) controls.push("source");
+    }
+    // Allow explicit state capability filtering when server publishes metadata;
+    // older HA mocks with no feature declaration may use projected capability.
+    const projected = Array.isArray(card.available_controls) ?
+      card.available_controls : card.controls || [];
+    return controls.filter(key => projected.includes(key));
+  }
+
   renderNativeCard(card, controllable, expandedControls = false) {
     const state = this._hass?.states?.[card.entity_id];
     if (!state) return "";
@@ -500,7 +554,7 @@ class StevoraHomePanel extends HTMLElement {
       lock:"mdi:lock"})[domain] || "mdi:devices");
     const offline = ["unavailable","unknown"].includes(state.state);
     const allowed = !offline && controllable.has(card.entity_id) && card.layout !== "info"
-      ? (card.controls || []) : [];
+      ? this.supportedControls(card).filter(k => (card.controls || []).includes(k)) : [];
     const has = key => allowed.includes(key);
     const id = e(card.entity_id);
     const smallButton = (action, iconName, caption) =>
@@ -551,7 +605,7 @@ class StevoraHomePanel extends HTMLElement {
         e(this.nativeStateLabel(state,domain)) + '</div>';
     }
     const sliders = [];
-    const full = expandedControls || card.layout === "expanded";
+    const full = card.layout === "expanded" || (expandedControls && card.layout !== "info");
     if (domain === "light" && full) {
       const bright = number("brightness");
       if (has("brightness") && bright !== null) {
