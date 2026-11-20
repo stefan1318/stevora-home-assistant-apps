@@ -280,7 +280,7 @@
   function hdr(title,subtitle=""){return '<div class="section-head"><h1>'+esc(title)+'</h1><small>'+esc(subtitle)+'</small></div>'}
   function empty(message=t("noData")){return '<p class="empty">'+esc(message)+'</p>'}
   function toolbar(type){
-    const options=[["",t("roomAll")],...state.areas.map(a=>[a.area_id,a.name])];
+    const options=[["",t("roomAll")],...(state.stevoraManifest?.rooms||state.areas).map(a=>[a.area_id||a.id,a.name])];
     return '<div class="filters"><select data-room>'+options.map(([id,name])=>'<option value="'+esc(id)+'" '+(state.room===id?"selected":"")+'>'+esc(name)+'</option>').join("")+'</select><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div>'
   }
   function matches(name){return !state.filter || String(name).toLocaleLowerCase().includes(state.filter.toLocaleLowerCase())}
@@ -310,7 +310,7 @@
     const rooms=state.stevoraManifest?.rooms||state.areas;
     return hdr("STEVORA "+t("home"),t("managed"))+
     '<div class="metrics">'+stat(t("total"),state.entities.length)+stat(t("online"),available)+stat(t("rooms"),rooms.length)+stat(t("climate"),climates.length)+'</div>'+
-    '<section class="panel"><h2>'+esc(t("rooms"))+'</h2><div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===a.area_id).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div></section>'+
+    '<section class="panel"><h2>'+esc(t("rooms"))+'</h2><div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div></section>'+
     '<section class="panel"><h2>'+esc(t("climate"))+'</h2><div class="cards">'+(climates.slice(0,4).map(card).join("")||empty())+'</div></section>';
   }
   function entityScreen(view){
@@ -321,7 +321,7 @@
   }
   function roomsView(){
     const rooms=state.areas;
-    return hdr(t("rooms"))+'<div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===a.area_id).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div>';
+    return hdr(t("rooms"))+'<div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div>';
   }
   function integrationView(){
     if(!state.admin)return hdr(t("integrations"))+empty(t("notAdmin"));
