@@ -897,6 +897,16 @@ class StevoraHomePanel extends HTMLElement {
       const fan = one(node,"[data-fanpercentage]");
       if (fan && fan !== active && Number.isFinite(Number(state.attributes?.percentage)))
         fan.value = String(state.attributes.percentage);
+      node.querySelectorAll?.("[data-native-select]").forEach(select => {
+        if (select === active) return;
+        const key = select.dataset.nativeSelect;
+        const next = key === "hvac_mode" ? state.state : state.attributes?.[key];
+        if (next !== undefined && next !== null) select.value = String(next);
+      });
+      node.querySelectorAll?.("[data-native-check]").forEach(input => {
+        if (input !== active && input.dataset.nativeCheck === "oscillate")
+          input.checked = Boolean(state.attributes?.oscillating);
+      });
     });
     this.shadowRoot.querySelectorAll("[data-live-climate]").forEach(node => {
       const id = node.getAttribute("data-live-climate");
@@ -909,6 +919,14 @@ class StevoraHomePanel extends HTMLElement {
       text(readings[1],Number.isFinite(humidity) ? humidity.toFixed(0)+"%" : "—");
       text(readings[2],this.nativeStateLabel(state,"climate"));
       text(one(node,".v7-climate-title small"),this.nativeStateLabel(state,"climate"));
+      text(one(node,".v7-climate-adjust-buttons strong"),
+        Number.isFinite(target) ? target.toFixed(0)+this.temperatureUnit() : "—");
+      node.querySelectorAll?.("[data-climate-select]").forEach(select => {
+        if (select === this.shadowRoot.activeElement) return;
+        const key = select.dataset.climateSelect;
+        const next = key === "hvac_mode" ? state?.state : state?.attributes?.[key];
+        if (next !== undefined && next !== null) select.value = String(next);
+      });
       const live = isOnline(state);
       text(one(node,".v7-climate-status"),live ? this.t("На линия","Online") :
         this.t("Недостъпно","Unavailable"));
@@ -943,6 +961,10 @@ class StevoraHomePanel extends HTMLElement {
       ["unavailable","unknown"].includes(states[card.entity_id]?.state)).length;
     text(one(tiles[2],".v7-stat-val"),lit);
     text(one(tiles[3],".v7-stat-val"),offline);
+    this.shadowRoot.querySelectorAll("[data-live-light-count]").forEach(node => {
+      text(node,lit + " / " + permitted.filter(card =>
+        card.display_category === "lighting").length + " ON");
+    });
   }
 
   inventory() {
