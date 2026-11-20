@@ -54,7 +54,7 @@ class NativeIntegratedContract(unittest.TestCase):
 
     def test_native_app_has_real_protocol_types(self):
         script=(WEB/"app.js").read_text()
-        for key in ('"auth/token"','"config/area_registry/list"',
+        for key in ('"/auth/token"','"config/area_registry/list"',
                     '"config_entries/get"','"get_states"','"call_service"',
                     '"supervisor/api"','"conversation/process"',
                     '"/addons"','"/backups"'):
