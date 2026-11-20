@@ -653,6 +653,14 @@ classified._profileFeedback = {entity_id:"switch.pendant",
   result:{included:true,reason:"included",area_id:"k",
     display_category:"lighting",in_lighting:true}};
 assert.match(classified.deviceEditors(classified._admin.rooms),/Verified in Lighting|Потвърдено в Осветление/);
+const virtualRoomEditor = classified.deviceEditors({
+  ...classified._admin.rooms,
+  rooms:[{id:"__stevora_unassigned__",name:"Unassigned"},
+    {id:"k",name:"Kitchen"}],
+});
+assert.doesNotMatch(virtualRoomEditor, /<option value="__stevora_unassigned__"/);
+// Unassigned is an automatic display room, never a valid writable HA area.
+
 classified._profileFeedback.result = {included:false,reason:"outside_selected_rooms",
   display_category:null,in_lighting:false};
 assert.match(classified.deviceEditors(classified._admin.rooms),
