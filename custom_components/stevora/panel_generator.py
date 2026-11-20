@@ -71,9 +71,6 @@ def generate_panel(manifest: dict) -> dict:
             layout = DEFAULT_LAYOUT
         if layout == "info":
             controls = []
-        icon = entity.get("icon") or DOMAIN_ICONS[domain]
-        if not isinstance(icon, str) or not icon.startswith("mdi:"):
-            icon = DOMAIN_ICONS[domain]
         category = entity.get("display_category", "auto")
         if category not in ("lighting", "switches", "climate", "fans", "covers",
                             "media", "sensors", "binary_sensors", "locks"):
@@ -83,6 +80,10 @@ def generate_panel(manifest: dict) -> dict:
                 "sensor": "sensors", "binary_sensor": "binary_sensors",
                 "lock": "locks",
             }[domain]
+        default_icon = "mdi:lightbulb" if category == "lighting" else DOMAIN_ICONS[domain]
+        icon = entity.get("icon") or default_icon
+        if not isinstance(icon, str) or not icon.startswith("mdi:"):
+            icon = default_icon
         sections[area]["cards"].append({
             "entity_id": entity_id,
             "name": entity.get("name") or entity_id,
