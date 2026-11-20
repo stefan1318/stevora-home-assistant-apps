@@ -1,4 +1,4 @@
-# STEVORA Ecosystem — Universal Integration 0.3.0-beta.3
+# STEVORA Ecosystem — Universal Integration 0.3.0-beta.4
 
 **Status:** Home Hub major test candidate for an independent Home Assistant installation.
 **NOT production approved, NOT deployed to Home Assistant Dunav.**
@@ -59,11 +59,30 @@ run of `feature/stevora-home-hub-v1-20261119`; verify
 `SHA256SUMS.txt`. Install `custom_components/stevora/` on a separate
 test Home Assistant. Always take a full backup and a copy of the old
 integration directory before replacing files. Restart HA and verify
-`0.3.0-beta.3` and the Home Hub module's `active` status.
+`0.3.0-beta.4` and the Home Hub module's `active` status.
 
 **Do not install legacy `stevora_manifest` together with `stevora`**:
 both register the same WebSocket route. Do not modify existing memory
 bridge, voice assistants, BLE integrations or scenes during migration.
+
+## Beta.4 capability-aware visual UI corrections
+
+- `display_category` is a presentation-only profile choice. A switch can
+  be shown as Lighting while still using its native HA service domain and
+  never acquiring fake RGB/brightness abilities.
+- Device profiles, manifest and generated panel expose HA-supported controls
+  based on supported_features, supported_color_modes and capability lists;
+  the service boundary rechecks the permission-scoped model and live flags.
+- Compact, Expanded and Info layouts are visibly and functionally distinct.
+- HA state ticks now patch live values without rebuilding the Shadow DOM
+  or collapsing focus/scroll.
+- The new Climate Center respects user/room-scoped temperature and humidity,
+  target temperature, HVAC modes and 1-degree controls, using a premium ring
+  layout inspired by the available Dunav climate hierarchy.
+- The native asset module + CSS revision are cache-busted for this release.
+
+Field acceptance is required:
+[STE-01-HOME-PANEL-7.1.1-CAPABILITY-UX-BETA4-BG.md](../../docs/STE-01-HOME-PANEL-7.1.1-CAPABILITY-UX-BETA4-BG.md).
 
 ## Beta.3 Native Premium UI major update
 

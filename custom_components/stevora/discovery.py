@@ -8,6 +8,7 @@ from homeassistant.helpers import area_registry, device_registry, entity_registr
 from .const import SCHEMA_VERSION, CONF_LANGUAGE, DEFAULT_LANGUAGE
 from .modules import describe_modules, panel_requested
 from .device_customization import permitted_controls, is_backlight_entity
+from .device_capabilities import available_controls, display_category
 
 SUPPORTED_DOMAINS = {
     "climate": "climate", "light": "lighting", "switch": "switches",
@@ -120,7 +121,10 @@ def build_manifest(hass, entry):
             skip(entity, "outside_selected_rooms")
             continue
         mappings[area_id].append(entity.entity_id)
-        domain_mappings[SUPPORTED_DOMAINS[domain]].append(entity.entity_id)
+        category = display_category(entity.entity_id, profile.get("display_category", "auto"))
+        domain_mappings[category].append(entity.entity_id)
+        live = getattr(getattr(hass, "states", None), "get", lambda _id: None)(entity.entity_id)
+        capabilities = available_controls(entity.entity_id, live, original_name)
         inventory.append({
             "entity_id": entity.entity_id,
             "domain": domain,
@@ -132,8 +136,9 @@ def build_manifest(hass, entry):
             "translations": translations.get("entities", {}).get(entity.entity_id, {}),
             "icon": profile.get("icon", ""),
             "layout": profile.get("layout", "compact"),
-            "controls": [item for item in profile["controls"] if item in permitted_controls(entity.entity_id, source_name=original_name)] if "controls" in profile else None,
-            "available_controls": permitted_controls(entity.entity_id, source_name=original_name),
+            "display_category": category,
+            "controls": [item for item in profile["controls"] if item in capabilities] if "controls" in profile else None,
+            "available_controls": capabilities,
             "user_ids": profile.get("user_ids", []),
         })
         counts["included"] += 1
@@ -144,7 +149,14 @@ def build_manifest(hass, entry):
         chosen = settings.get(option) or []
         if chosen:
             available = set(domain_mappings[group])
-            domain_mappings[group] = sorted(item for item in chosen if item in available)
+            explicit_overrides = {
+                item["entity_id"] for item in inventory
+                if item["display_category"] == group
+                and device_profiles.get(item["entity_id"], {}).get("display_category") == group
+            }
+            domain_mappings[group] = sorted(
+                ({item for item in chosen if item in available} | explicit_overrides)
+            )
     modules = describe_modules(hass, entry)
     revision_payload = json.dumps({
         "rooms": rooms, "mappings": mappings, "inventory": inventory,

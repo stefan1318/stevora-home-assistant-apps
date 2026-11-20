@@ -38,6 +38,36 @@ class GeneratorTests(unittest.TestCase):
             [{"entity_id": "light.x", "area_id": "a", "controls": ["toggle"]}], []))
         self.assertEqual(result["sections"][0]["cards"][0]["controls"], [])
 
+    def test_display_category_is_independent_of_service_domain(self):
+        result = generator.generate_panel(manifest(
+            [{"id": "k", "name": "Kitchen"}],
+            [{
+                "entity_id": "switch.lamp", "area_id": "k",
+                "name": "Pendant", "display_category": "lighting",
+                "available_controls": ["toggle"],
+                "controls": ["toggle", "brightness"],
+            }],
+            ["switch.lamp"],
+        ))
+        card = result["sections"][0]["cards"][0]
+        self.assertEqual(card["domain"], "switch")
+        self.assertEqual(card["display_category"], "lighting")
+        self.assertEqual(card["icon"], "mdi:lightbulb")
+        self.assertEqual(card["controls"], ["toggle"])
+        self.assertEqual(card["available_controls"], ["toggle"])
+
+    def test_capabilities_block_unsupported_manual_actions(self):
+        result = generator.generate_panel(manifest(
+            [{"id": "k", "name": "Kitchen"}],
+            [{
+                "entity_id": "light.simple", "area_id": "k",
+                "available_controls": ["toggle"],
+                "controls": ["toggle", "color","brightness"],
+            }],
+            ["light.simple"],
+        ))
+        self.assertEqual(result["sections"][0]["cards"][0]["controls"], ["toggle"])
+
     def test_backlight_never_appears(self):
         result = generator.generate_panel(manifest(
             [{"id": "a", "name": "Room"}],

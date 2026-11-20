@@ -48,15 +48,15 @@ jobs:
       - name: Package tested Universal Integration
         run: |
           mkdir -p dist
-          zip -q -r dist/stevora-universal-integration-0.3.0-beta.3.zip custom_components/stevora
-          unzip -l dist/stevora-universal-integration-0.3.0-beta.3.zip | grep 'custom_components/stevora/manifest.json'
-          (cd dist && sha256sum stevora-universal-integration-0.3.0-beta.3.zip > SHA256SUMS.txt)
+          zip -q -r dist/stevora-universal-integration-0.3.0-beta.4.zip custom_components/stevora
+          unzip -l dist/stevora-universal-integration-0.3.0-beta.4.zip | grep 'custom_components/stevora/manifest.json'
+          (cd dist && sha256sum stevora-universal-integration-0.3.0-beta.4.zip > SHA256SUMS.txt)
       - name: Upload independent-HA test candidate
         uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-Universal-Integration-0.3.0-beta.3
+          name: STEVORA-Universal-Integration-0.3.0-beta.4
           path: |
-            dist/stevora-universal-integration-0.3.0-beta.3.zip
+            dist/stevora-universal-integration-0.3.0-beta.4.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

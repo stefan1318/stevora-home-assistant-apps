@@ -66,15 +66,25 @@ class StevoraHomePanel extends HTMLElement {
       const inventoryChanged = this._stateSignature !== null &&
         signature !== this._stateSignature;
       this._stateSignature = signature;
-      // HA publishes state updates frequently. Settings and chat are workspaces:
-      // never destroy open editors, unsaved choices, chat input or scroll.
-      if (this._view === "settings" && this._mode === "stevora") {
-        if (inventoryChanged) void this.refresh();
+      // Full render is reserved for navigation/configuration changes.
+      // State ticks patch only live text/attributes of existing cards:
+      // no Shadow DOM replacement, focus loss, scroll jumps or flicker.
+      const changedFeatures = Object.keys(value.states || {}).some(id => {
+        const before = old?.states?.[id]?.attributes || {};
+        const after = value.states[id]?.attributes || {};
+        return ["supported_features","supported_color_modes","hvac_modes",
+          "fan_modes","preset_modes","swing_modes","effect_list","source_list"]
+          .some(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+      });
+      if (inventoryChanged || changedFeatures) {
+        void this.refresh();
         return;
       }
-      if (this._view === "ai" && this._mode === "stevora") return;
-      if (inventoryChanged) void this.refresh();
-      else this.render();
+      if (this._mode === "stevora") {
+        if (this._view !== "settings" && this._view !== "ai") this.patchLiveStates();
+        return;
+      }
+      this.render();
     }
   }
 
@@ -269,6 +279,18 @@ class StevoraHomePanel extends HTMLElement {
     const profiles = config?.device_profiles || {};
     const labels = config?.translations?.entities || {};
     const rooms = config?.rooms || [];
+    const categories = [
+      ["auto",this.t("Автоматично","Automatic")],
+      ["lighting",this.t("Осветление","Lighting")],
+      ["switches",this.t("Превключватели","Switches")],
+      ["climate",this.t("Климат","Climate")],
+      ["fans",this.t("Вентилатори","Fans")],
+      ["covers",this.t("Щори","Covers")],
+      ["media",this.t("Мултимедия","Media")],
+      ["sensors",this.t("Сензори","Sensors")],
+      ["binary_sensors",this.t("Индикатори","Indicators")],
+      ["locks",this.t("Ключалки","Locks")],
+    ];
     const e = value => this.escape(value);
     const title = '<h3>' + this.t("Устройства и персонализация","Devices and personalization") + '</h3>' +
       '<p class="v7-editor-intro">' +
@@ -282,7 +304,8 @@ class StevoraHomePanel extends HTMLElement {
       const id = e(entity.entity_id);
       const profile = profiles[entity.entity_id] || {};
       const domain = entity.entity_id.split(".")[0];
-      const choices = this.domainControls(domain);
+      const choices = Array.isArray(entity.available_controls) ?
+        entity.available_controls : this.domainControls(domain);
       const mode = !Array.isArray(profile.controls) ? "auto" :
         profile.controls.length ? "custom" : "info";
       const icon = this.safeIcon(profile.icon, this.safeIcon(entity.icon,
@@ -311,6 +334,13 @@ class StevoraHomePanel extends HTMLElement {
         this.t("Търси лампа, вентилатор, климатик...","Find lamp, fan, climate...") + '"/>' +
         '<div class="v7-icon-grid" data-icon-grid="' + id + '"></div></div></div>' +
         '<div class="v7-editor-columns">' +
+        '<div class="v7-editor-field"><label>' + this.t("Тип в STEVORA","STEVORA category") + '</label>' +
+        '<select data-profile-display-category="' + id + '">' +
+        categories.map(([key,label])=>option(key,label,profile.display_category||"auto")).join("") +
+        '</select><small class="v7-muted">' +
+        this.t("Категорията променя подредбата, но не функциите на устройството.",
+          "Categories change placement, not actual HA device capabilities.") +
+        '</small></div>' +
         '<div class="v7-editor-field"><label>' + this.t("Стил на картата","Card style") + '</label>' +
         '<select data-profile-layout="' + id + '">' +
         option("compact",this.t("Компактен","Compact"),profile.layout || "compact") +
@@ -468,6 +498,225 @@ class StevoraHomePanel extends HTMLElement {
     return localized[raw] ? this.t(...localized[raw]) : String(raw);
   }
 
+  supportedControls(card) {
+    // State capabilities are the source of truth, not visual category.
+    const entity = this._hass?.states?.[card.entity_id];
+    const attrs = entity?.attributes || {};
+    const features = Number.isInteger(attrs.supported_features) ?
+      attrs.supported_features : null;
+    const flag = value => features !== null && Boolean(features & value);
+    const list = key => Array.isArray(attrs[key]) && attrs[key].length > 0;
+    const present = key => attrs[key] !== undefined && attrs[key] !== null;
+    const domain = card.domain;
+    const controls = [];
+    if (domain === "switch") controls.push("toggle");
+    if (domain === "light") {
+      controls.push("toggle");
+      const modes = attrs.supported_color_modes || [];
+      if (modes.some(m => ["brightness","color_temp","hs","rgb","rgbw","rgbww","xy","white"].includes(m)) ||
+          (!modes.length && present("brightness"))) controls.push("brightness");
+      if (modes.some(m => ["hs","rgb","rgbw","rgbww","xy"].includes(m))) controls.push("color");
+      if (modes.includes("color_temp") || present("min_color_temp_kelvin")) controls.push("color_temp");
+      if (flag(4) && list("effect_list")) controls.push("effect");
+    }
+    if (domain === "fan") {
+      controls.push("toggle");
+      if (flag(1) || (features === null && present("percentage"))) controls.push("percentage");
+      if (flag(2)) controls.push("oscillate");
+      if (flag(4)) controls.push("direction");
+      if (flag(8) && list("preset_modes")) controls.push("preset_mode");
+    }
+    if (domain === "climate") {
+      if (list("hvac_modes")) controls.push("hvac_mode");
+      if (flag(1) || (features === null && present("temperature"))) controls.push("temperature");
+      if (flag(8) && list("fan_modes")) controls.push("fan_mode");
+      if (flag(16) && list("preset_modes")) controls.push("preset_mode");
+      if (flag(32) && list("swing_modes")) controls.push("swing_mode");
+    }
+    if (domain === "cover") {
+      const allowedFlags = {open:1,close:2,position:4,stop:8,tilt:128};
+      for (const [key,value] of Object.entries(allowedFlags))
+        if (flag(value) || features === null && (card.controls || []).includes(key))
+          controls.push(key);
+    }
+    if (domain === "media_player") {
+      if (flag(1) || flag(16384) || features === null && (card.controls || []).includes("play_pause"))
+        controls.push("play_pause");
+      if (flag(4)) controls.push("volume");
+      if (flag(2048) && list("source_list")) controls.push("source");
+    }
+    // Allow explicit state capability filtering when server publishes metadata;
+    // older HA mocks with no feature declaration may use projected capability.
+    const projected = Array.isArray(card.available_controls) ?
+      card.available_controls : card.controls || [];
+    return controls.filter(key => projected.includes(key));
+  }
+
+  climateTelemetry(card) {
+    const state = this._hass?.states?.[card?.entity_id];
+    const attrs = state?.attributes || {};
+    const cards = (this._panelModel?.sections || []).flatMap(room =>
+      (room.cards || []).map(item => ({...item,roomId:room.id})));
+    const roomId = card?.roomId || cards.find(item => item.entity_id === card?.entity_id)?.roomId;
+    const roomSensor = kind => cards.find(item =>
+      item.roomId === roomId && item.domain === "sensor" &&
+      this._hass?.states?.[item.entity_id]?.attributes?.device_class === kind &&
+      !["unknown","unavailable"].includes(this._hass?.states?.[item.entity_id]?.state));
+    const sensorTemp = roomSensor("temperature");
+    const sample = sensorTemp && this._hass?.states?.[sensorTemp.entity_id];
+    const sensorUnit = sample?.attributes?.unit_of_measurement;
+    const sensorNumber = Number(sample?.state);
+    const unit = this.temperatureUnit();
+    const normalized = !sample || !Number.isFinite(sensorNumber) ? NaN :
+      sensorUnit === unit || (unit === "°C" && sensorUnit === "C") ? sensorNumber :
+      sensorUnit === "°F" && unit === "°C" ? (sensorNumber - 32) * 5 / 9 :
+      sensorUnit === "°C" && unit === "°F" ? (sensorNumber * 9 / 5 + 32) : NaN;
+    const fromDevice = attrs.current_temperature == null ? NaN : Number(attrs.current_temperature);
+    const current = Number.isFinite(normalized) ? normalized : fromDevice;
+    const humiditySensor = roomSensor("humidity");
+    const humiditySample = humiditySensor && this._hass?.states?.[humiditySensor.entity_id];
+    const humidityNumber = Number(humiditySample?.state);
+    const fromDeviceHumidity = attrs.current_humidity == null ? NaN : Number(attrs.current_humidity);
+    const humidity = Number.isFinite(humidityNumber) ? humidityNumber : fromDeviceHumidity;
+    const target = attrs.temperature == null ? NaN : Number(attrs.temperature);
+    return {state,attrs,current,target,humidity,unit};
+  }
+
+  renderClimateCenter(card, summaryOnly = false) {
+    if (!card) return '<section class="v7-card v7-climate">' +
+      this.t("Няма климатично устройство","No climate device") + '</section>';
+    const info = this.climateTelemetry(card);
+    const {state,attrs,current,target,humidity,unit} = info;
+    const e = value => this.escape(value);
+    const id = e(card.entity_id);
+    const online = state && !["unavailable","unknown"].includes(state.state);
+    const controls = online && card.layout !== "info" &&
+      this._manifest?.controllable_entities?.includes(card.entity_id) ?
+      this.supportedControls(card).filter(x => (card.controls || []).includes(x)) : [];
+    const can = key => controls.includes(key);
+    const tempLabel = Number.isFinite(current) ? current.toFixed(1) : "—";
+    const targetLabel = Number.isFinite(target) ? target.toFixed(0) : "—";
+    const humidityLabel = Number.isFinite(humidity) ? humidity.toFixed(0) + "%" : "—";
+    const mode = this.nativeStateLabel(state,"climate");
+    const selection = (control,attr,serviceLabel) => {
+      const values = attrs[attr];
+      if (summaryOnly || !can(control) || !Array.isArray(values) || !values.length) return "";
+      const currentValue = control === "hvac_mode" ? state?.state :
+        attrs[control] || "";
+      return '<label class="v7-climate-picker"><span>' + this.t(...serviceLabel) +
+        '</span><select data-climate-select="' + control + '" data-id="' + id + '">' +
+        values.map(value => '<option value="' + e(value) + '"' +
+          (value === currentValue ? " selected" : "") + '>' +
+          e(String(value).replaceAll("_"," ")) + '</option>').join("") +
+        '</select></label>';
+    };
+    const meter = Number.isFinite(target) ? Math.max(0,Math.min(100,
+      (target - (Number(attrs.min_temp) || 16)) /
+      Math.max(1,(Number(attrs.max_temp) || 30) - (Number(attrs.min_temp) || 16)) * 100
+    )) : 0;
+    return '<section class="v7-card v7-climate-center' +
+      (summaryOnly ? ' is-summary' : '') + '" data-live-climate="' + id + '">' +
+      '<div class="v7-climate-top"><span class="v7-climate-device-icon">' +
+      '<ha-icon icon="mdi:air-conditioner"></ha-icon></span><div class="v7-climate-title">' +
+      '<strong>' + e(card.name) + '</strong><small>' + e(mode) + '</small></div>' +
+      '<span class="v7-climate-status">' +
+      (online ? this.t("На линия","Online") : this.t("Недостъпно","Unavailable")) +
+      '</span></div>' +
+      '<div class="v7-climate-dashboard">' +
+      '<div class="v7-climate-ring" style="--climate-fill:' + meter + '%">' +
+      '<div class="v7-climate-ring-inner"><span class="v7-climate-caption">' +
+      this.t("В стаята","Room temp") + '</span><div class="v7-climate-large">' +
+      e(tempLabel) + '<small>' + unit + '</small></div></div></div>' +
+      '<div class="v7-climate-reading">' +
+      '<div class="v7-climate-reading-item"><span>' + this.t("Зададена","Target") +
+      '</span><strong>' + e(targetLabel) + unit + '</strong></div>' +
+      '<div class="v7-climate-reading-item"><span>' + this.t("Влажност","Humidity") +
+      '</span><strong>' + e(humidityLabel) + '</strong></div>' +
+      '<div class="v7-climate-reading-item"><span>' + this.t("Режим","Mode") +
+      '</span><strong>' + e(mode) + '</strong></div></div></div>' +
+      (summaryOnly ?
+        '<button type="button" class="v7-action subtle" data-view="climate">' +
+        this.t("Отвори Climate Center","Open Climate Center") + '</button>' :
+        '<div class="v7-climate-controls">' +
+          (can("temperature") && Number.isFinite(target) ?
+          '<div class="v7-climate-adjust"><span>' + this.t("Зададена температура","Target temperature") +
+          '</span><div class="v7-climate-adjust-buttons">' +
+          '<button class="v7-action" type="button" data-action="temperature-down" data-id="' + id +
+          '" aria-label="' + this.t("Намали с 1 градус","Decrease by one degree") +
+          '"><ha-icon icon="mdi:minus"></ha-icon></button>' +
+          '<strong>' + e(targetLabel) + unit + '</strong>' +
+          '<button class="v7-action" type="button" data-action="temperature-up" data-id="' + id +
+          '" aria-label="' + this.t("Увеличи с 1 градус","Increase by one degree") +
+          '"><ha-icon icon="mdi:plus"></ha-icon></button></div></div>' : '') +
+          '<div class="v7-climate-modes">' +
+          selection("hvac_mode","hvac_modes",["Работен режим","Operating mode"]) +
+          selection("fan_mode","fan_modes",["Скорост на въздуха","Fan mode"]) +
+          selection("preset_mode","preset_modes",["Режим","Preset"]) +
+          selection("swing_mode","swing_modes",["Посока на струята","Swing mode"]) +
+          '</div>' +
+          ((card.layout !== "info" && controls.length) ?
+            '<button type="button" class="v7-action subtle" data-action="details" data-id="' + id +
+            '">' + this.t("Още настройки","More options") + '</button>' : '') +
+          '</div>') + '</section>';
+  }
+
+  renderAdvancedControls(card, allowed, attrs) {
+    // Lists and ranges come exclusively from the authenticated HA state.
+    const id = this.escape(card.entity_id);
+    const allow = key => allowed.includes(key);
+    const e = value => this.escape(value);
+    const inputs = [];
+    const select = (control,values,active,bg,en) => {
+      if (!allow(control) || !Array.isArray(values) || !values.length) return;
+      inputs.push('<label class="v7-native-field"><span>' + this.t(bg,en) +
+        '</span><select data-native-select="' + control + '" data-id="' + id + '">' +
+        values.map(value => '<option value="' + e(value) + '"' +
+          (String(value) === String(active) ? " selected" : "") + '>' +
+          e(String(value).replaceAll("_"," ")) + '</option>').join("") +
+        '</select></label>');
+    };
+    const range = (control,min,max,value,step,bg,en) => {
+      if (!allow(control) || !Number.isFinite(value) || !Number.isFinite(min) ||
+          !Number.isFinite(max) || max <= min) return;
+      inputs.push('<label class="v7-native-field"><span>' + this.t(bg,en) +
+        ' <strong>' + e(Math.round(value)) + '</strong></span>' +
+        '<input type="range" min="' + e(min) + '" max="' + e(max) +
+        '" step="' + e(step) + '" value="' + e(Math.min(max,Math.max(min,value))) +
+        '" data-native-range="' + control + '" data-id="' + id + '"/></label>');
+    };
+    if (card.domain === "light") {
+      range("color_temp",
+        Number(attrs.min_color_temp_kelvin || 2000),
+        Number(attrs.max_color_temp_kelvin || 6500),
+        Number(attrs.color_temp_kelvin || NaN),100,
+        "Топлина на светлината (K)","White temperature (K)");
+      select("effect",attrs.effect_list,attrs.effect,"Ефекти","Effects");
+    }
+    if (card.domain === "fan") {
+      select("preset_mode",attrs.preset_modes,attrs.preset_mode,"Режим","Preset");
+      if (allow("oscillate")) inputs.push('<label class="v7-native-check"><input type="checkbox" ' +
+        (attrs.oscillating ? "checked" : "") + ' data-native-check="oscillate" data-id="' + id +
+        '"/> ' + this.t("Осцилация","Oscillation") + '</label>');
+      select("direction",["forward","reverse"],attrs.direction,"Посока","Direction");
+    }
+    if (card.domain === "climate") {
+      select("hvac_mode",attrs.hvac_modes,this._hass?.states?.[card.entity_id]?.state,
+        "Работен режим","Operating mode");
+      select("fan_mode",attrs.fan_modes,attrs.fan_mode,"Вентилатор","Fan mode");
+      select("preset_mode",attrs.preset_modes,attrs.preset_mode,"Режим","Preset");
+      select("swing_mode",attrs.swing_modes,attrs.swing_mode,"Посока","Swing");
+    }
+    if (card.domain === "cover") {
+      range("position",0,100,Number(attrs.current_position),1,"Позиция (%)","Position (%)");
+      range("tilt",0,100,Number(attrs.current_tilt_position),1,"Наклон (%)","Tilt (%)");
+    }
+    if (card.domain === "media_player") {
+      range("volume",0,100,Number(attrs.volume_level)*100,5,"Сила на звука (%)","Volume (%)");
+      select("source",attrs.source_list,attrs.source,"Източник","Source");
+    }
+    return inputs.length ? '<div class="v7-native-advanced">' + inputs.join("") + '</div>' : "";
+  }
+
   renderNativeCard(card, controllable, expandedControls = false) {
     const state = this._hass?.states?.[card.entity_id];
     if (!state) return "";
@@ -480,7 +729,7 @@ class StevoraHomePanel extends HTMLElement {
       lock:"mdi:lock"})[domain] || "mdi:devices");
     const offline = ["unavailable","unknown"].includes(state.state);
     const allowed = !offline && controllable.has(card.entity_id) && card.layout !== "info"
-      ? (card.controls || []) : [];
+      ? this.supportedControls(card).filter(k => (card.controls || []).includes(k)) : [];
     const has = key => allowed.includes(key);
     const id = e(card.entity_id);
     const smallButton = (action, iconName, caption) =>
@@ -531,7 +780,7 @@ class StevoraHomePanel extends HTMLElement {
         e(this.nativeStateLabel(state,domain)) + '</div>';
     }
     const sliders = [];
-    const full = expandedControls || card.layout === "expanded";
+    const full = card.layout === "expanded" || (expandedControls && card.layout !== "info");
     if (domain === "light" && full) {
       const bright = number("brightness");
       if (has("brightness") && bright !== null) {
@@ -569,19 +818,153 @@ class StevoraHomePanel extends HTMLElement {
       (card.layout !== "info" && allowed.length > 0);
     const allActions = allowDetails ? actions.concat(details) : actions;
     return '<article class="v7-card v7-device v7-device-' + e(domain) +
-      (offline ? ' is-offline' : '') + (card.layout === "info" ? ' is-info' : '') + '">' +
+      (offline ? ' is-offline' : '') + (card.layout === "info" ? ' is-info' :
+        card.layout === "expanded" ? ' is-expanded' : ' is-compact') +
+      '" data-live-card="' + id + '">' +
       '<div class="v7-device-head"><span class="v7-device-glyph"><ha-icon icon="' +
       e(icon) + '"></ha-icon></span><span class="v7-device-heading"><strong>' +
-      e(card.name) + '</strong><small>' + e(this.t(
+      e(card.name) + '</strong><small>' +
+      (card.display_category === "lighting" ? this.t("Осветление","Lighting") : e(this.t(
         ({light:"Осветление",climate:"Климат",fan:"Вентилатор",cover:"Щори",
           switch:"Превключвател",media_player:"Медия",lock:"Сигурност",
           sensor:"Сензор",binary_sensor:"Състояние"})[domain] || "Устройство",
         ({light:"Lighting",climate:"Climate",fan:"Fan",cover:"Cover",
           switch:"Switch",media_player:"Media",lock:"Security",
           sensor:"Sensor",binary_sensor:"Status"})[domain] || "Device"
-      )) + '</small></span><span class="v7-device-chip">' + status + '</span></div>' +
+      ))) + '</small></span><span class="v7-device-chip">' + status + '</span></div>' +
       center + (sliders.length ? '<div class="v7-device-sliders">' + sliders.join("") + '</div>' : '') +
+      (full ? this.renderAdvancedControls(card,allowed,attrs) : '') +
       '<div class="v7-device-actions">' + allActions.join("") + '</div></article>';
+  }
+
+  patchLiveStates() {
+    if (!this.shadowRoot?.querySelectorAll || !this._panelModel) return;
+    const states = this._hass?.states || {};
+    const cards = new Map((this._panelModel.sections || []).flatMap(section =>
+      (section.cards || []).map(card => [card.entity_id,card])));
+    const isOnline = state => state && !["unknown","unavailable"].includes(state.state);
+    const text = (node,value) => { if (node && node.textContent !== String(value)) node.textContent = String(value); };
+    const one = (node,selector) => node?.querySelector?.(selector);
+    const firstText = (node,value) => {
+      if (!node) return;
+      const first = node.firstChild;
+      if (first && first.nodeType === 3) first.nodeValue = String(value);
+    };
+    this.shadowRoot.querySelectorAll("[data-live-card]").forEach(node => {
+      const entityId = node.getAttribute("data-live-card");
+      const card = cards.get(entityId);
+      const state = states[entityId];
+      if (!card || !state) return;
+      const live = isOnline(state);
+      node.classList?.toggle("is-offline", !live);
+      text(one(node,".v7-device-chip"),live ? (
+        state.state === "on" || state.state === "playing" ?
+        this.t("Активно","Active") : this.t("На линия","Available")
+      ) : this.t("Офлайн","Offline"));
+      text(one(node,".v7-device-state"),this.nativeStateLabel(state,card.domain));
+      text(one(node,".v7-device-light-state strong"),this.nativeStateLabel(state,card.domain));
+      const rgb = state.attributes?.rgb_color;
+      if (Array.isArray(rgb) && rgb.length === 3 &&
+          rgb.every(x => Number.isInteger(x) && x >= 0 && x <= 255)) {
+        const dot = one(node,".v7-device-light-state .v7-color-dot");
+        if (dot) dot.style.background = "#" + rgb.map(x => x.toString(16).padStart(2,"0")).join("");
+      }
+      if (card.domain === "climate") {
+        const now = state.attributes?.current_temperature;
+        const target = state.attributes?.temperature;
+        firstText(one(node,".v7-device-temp"),
+          now == null || !Number.isFinite(Number(now)) ? "—" : Number(now).toFixed(1));
+        text(one(node,".v7-device-target"),this.t("Цел","Target") + " · " +
+          (target == null || !Number.isFinite(Number(target)) ? "—" :
+            Number(target).toFixed(0) + this.temperatureUnit()));
+      }
+      const canWrite = live && this._manifest?.controllable_entities?.includes(entityId);
+      node.querySelectorAll?.("button[data-action],input[data-native-range],select[data-native-select],input[data-native-check],input[data-lightbrightness],input[data-lightcolor],input[data-fanpercentage]")
+        .forEach(control => {
+          if (!control.dataset?.action || control.dataset.action !== "details")
+            control.disabled = !canWrite;
+        });
+      const toggle = one(node,'button[data-action="toggle"] span');
+      if (toggle) text(toggle,state.state === "on" ?
+        this.t("Изключи","Turn off") : this.t("Включи","Turn on"));
+      // Never pull a focused slider/selector out from under the user.
+      const active = this.shadowRoot.activeElement;
+      const bright = one(node,"[data-lightbrightness]");
+      if (bright && bright !== active) {
+        const value = Number(state.attributes?.brightness);
+        if (Number.isFinite(value)) bright.value = String(Math.round(value / 255 * 100));
+      }
+      const fan = one(node,"[data-fanpercentage]");
+      if (fan && fan !== active && Number.isFinite(Number(state.attributes?.percentage)))
+        fan.value = String(state.attributes.percentage);
+      node.querySelectorAll?.("[data-native-select]").forEach(select => {
+        if (select === active) return;
+        const key = select.dataset.nativeSelect;
+        const next = key === "hvac_mode" ? state.state : state.attributes?.[key];
+        if (next !== undefined && next !== null) select.value = String(next);
+      });
+      node.querySelectorAll?.("[data-native-check]").forEach(input => {
+        if (input !== active && input.dataset.nativeCheck === "oscillate")
+          input.checked = Boolean(state.attributes?.oscillating);
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-live-climate]").forEach(node => {
+      const id = node.getAttribute("data-live-climate");
+      const card = cards.get(id);
+      if (!card) return;
+      const {state,current,target,humidity} = this.climateTelemetry(card);
+      firstText(one(node,".v7-climate-large"),Number.isFinite(current) ? current.toFixed(1) : "—");
+      const readings = node.querySelectorAll?.(".v7-climate-reading-item strong") || [];
+      text(readings[0],Number.isFinite(target) ? target.toFixed(0)+this.temperatureUnit() : "—");
+      text(readings[1],Number.isFinite(humidity) ? humidity.toFixed(0)+"%" : "—");
+      text(readings[2],this.nativeStateLabel(state,"climate"));
+      text(one(node,".v7-climate-title small"),this.nativeStateLabel(state,"climate"));
+      text(one(node,".v7-climate-adjust-buttons strong"),
+        Number.isFinite(target) ? target.toFixed(0)+this.temperatureUnit() : "—");
+      node.querySelectorAll?.("[data-climate-select]").forEach(select => {
+        if (select === this.shadowRoot.activeElement) return;
+        const key = select.dataset.climateSelect;
+        const next = key === "hvac_mode" ? state?.state : state?.attributes?.[key];
+        if (next !== undefined && next !== null) select.value = String(next);
+      });
+      const live = isOnline(state);
+      text(one(node,".v7-climate-status"),live ? this.t("На линия","Online") :
+        this.t("Недостъпно","Unavailable"));
+      node.querySelectorAll?.("button[data-action],select[data-climate-select]").forEach(control =>
+        {control.disabled = !live;});
+    });
+    this.shadowRoot.querySelectorAll("[data-live-light]").forEach(node => {
+      const id = node.getAttribute("data-live-light");
+      const state = states[id];
+      if (!state) return;
+      const dot = one(node,".v7-state-dot");
+      const on = state.state === "on";
+      dot?.classList?.toggle("on",on);
+      const rgb = state.attributes?.rgb_color;
+      if (dot && Array.isArray(rgb) && rgb.length === 3 &&
+          rgb.every(x => Number.isInteger(x) && x >= 0 && x <= 255) && on)
+        dot.style.background = "#" + rgb.map(x => x.toString(16).padStart(2,"0")).join("");
+      const summary = one(node,".v7-muted");
+      text(summary,this.nativeStateLabel(state,"light"));
+      const toggle = one(node,'button[data-action="toggle"]');
+      if (toggle) {
+        toggle.disabled = !isOnline(state);
+        text(toggle,on ? this.t("Изключи","Off") : this.t("Включи","On"));
+      }
+    });
+    const tiles = this.shadowRoot.querySelectorAll(".v7-stats > .v7-card");
+    const permitted = [...cards.values()];
+    const lit = permitted.filter(x => x.display_category === "lighting" ||
+      x.domain === "light" && !x.display_category).filter(card =>
+        states[card.entity_id]?.state === "on").length;
+    const offline = permitted.filter(card =>
+      ["unavailable","unknown"].includes(states[card.entity_id]?.state)).length;
+    text(one(tiles[2],".v7-stat-val"),lit);
+    text(one(tiles[3],".v7-stat-val"),offline);
+    this.shadowRoot.querySelectorAll("[data-live-light-count]").forEach(node => {
+      text(node,lit + " / " + permitted.filter(card =>
+        card.display_category === "lighting").length + " ON");
+    });
   }
 
   inventory() {
@@ -647,7 +1030,16 @@ class StevoraHomePanel extends HTMLElement {
       ...card, roomId: room.id, roomName: room.name
     })));
     const byDomain = domain => allCards.filter(card => card.domain === domain);
-    const lightCards = byDomain("light");
+    // Presentation category may differ from the native HA entity domain.
+    // A switch explicitly classified as a lamp appears under Lighting but
+    // its services and capabilities remain those of a switch.
+    const byCategory = category => allCards.filter(card =>
+      (card.display_category || ({
+        light:"lighting",switch:"switches",climate:"climate",fan:"fans",
+        cover:"covers",media_player:"media",sensor:"sensors",
+        binary_sensor:"binary_sensors",lock:"locks",
+      })[card.domain]) === category);
+    const lightCards = byCategory("lighting");
     const climates = byDomain("climate");
     const statusCards = allCards.filter(card => ["sensor","binary_sensor"].includes(card.domain));
     const lightOn = lightCards.filter(card => this._hass?.states?.[card.entity_id]?.state === "on").length;
@@ -696,46 +1088,7 @@ class StevoraHomePanel extends HTMLElement {
         <span class="v7-room-count">${room.cards.length} ${this.t("устройства", "entities")}</span>
       </button>`
     ).join("")}</div>`;
-    const climateWidget = (card, summaryOnly = false) => {
-      if (!card) return `<div class="v7-card v7-climate"><div class="v7-card-title">◉ ${this.t("Климат", "Climate")}</div><div class="v7-empty">${this.t("Няма климатично устройство", "No climate device")}</div></div>`;
-      const state = ent(card);
-      const attrs = state?.attributes || {};
-      const target = Number(attrs.temperature);
-      // Prefer a real room temperature sensor when one is exposed by HA.
-      // Never rely on Dunav-specific HomePod entity IDs.
-      const roomSensor = deviceClass => statusCards.find(item =>
-        item.roomId === card.roomId &&
-        ent(item)?.attributes?.device_class === deviceClass &&
-        !["unavailable","unknown"].includes(ent(item)?.state));
-      const sensor = roomSensor("temperature");
-      const sensorState = sensor ? ent(sensor) : null;
-      const numericSensor = sensorState?.state == null ? NaN : Number(sensorState.state);
-      const sensorUnit = sensorState?.attributes?.unit_of_measurement;
-      const displayUnit = this.temperatureUnit();
-      const sensorValue = sensorUnit === displayUnit ||
-        (displayUnit === "°C" && sensorUnit === "C") ? numericSensor :
-        sensorUnit === "°F" && displayUnit === "°C" ? (numericSensor - 32) * 5 / 9 :
-        sensorUnit === "°C" && displayUnit === "°F" ? (numericSensor * 9 / 5 + 32) : NaN;
-      const current = Number.isFinite(sensorValue) ? sensorValue : Number(attrs.current_temperature);
-      const humidity = roomSensor("humidity");
-      const humidityValue = humidity ? Number(ent(humidity)?.state) : NaN;
-      const showTarget = attrs.temperature !== undefined && attrs.temperature !== null && Number.isFinite(target);
-      const showCurrent = Number.isFinite(sensorValue) ||
-        (attrs.current_temperature !== undefined && attrs.current_temperature !== null && Number.isFinite(current));
-      return `<section class="v7-card v7-climate ${summaryOnly ? "v7-climate-summary" : ""}">
-        <div class="v7-card-title">◉ ${this.escape(card.name)}</div>
-        <div class="v7-climate-value">${showCurrent ? this.escape(current.toFixed(1)) : (showTarget ? this.escape(target.toFixed(0)) : "—")}<span class="v7-value-suffix">${this.temperatureUnit()}</span></div>
-        <div class="v7-climate-meta">${this.t("Зададена температура", "Target temperature")}: ${showTarget ? this.escape(target.toFixed(0)) + this.temperatureUnit() : "—"} · ${this.escape(this.nativeStateLabel(state,"climate"))}${Number.isFinite(humidityValue) ? " · " + this.t("Влажност","Humidity") + " " + this.escape(humidityValue.toFixed(0)) + "%" : ""}</div>
-        <div class="v7-actions">
-          ${!summaryOnly && can(card, "temperature") ? `<button class="v7-action" data-action="temperature-down" data-id="${this.escape(card.entity_id)}">−1${this.temperatureUnit()}</button>
-          <button class="v7-action" data-action="temperature-up" data-id="${this.escape(card.entity_id)}">+1${this.temperatureUnit()}</button>` : ""}
-          ${!summaryOnly && online(card) && controllable.has(card.entity_id) && (card.controls || []).length
-            ? `<button class="v7-action subtle" data-action="details" data-id="${this.escape(card.entity_id)}">${this.t("Разширен контрол", "Advanced controls")}</button>`
-            : ""}
-          ${summaryOnly ? `<button class="v7-action subtle" data-view="climate">${this.t("Отвори климатичния център", "Open climate center")}</button>` : ""}
-        </div>
-      </section>`;
-    };
+    const climateWidget = (card, summaryOnly = false) => this.renderClimateCenter(card, summaryOnly);
     // On Home, RGB fixtures are informational (state + current color);
     // full sliders and color control remain inside Lighting/Rooms.
     const quickLights = () => '<section class="v7-card">' +
@@ -752,7 +1105,7 @@ class StevoraHomePanel extends HTMLElement {
           components.every(x => Number.isInteger(x) && x >= 0 && x <= 255);
         const color = hasColor ? "#" + components.map(x => x.toString(16).padStart(2,"0")).join("") : "";
         const on = st?.state === "on";
-        return '<div class="v7-light-tile"><div class="v7-light-name-wrap">' +
+        return '<div class="v7-light-tile" data-live-light="' + this.escape(card.entity_id) + '"><div class="v7-light-name-wrap">' +
           '<span class="v7-state-dot ' + (on ? "on" : "") + '"' +
           (color && on ? ' style="background:' + color + '"' : "") + '></span>' +
           '<span class="v7-light-name">' + this.escape(card.name) + '</span></div>' +
@@ -766,7 +1119,7 @@ class StevoraHomePanel extends HTMLElement {
         this.t("Няма открити светлини","No discovered lights") + '</div>') +
       '<div class="v7-actions"><button class="v7-action subtle" data-view="lighting">' +
       this.t("Осветление и RGB","Lighting & RGB") + '</button></div></section>';
-    const lightingWidget = card => this.renderNativeCard(card, controllable, true);
+    const lightingWidget = card => this.renderNativeCard(card, controllable);
     const runSections = roomsToDisplay => roomsToDisplay.map(room =>
       `${sectionTitle(room.name, room.cards.length + " " + this.t("устройства","entities"))}${cardGrid(room.cards,this.t("Няма устройства в стаята","No entities in room"))}`
     ).join("");
@@ -857,7 +1210,7 @@ class StevoraHomePanel extends HTMLElement {
       content = `${sectionTitle(this.t("Климатичен център","Climate center"),climates.length+" "+this.t("системи","systems"))}
         ${climates.length ? `<div class="v7-grid">${climates.map(climateWidget).join("")}</div>` : `<div class="v7-empty">${this.t("Няма открити климатични устройства","No climate entities discovered")}</div>`}`;
     } else if (this._view === "lighting") {
-      content = `${sectionTitle(this.t("Осветление и RGB","Lighting and RGB"),lightOn+" / "+lightCards.length+" ON")}
+      content = `${sectionTitle(this.t("Осветление и RGB","Lighting and RGB"))}<div data-live-light-count class="v7-light-count">${lightOn+" / "+lightCards.length+" ON"}</div>
         ${lightCards.length ? `<div class="v7-grid">${lightCards.map(lightingWidget).join("")}</div>` : `<div class="v7-empty">${this.t("Няма светлини","No lights")}</div>`}`;
     } else if (this._view === "devices") {
       content = `${sectionTitle(this.t("Всички устройства","All devices"),allCards.length+" "+this.t("устройства","entities"))}
@@ -954,7 +1307,7 @@ class StevoraHomePanel extends HTMLElement {
     }
     const bottomNav = nav.filter(n=>["home","rooms","climate","lighting","settings"].includes(n[0]));
     this.shadowRoot.innerHTML = `
-      <style>@import url("/stevora_static/stevora-premium.css?v=711-native1");</style>
+      <style>@import url("/stevora_static/stevora-premium.css?v=711-beta4");</style>
       <div class="v7-shell ${this._wall ? "v7-wall" : ""}">
         <aside class="v7-side"><div class="v7-brand"><div class="v7-brand-mark"><svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true"><path d="M24 7H12c-4 0-6 2.5-6 5s2 4 6 4h7c5 0 7 2 7 5s-2.5 5-6.5 5H7" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M23 7h4 M5 26h4" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
           <div class="v7-brand-copy"><div class="v7-wordmark">STEVORA</div><div class="v7-brand-sub">HOME SYSTEM</div></div></div>
@@ -1093,6 +1446,7 @@ class StevoraHomePanel extends HTMLElement {
       const field = key => this.shadowRoot.querySelector('[data-profile-' + key + '="' + CSS.escape(id) + '"]')?.value || "";
       const profile = {
         name:field("name"), icon:field("icon"), layout:field("layout") || "compact",
+        display_category:field("display-category") || "auto",
         area_id:field("area") || null,
         user_ids:field("users").split(",").map(x=>x.trim()).filter(Boolean),
       };
@@ -1102,7 +1456,12 @@ class StevoraHomePanel extends HTMLElement {
       if (mode === "custom") {
         profile.controls = [...this.shadowRoot.querySelectorAll(
           '[data-control-for="' + CSS.escape(id) + '"]:checked'
-        )].map(x => x.value).filter(x => this.domainControls(id.split(".")[0]).includes(x));
+        )].map(x => x.value).filter(x => {
+          const source = (this._admin?.rooms?.entities || []).find(item => item.entity_id === id);
+          const allowed = Array.isArray(source?.available_controls) ?
+            source.available_controls : this.domainControls(id.split(".")[0]);
+          return allowed.includes(x);
+        });
       }
       try {
         await this._hass.callWS({type:"stevora/admin/devices/update",
@@ -1195,7 +1554,9 @@ class StevoraHomePanel extends HTMLElement {
           !this._manifest?.controllable_entities?.includes(entityId)) return false;
       const card = (this._panelModel?.sections || []).flatMap(section => section.cards || [])
         .find(item => item.entity_id === entityId);
-      if (!card || !(card.controls || []).includes(control)) return false;
+      if (!card || card.layout === "info" ||
+          !(card.controls || []).includes(control) ||
+          !this.supportedControls(card).includes(control)) return false;
       const manifestEntry = this._manifest.entities?.find(x => x.entity_id === entityId);
       const sourceNames = [entityId, state.attributes?.friendly_name, card.name,
         manifestEntry?.name, manifestEntry?.original_name, manifestEntry?.source_name];
@@ -1213,6 +1574,83 @@ class StevoraHomePanel extends HTMLElement {
         this._error = String(error?.message || error);
         this.render();
       }
+    });
+    const nativeControl = (id,key,domain) => {
+      const card = (this._panelModel?.sections || []).flatMap(section => section.cards || [])
+        .find(item => item.entity_id === id);
+      return !!card && card.domain === domain && card.layout === "expanded" &&
+        controlAllowed(id,key);
+    };
+    const nativeSelectServices = {
+      "climate:hvac_mode":["climate","set_hvac_mode","hvac_mode","hvac_modes"],
+      "climate:fan_mode":["climate","set_fan_mode","fan_mode","fan_modes"],
+      "climate:preset_mode":["climate","set_preset_mode","preset_mode","preset_modes"],
+      "climate:swing_mode":["climate","set_swing_mode","swing_mode","swing_modes"],
+      "fan:preset_mode":["fan","set_preset_mode","preset_mode","preset_modes"],
+      "fan:direction":["fan","set_direction","direction",null],
+      "light:effect":["light","turn_on","effect","effect_list"],
+      "media_player:source":["media_player","select_source","source","source_list"],
+    };
+    const applySelect = async (entity,key,value,requireExpanded) => {
+      const domain = entity.split(".")[0];
+      const mapping = nativeSelectServices[domain+":"+key];
+      const allowed = requireExpanded ? nativeControl(entity,key,domain) :
+        controlAllowed(entity,key) && domain === "climate";
+      if (!mapping || !allowed) return;
+      const [serviceDomain,service,field,validAttribute] = mapping;
+      const attrs = this._hass?.states?.[entity]?.attributes || {};
+      if (validAttribute && (!Array.isArray(attrs[validAttribute]) ||
+            !attrs[validAttribute].includes(value))) return;
+      if (key === "direction" && !["forward","reverse"].includes(value)) return;
+      try {
+        await this._hass.callService(serviceDomain,service,{entity_id:entity,[field]:value});
+        this._error = "";
+      } catch(error) { this._error=String(error?.message || error); this.render(); }
+    };
+    this.shadowRoot.querySelectorAll("[data-climate-select]").forEach(select =>
+      select.onchange = () => { void applySelect(
+        select.dataset.id,select.dataset.climateSelect,select.value,false
+      ); }
+    );
+    this.shadowRoot.querySelectorAll("[data-native-select]").forEach(select =>
+      select.onchange = () => { void applySelect(
+        select.dataset.id,select.dataset.nativeSelect,select.value,true
+      ); }
+    );
+    this.shadowRoot.querySelectorAll("[data-native-range]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.id;
+      const key = input.dataset.nativeRange;
+      const domain = id?.split(".")[0];
+      if (!nativeControl(id,key,domain)) return;
+      const attrs = this._hass?.states?.[id]?.attributes || {};
+      const raw = Number(input.value);
+      const ranges = {
+        "light:color_temp": [
+          "light","turn_on","color_temp_kelvin",
+          Number(attrs.min_color_temp_kelvin || 2000),
+          Number(attrs.max_color_temp_kelvin || 6500)
+        ],
+        "cover:position":["cover","set_cover_position","position",0,100],
+        "cover:tilt":["cover","set_cover_tilt_position","tilt_position",0,100],
+        "media_player:volume":["media_player","volume_set","volume_level",0,100],
+      };
+      const map = ranges[domain+":"+key];
+      if (!map || !Number.isFinite(raw) || raw < map[3] || raw > map[4]) return;
+      const [serviceDomain,service,field] = map;
+      const value = key === "volume" ? raw / 100 : raw;
+      try {
+        await this._hass.callService(serviceDomain,service,{entity_id:id,[field]:value});
+        this._error = "";
+      } catch(error) { this._error=String(error?.message || error); this.render(); }
+    });
+    this.shadowRoot.querySelectorAll("[data-native-check]").forEach(input => input.onchange = async () => {
+      const id = input.dataset.id;
+      if (input.dataset.nativeCheck !== "oscillate" ||
+          !nativeControl(id,"oscillate","fan")) return;
+      try {
+        await this._hass.callService("fan","oscillate",{entity_id:id,oscillating:!!input.checked});
+        this._error = "";
+      } catch(error) { this._error=String(error?.message || error); this.render(); }
     });
     const canModifyLight = (id, control) =>
       id.split(".")[0] === "light" && controlAllowed(id, control);
@@ -1245,6 +1683,8 @@ class StevoraHomePanel extends HTMLElement {
       if (!card) return;
       const domain = card.domain;
       if (action === "details") {
+        if (card.layout === "info" &&
+            !["sensor","binary_sensor"].includes(domain)) return;
         // HA More Info is the familiar native control panel. HA decides which
         // services this authenticated user can actually invoke.
         this.dispatchEvent(new CustomEvent("hass-more-info", {

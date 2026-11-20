@@ -55,6 +55,9 @@ def generate_panel(manifest: dict) -> dict:
         if area not in areas or domain not in DOMAIN_ICONS or _is_backlight(entity):
             continue
         supported = DOMAIN_CONTROLS[domain]
+        available = entity.get("available_controls")
+        if isinstance(available, list):
+            supported = tuple(x for x in supported if x in available)
         # A customized empty controls list intentionally means info-only.
         chosen = entity.get("controls")
         if chosen is None:
@@ -68,16 +71,28 @@ def generate_panel(manifest: dict) -> dict:
             layout = DEFAULT_LAYOUT
         if layout == "info":
             controls = []
-        icon = entity.get("icon") or DOMAIN_ICONS[domain]
+        category = entity.get("display_category", "auto")
+        if category not in ("lighting", "switches", "climate", "fans", "covers",
+                            "media", "sensors", "binary_sensors", "locks"):
+            category = {
+                "light": "lighting", "switch": "switches", "climate": "climate",
+                "fan": "fans", "cover": "covers", "media_player": "media",
+                "sensor": "sensors", "binary_sensor": "binary_sensors",
+                "lock": "locks",
+            }[domain]
+        default_icon = "mdi:lightbulb" if category == "lighting" else DOMAIN_ICONS[domain]
+        icon = entity.get("icon") or default_icon
         if not isinstance(icon, str) or not icon.startswith("mdi:"):
-            icon = DOMAIN_ICONS[domain]
+            icon = default_icon
         sections[area]["cards"].append({
             "entity_id": entity_id,
             "name": entity.get("name") or entity_id,
             "domain": domain,
+            "display_category": category,
             "icon": icon,
             "layout": layout,
             "controls": controls,
+            "available_controls": list(supported),
         })
     for section in sections.values():
         section["cards"].sort(key=lambda item: (item["name"].casefold(), item["entity_id"]))

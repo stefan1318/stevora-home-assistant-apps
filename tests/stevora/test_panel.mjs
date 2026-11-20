@@ -166,6 +166,12 @@ panel._hass.states["light.kitchen"].attributes = {
 panel._panelModel.sections[0].cards[0].controls = ["toggle","color","brightness"];
 panel._view = "lighting";
 panel.render();
+// Compact is intentionally concise, even in Lighting: no advanced sliders.
+assert.match(panel.shadowRoot.innerHTML, /is-compact/);
+assert.doesNotMatch(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
+panel._panelModel.sections[0].cards[0].layout = "expanded";
+panel.render();
+assert.match(panel.shadowRoot.innerHTML, /is-expanded/);
 assert.match(panel.shadowRoot.innerHTML, /data-lightbrightness="light.kitchen"/);
 assert.match(panel.shadowRoot.innerHTML, /data-lightcolor="light.kitchen"/);
 panel._manifest.controllable_entities = ["climate.bedroom"];
@@ -483,5 +489,156 @@ assert.equal(chatError._chatMessages.length,2);
 assert.match(chatError.renderAssistChat(),/Home Assistant/);
 assert.equal(chatError._chatBusy,false);
 assert.match(chatError._chatError,/unknown_command/);
+
+
+// A switch classified as lighting is visible under Lighting, but remains a
+// switch for HA services and never gains RGB or brightness abilities.
+const classified = new Panel();
+classified._hass = {states: {
+  "switch.pendant": {entity_id:"switch.pendant",state:"on",attributes:{supported_features:0}},
+}};
+classified._manifest = {
+  installation_id:"new-lighting-home", preferred_language:"en",
+  rooms:[{id:"k",name:"Kitchen"}],
+  entities:[{entity_id:"switch.pendant",area_id:"k",display_category:"lighting"}],
+  controllable_entities:["switch.pendant"],
+};
+classified._panelModel = {
+  installation_id:"new-lighting-home",panel_version:"7.1.1",
+  sections:[{id:"k",name:"Kitchen",cards:[{
+    entity_id:"switch.pendant",name:"Pendant lamp",domain:"switch",
+    display_category:"lighting",layout:"compact",icon:"mdi:lightbulb",
+    controls:["toggle"],available_controls:["toggle"],
+  }]}],
+};
+classified._mode = "stevora";
+classified._view = "lighting";
+classified.render();
+assert.match(classified.shadowRoot.innerHTML,/Pendant lamp/);
+assert.match(classified.shadowRoot.innerHTML,/data-live-card="switch.pendant"/);
+assert.doesNotMatch(classified.shadowRoot.innerHTML,/data-lightbrightness="switch.pendant"/);
+assert.doesNotMatch(classified.shadowRoot.innerHTML,/data-lightcolor="switch.pendant"/);
+
+// Strict feature filtering: supporting only toggle cannot create fan speed.
+const fanWithNoSpeed = new Panel();
+fanWithNoSpeed._hass = {states:{
+  "fan.simple":{entity_id:"fan.simple",state:"on",
+    attributes:{supported_features:0,percentage:45}},
+}};
+const fanCard = {entity_id:"fan.simple",domain:"fan",name:"Simple fan",
+  controls:["toggle","percentage"],available_controls:["toggle","percentage"],
+  layout:"expanded",icon:"mdi:fan"};
+assert.deepEqual([...fanWithNoSpeed.supportedControls(fanCard)],["toggle"]);
+assert.doesNotMatch(fanWithNoSpeed.renderNativeCard(fanCard,new Set(["fan.simple"])),
+  /data-fanpercentage=/);
+fanWithNoSpeed._hass.states["fan.simple"].attributes.supported_features = 1;
+assert.match(fanWithNoSpeed.renderNativeCard(fanCard,new Set(["fan.simple"])),
+  /data-fanpercentage="fan.simple"/);
+
+// Climate Center reflects a room sensor, humidity, target and authorized modes,
+// without requiring fixed home identifiers.
+const clima = new Panel();
+clima._hass = {states:{
+  "climate.zone":{entity_id:"climate.zone",state:"heat",attributes:{
+    temperature:22,current_temperature:20,supported_features:1|8,
+    hvac_modes:["off","heat","cool"],fan_modes:["auto","high"],min_temp:16,max_temp:30,
+  }},
+  "sensor.room_temperature":{entity_id:"sensor.room_temperature",state:"21.4",
+    attributes:{device_class:"temperature",unit_of_measurement:"°C"}},
+  "sensor.room_humidity":{entity_id:"sensor.room_humidity",state:"51",
+    attributes:{device_class:"humidity",unit_of_measurement:"%"}},
+}};
+clima._manifest = {installation_id:"climate-home",controllable_entities:["climate.zone"]};
+clima._panelModel = {sections:[{id:"a",cards:[
+  {entity_id:"climate.zone",domain:"climate",name:"AC",layout:"expanded",
+    controls:["temperature","fan_mode","hvac_mode"],available_controls:["temperature","fan_mode","hvac_mode"]},
+  {entity_id:"sensor.room_temperature",domain:"sensor"},
+  {entity_id:"sensor.room_humidity",domain:"sensor"},
+]}]};
+const climateHtml = clima.renderClimateCenter({
+  entity_id:"climate.zone",domain:"climate",roomId:"a",name:"AC",
+  layout:"expanded",controls:["temperature","hvac_mode","fan_mode"],
+  available_controls:["temperature","hvac_mode","fan_mode"],
+},false);
+assert.match(climateHtml,/21\.4/);
+assert.match(climateHtml,/51%/);
+assert.match(climateHtml,/22°C/);
+assert.match(climateHtml,/data-climate-select="hvac_mode"/);
+assert.match(climateHtml,/data-climate-select="fan_mode"/);
+assert.match(climateHtml,/v7-climate-ring/);
+const summaryClimate = clima.renderClimateCenter({
+  entity_id:"climate.zone",domain:"climate",roomId:"a",name:"AC",
+  layout:"compact",controls:["temperature"],available_controls:["temperature"],
+},true);
+assert.doesNotMatch(summaryClimate,/data-action="temperature-up"/);
+
+// HA state changes must patch the live DOM instead of re-rendering the shell.
+const stableLive = new Panel();
+const sameConn = {};
+stableLive._hass = {connection:sameConn,user:{id:"u"},states:{
+  "switch.pendant":{state:"off",attributes:{supported_features:0}},
+}};
+stableLive._stateSignature = "switch.pendant";
+stableLive._mode = "stevora";
+stableLive._view = "home";
+let fullRenders = 0,livePatches = 0,refreshes = 0;
+stableLive.render = () => {fullRenders++;};
+stableLive.patchLiveStates = () => {livePatches++;};
+stableLive.refresh = async () => {refreshes++;};
+stableLive.hass = {connection:sameConn,user:{id:"u"},states:{
+  "switch.pendant":{state:"on",attributes:{supported_features:0}},
+}};
+assert.equal(fullRenders,0);
+assert.equal(livePatches,1);
+assert.equal(refreshes,0);
+stableLive.hass = {connection:sameConn,user:{id:"u"},states:{
+  "switch.pendant":{state:"on",attributes:{supported_features:1}},
+}};
+assert.equal(refreshes,1); // Capability change warrants deliberate regeneration
+assert.equal(fullRenders,0);
+
+
+// Expanded controls must expose only HA-advertised fields; compact is not full.
+const fullLight = new Panel();
+fullLight._hass = {states:{
+  "light.color":{entity_id:"light.color",state:"on",
+    attributes:{supported_features:4,supported_color_modes:["rgb","color_temp"],
+      brightness:180,rgb_color:[100,150,200],color_temp_kelvin:3300,
+      min_color_temp_kelvin:2000,max_color_temp_kelvin:6500,
+      effect_list:["Rainbow"],effect:"Rainbow"}},
+}};
+const fullCard = {entity_id:"light.color",domain:"light",name:"Mood light",
+  layout:"expanded",controls:["toggle","brightness","color","color_temp","effect"],
+  available_controls:["toggle","brightness","color","color_temp","effect"]};
+const fullMarkup = fullLight.renderNativeCard(fullCard,new Set(["light.color"]));
+assert.match(fullMarkup,/is-expanded/);
+assert.match(fullMarkup,/data-lightcolor="light.color"/);
+assert.match(fullMarkup,/data-native-range="color_temp"/);
+assert.match(fullMarkup,/data-native-select="effect"/);
+assert.doesNotMatch(fullLight.renderNativeCard({...fullCard,layout:"compact"},new Set(["light.color"])),
+  /data-native-range="color_temp"/);
+fullLight._hass.states["light.color"].attributes.supported_features = 0;
+assert.doesNotMatch(fullLight.renderNativeCard(fullCard,new Set(["light.color"])),
+  /data-native-select="effect"/);
+
+// An info-only climate fixture must remain read-only even if the manifest
+// declares a temperature action (backend does not grant controls to info cards).
+const noControlsClimate = clima.renderClimateCenter({
+  entity_id:"climate.zone",domain:"climate",name:"AC",roomId:"a",
+  layout:"info",controls:["temperature","hvac_mode"],
+  available_controls:["temperature","hvac_mode"],
+},false);
+assert.doesNotMatch(noControlsClimate,/data-action="temperature-up"/);
+assert.doesNotMatch(noControlsClimate,/data-climate-select="hvac_mode"/);
+
+// The UI category field is a separate visual preference, never a service domain.
+const visualForm = classified.deviceEditors({
+  entities:[{entity_id:"switch.pendant",name:"Pendant lamp",available_controls:["toggle"]}],
+  device_profiles:{"switch.pendant":{display_category:"lighting"}},
+  translations:{entities:{}},rooms:[{id:"k",name:"Kitchen"}],
+});
+assert.match(visualForm,/data-profile-display-category="switch.pendant"/);
+assert.match(visualForm,/value="lighting" selected/);
+assert.doesNotMatch(visualForm,/value="brightness" data-control-for="switch.pendant"/);
 
 console.log("STEVORA panel runtime: PASS");
