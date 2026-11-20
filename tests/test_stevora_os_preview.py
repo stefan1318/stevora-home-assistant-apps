@@ -21,7 +21,7 @@ class TestStevoraOSPreview(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((MODULE / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "stevora_os")
-        self.assertEqual(manifest["version"], "1.0.0-alpha.2")
+        self.assertEqual(manifest["version"], "1.0.0-alpha.3")
         self.assertIn("panel_custom", manifest["dependencies"])
         self.assertIn("websocket_api", manifest["dependencies"])
         self.assertNotIn("stevora", manifest["dependencies"])
@@ -35,6 +35,7 @@ class TestStevoraOSPreview(unittest.TestCase):
         self.assertNotIn("async_remove_panel", source)
         self.assertIn("register_system_status(hass)", source)
         self.assertIn("register_preferences(hass)", source)
+        self.assertIn("register_integrations(hass)", source)
         self.assertIn("await preferences.async_load()", source)
 
     def test_frontend_uses_scoped_device_controls(self):
@@ -74,7 +75,7 @@ class TestStevoraOSPreview(unittest.TestCase):
         ast.parse(source)
         self.assertIn("@websocket_api.require_admin", source)
         self.assertIn('STATUS_SCHEMA = "1"', source)
-        self.assertIn('PREVIEW_VERSION = "1.0.0-alpha.2"', source)
+        self.assertIn('PREVIEW_VERSION = "1.0.0-alpha.3"', source)
         self.assertIn('hass.states.get(entity_id)', source)
         self.assertIn('status": "not_detected"', source)
         self.assertNotIn("async_call(", source)
@@ -106,6 +107,46 @@ class TestStevoraOSPreview(unittest.TestCase):
             self.assertIn(feature, script)
         self.assertNotIn("sessionStorage", script)
         self.assertNotIn("localStorage", script)
+
+    def test_branded_pwa_assets_and_safe_metadata(self):
+        pwa = MODULE / "frontend" / "manifest.webmanifest"
+        manifest = json.loads(pwa.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["name"], "STEVORA OS")
+        self.assertEqual(manifest["start_url"], "/stevora-os")
+        self.assertEqual(manifest["scope"], "/stevora-os")
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual(len(manifest["icons"]), 3)
+        for icon in manifest["icons"]:
+            self.assertTrue(icon["src"].startswith("/stevora_os_static/"))
+            filepath = MODULE / "frontend" / icon["src"].split("/stevora_os_static/",1)[1]
+            self.assertTrue(filepath.is_file(), icon["src"])
+        iconfile = MODULE / "frontend" / "icons" / "stevora-192.png"
+        data = iconfile.read_bytes()
+        self.assertEqual(data[:8], b"\\x89PNG\\r\\n\\x1a\\n")
+        self.assertEqual(int.from_bytes(data[16:20], "big"), 192)
+        self.assertEqual(int.from_bytes(data[20:24], "big"), 192)
+        for filename in ("stevora-512.svg", "stevora-maskable-512.svg"):
+            svg = (MODULE / "frontend" / "icons" / filename).read_text(encoding="utf-8")
+            self.assertIn('width="512"', svg)
+            self.assertIn("data:image/png;base64,", svg)
+        script = CODE.read_text(encoding="utf-8")
+        self.assertIn("_mountBrandMetadata()", script)
+        self.assertIn("_unmountBrandMetadata()", script)
+        self.assertIn("document.head.prepend", script)
+        self.assertNotIn("navigator.serviceWorker.register(", script)
+
+    def test_integrations_inventory_read_only_admin(self):
+        source = (MODULE / "integrations_api.py").read_text(encoding="utf-8")
+        ast.parse(source)
+        self.assertIn("@websocket_api.require_admin", source)
+        self.assertIn('stevora_os/system/integrations', source)
+        self.assertIn("MAX_ENTRIES = 400", source)
+        self.assertIn("configure", source)
+        self.assertNotIn("async_remove", source)
+        self.assertNotIn("async_reload", source)
+        script = CODE.read_text(encoding="utf-8")
+        self.assertIn("stevora_os/system/integrations", script)
+        self.assertIn("_integrationView(t)", script)
 
     def test_responsive_css(self):
         css = STYLE.read_text(encoding="utf-8")
