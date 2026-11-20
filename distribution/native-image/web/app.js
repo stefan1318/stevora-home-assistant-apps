@@ -203,10 +203,10 @@
     });
   }
   async function tryCall(payload,def) {try{return await call(payload)}catch{return def}}
-  async function supervisor(endpoint,method="get",data) {
+  async function supervisor(endpoint,method="GET",data) {
     if(!state.admin)throw new Error(t("notAdmin"));
     if(!/^\/[a-z0-9_./-]+$/.test(endpoint)||endpoint.includes(".."))throw new Error("Invalid endpoint");
-    return call({type:"hassio/api",endpoint,method,...(data?{data}:{})},90000);
+    return call({type:"supervisor/api",endpoint,method,...(data?{data}:{})},90000);
   }
   async function loadData() {
     try {
@@ -438,7 +438,7 @@
       const typed=prompt(t("dangerous")+"\n"+slugId+"\nType: "+slugId);
       if(typed!==slugId)return;
     }else if(!confirm(t("confirm")+": "+action+" "+slugId+"?"))return;
-    await supervisor(kind,"post",action==="uninstall"?{remove_config:false}:{});
+    await supervisor(kind,"POST",action==="uninstall"?{remove_config:false}:{});
     await loadAdmin("apps");renderContent();
   }
   function showTextModal(title,text){
@@ -463,7 +463,7 @@
         const options=JSON.parse(field.value);
         if(!options||Array.isArray(options)||typeof options!=="object")throw new Error("Options must be JSON object");
         if(!confirm(t("confirm")+" "+slugId+"?"))return;
-        await supervisor("/addons/"+slugId+"/options","post",{options});
+        await supervisor("/addons/"+slugId+"/options","POST",{options});
         dialog.close();await loadAdmin("apps");renderContent();
       }catch(e){notice(formatError(e),true)}
     });
@@ -485,7 +485,7 @@
     if(!state.admin)throw new Error(t("notAdmin"));
     if(!confirm(t("confirm")+": "+t("backupCreate")+"?"))return;
     // Non-destructive backup creation is enabled, but restore is not.
-    await supervisor("/backups/new/full","post",{name:"STEVORA OS test backup"});
+    await supervisor("/backups/new/full","POST",{name:"STEVORA OS test backup"});
     await loadAdmin("backups");renderContent();
   }
   async function chat(message){
