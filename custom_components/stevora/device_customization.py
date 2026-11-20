@@ -62,7 +62,8 @@ def validate_profile(entity_id, profile, valid_areas):
         return "Icon must be an mdi: identifier"
     if layout not in ALLOWED_LAYOUTS:
         return "Invalid layout"
-    if profile.get("display_category", "auto") not in ALLOWED_DISPLAY_CATEGORIES:
+    category = profile.get("display_category", "auto")
+    if not isinstance(category, str) or category not in ALLOWED_DISPLAY_CATEGORIES:
         return "Invalid display category"
     if not isinstance(controls, list) or len(controls) != len(set(map(str, controls))):
         return "Invalid controls"
