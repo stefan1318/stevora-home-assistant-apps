@@ -21,7 +21,7 @@ class TestStevoraOSPreview(unittest.TestCase):
     def test_manifest(self):
         manifest = json.loads((MODULE / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "stevora_os")
-        self.assertEqual(manifest["version"], "0.2.0")
+        self.assertEqual(manifest["version"], "1.0.0-alpha.1")
         self.assertIn("panel_custom", manifest["dependencies"])
         self.assertIn("websocket_api", manifest["dependencies"])
         self.assertNotIn("stevora", manifest["dependencies"])
@@ -35,13 +35,17 @@ class TestStevoraOSPreview(unittest.TestCase):
         self.assertNotIn("async_remove_panel", source)
         self.assertIn("register_system_status(hass)", source)
 
-    def test_frontend_does_not_issue_device_commands(self):
+    def test_frontend_uses_scoped_device_controls(self):
         script = CODE.read_text(encoding="utf-8")
         self.assertIn('type: "stevora/manifest"', script)
         self.assertIn('type: "stevora_os/system/status"', script)
         self.assertIn("this._system = null", script)
         self.assertIn("this._manifest?.entities", script)
-        self.assertNotIn("callService(", script)
+        self.assertIn("this._hass.callService(domain, service", script)
+        self.assertIn("this._can(card", script)
+        self.assertIn("this._manifest?.controllable_entities", script)
+        self.assertIn("this._backlight(entityId)", script)
+        self.assertIn("stevora/panel/generate", script)
         self.assertNotIn("localStorage", script)
         self.assertNotIn("sessionStorage", script)
         self.assertNotIn("eval(", script)
@@ -68,13 +72,22 @@ class TestStevoraOSPreview(unittest.TestCase):
         ast.parse(source)
         self.assertIn("@websocket_api.require_admin", source)
         self.assertIn('STATUS_SCHEMA = "1"', source)
-        self.assertIn('PREVIEW_VERSION = "0.2.0"', source)
+        self.assertIn('PREVIEW_VERSION = "1.0.0-alpha.1"', source)
         self.assertIn('hass.states.get(entity_id)', source)
         self.assertIn('status": "not_detected"', source)
         self.assertNotIn("async_call(", source)
         self.assertNotIn("call_service(", source)
         self.assertNotIn("async_update(", source)
         self.assertNotIn("async_restart(", source)
+
+    def test_unified_navigation_and_native_features(self):
+        script = CODE.read_text(encoding="utf-8")
+        for feature in ("lighting", "climate", "scenes", "automation", "assist", "setup",
+                        "stevora/admin/translations/update", "conversation/process",
+                        "stevora/hub/scenes", "stevora/hub/events"):
+            self.assertIn(feature, script)
+        self.assertNotIn("Supervisor API token", script)
+        self.assertNotIn("document.cookie", script)
 
     def test_responsive_css(self):
         css = STYLE.read_text(encoding="utf-8")
