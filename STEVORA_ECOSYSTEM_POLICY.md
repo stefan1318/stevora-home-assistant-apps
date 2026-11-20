@@ -64,7 +64,7 @@ STEVORA OS е **централният продукт, източник на ф�
 ## 6. Сигурност, право и интеграционни правила
 
 1. Единна server-side авторизация: HA Core и допустимият OS bridge прилагат реалните права за entities, services, settings и system operations; UI не е security boundary.
-2. Ниeкога не се публикуват HA/Supervisor tokens, пароли, потребителски домашни IP/ID или ключове в frontend, CI artifacts или GitHub.
+2. Никога не се публикуват HA/Supervisor tokens, пароли, потребителски домашни IP/ID или ключове в frontend, CI artifacts или GitHub.
 3. Никакво управление на забранени backlight entities; не се появяват фиктивни device controls или unavailable услуги.
 4. Presence и всяка AI/voice функция спазват permission, opt-in, privacy/retention и видимо състояние на запис/геолокация.
 5. BG/EN е обща двупосочна presentation политика; оригиналните HA entity registries не се преименуват скрито.
