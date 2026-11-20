@@ -6,6 +6,7 @@ STEVORA manifest. It never writes Home Assistant dashboards or registries.
 from __future__ import annotations
 
 import re
+from .device_capabilities import display_category
 
 PANEL_VERSION = "7.1.1"
 BACKLIGHT_MARKERS = ("backlight", "back light", "подсвет")
@@ -55,6 +56,9 @@ def generate_panel(manifest: dict) -> dict:
         if area not in areas or domain not in DOMAIN_ICONS or _is_backlight(entity):
             continue
         supported = DOMAIN_CONTROLS[domain]
+        available = entity.get("available_controls")
+        if isinstance(available, list):
+            supported = tuple(x for x in supported if x in available)
         # A customized empty controls list intentionally means info-only.
         chosen = entity.get("controls")
         if chosen is None:
@@ -75,9 +79,11 @@ def generate_panel(manifest: dict) -> dict:
             "entity_id": entity_id,
             "name": entity.get("name") or entity_id,
             "domain": domain,
+            "display_category": display_category(entity_id, entity.get("display_category", "auto")),
             "icon": icon,
             "layout": layout,
             "controls": controls,
+            "available_controls": list(supported),
         })
     for section in sections.values():
         section["cards"].sort(key=lambda item: (item["name"].casefold(), item["entity_id"]))
