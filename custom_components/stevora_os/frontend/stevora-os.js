@@ -1,4 +1,4 @@
-/* STEVORA OS Developer Preview 0.2.0
+/* STEVORA OS 1.0.0-alpha.1 unified frontend
  * Read-only shell backed by the existing permission-scoped STEVORA manifest.
  * No direct device control, no privileges, no external dependencies/CDNs.
  */
@@ -38,6 +38,58 @@
       updateCurrent: "Няма налична актуализация", currentVersion: "Инсталирана", newVersion: "Предлагана",
       componentCore: "Core", componentOS: "Операционна система", componentSupervisor: "Supervisor",
       systemReadOnly: "Информацията е само за преглед. Обновленията, архивите и рестартирането остават в официалния Home Assistant.",
+      devicesTitle: "Устройства",
+      lighting: "Осветление",
+      climate: "Климат",
+      scenes: "Сцени",
+      automation: "Автоматизации",
+      assist: "Assist",
+      setup: "Настройки",
+      roomAll: "Всички помещения",
+      search: "Търси устройство…",
+      noDevices: "Няма устройства за показване",
+      noScenes: "Home Hub не е активен или няма сцени",
+      noAutomations: "Няма налични автоматизации",
+      unavailableDevice: "Недостъпно",
+      readonly: "Само информация",
+      on: "Включено",
+      off: "Изключено",
+      turnOn: "Включи",
+      turnOff: "Изключи",
+      plus: "Увеличи с 1°",
+      minus: "Намали с 1°",
+      open: "Отвори",
+      close: "Затвори",
+      activate: "Активирай",
+      details: "Подробности",
+      currentTemp: "Текуща",
+      targetTemp: "Зададена",
+      brightness: "Яркост",
+      color: "Цвят",
+      room: "Помещение",
+      hubEvents: "Събития на Home Hub",
+      noEvents: "Няма събития",
+      assistTitle: "Home Assistant Assist",
+      assistNote: "Използва се стандартният Home Assistant Assist. Hey Stevora е отделен модул.",
+      assistPrompt: "Напиши команда или въпрос…",
+      send: "Изпрати",
+      msgFailed: "Асистентът не отговори.",
+      settingsTitle: "Настройки на STEVORA",
+      editRooms: "Преводи на помещения",
+      translationsHint: "Промените се запазват в Universal Integration и са само за този дом.",
+      save: "Запази",
+      saved: "Запазено",
+      needsAdmin: "Само за администратори.",
+      adminConfigMissing: "Няма настройки на Universal Integration.",
+      serviceError: "Операцията не успя. Проверете разрешенията или устройството.",
+      operationDone: "Командата е изпратена",
+      modulesTitle: "STEVORA модули",
+      moduleMissing: "Не е включен",
+      recovery: "Аварийни HA настройки",
+      onboarding: "Първоначална конфигурация",
+      onboardingInfo: "Universal Integration трябва да бъде инсталирана. STEVORA използва оригиналната HA автентикация.",
+      integrationSettings: "Настройки на интеграциите",
+      noControls: "Няма разрешени управления",
       systemOpen: "Отвори HA настройки", systemUnavailable: "Неизвестно / няма данни",
       integrationReady: "Конфигурирана", systemRefreshError: "Неуспешно зареждане на системните данни.",
     },
@@ -73,6 +125,58 @@
       updateCurrent: "No update available", currentVersion: "Installed", newVersion: "Offered",
       componentCore: "Core", componentOS: "Operating system", componentSupervisor: "Supervisor",
       systemReadOnly: "Read-only information. Updates, backups and restarts remain in the official Home Assistant interface.",
+      devicesTitle: "Devices",
+      lighting: "Lighting",
+      climate: "Climate",
+      scenes: "Scenes",
+      automation: "Automations",
+      assist: "Assist",
+      setup: "Settings",
+      roomAll: "All rooms",
+      search: "Search devices…",
+      noDevices: "No devices to display",
+      noScenes: "Home Hub inactive or no scenes",
+      noAutomations: "No automations available",
+      unavailableDevice: "Unavailable",
+      readonly: "Information only",
+      on: "On",
+      off: "Off",
+      turnOn: "Turn on",
+      turnOff: "Turn off",
+      plus: "Increase 1°",
+      minus: "Decrease 1°",
+      open: "Open",
+      close: "Close",
+      activate: "Activate",
+      details: "Details",
+      currentTemp: "Current",
+      targetTemp: "Target",
+      brightness: "Brightness",
+      color: "Color",
+      room: "Room",
+      hubEvents: "Home Hub events",
+      noEvents: "No events",
+      assistTitle: "Home Assistant Assist",
+      assistNote: "Uses built-in Home Assistant Assist. Hey Stevora is a separate module.",
+      assistPrompt: "Enter a command or question…",
+      send: "Send",
+      msgFailed: "Assistant did not respond.",
+      settingsTitle: "STEVORA Settings",
+      editRooms: "Room translations",
+      translationsHint: "Saved to Universal Integration for this home only.",
+      save: "Save",
+      saved: "Saved",
+      needsAdmin: "Administrators only.",
+      adminConfigMissing: "Universal Integration settings unavailable.",
+      serviceError: "Operation failed. Check permissions or device state.",
+      operationDone: "Command sent",
+      modulesTitle: "STEVORA modules",
+      moduleMissing: "Not included",
+      recovery: "Emergency HA settings",
+      onboarding: "First-run setup",
+      onboardingInfo: "Universal Integration must be installed. STEVORA uses native HA authentication.",
+      integrationSettings: "Integration settings",
+      noControls: "No authorized controls",
       systemOpen: "Open HA settings", systemUnavailable: "Unknown / no data",
       integrationReady: "Configured", systemRefreshError: "Unable to load system diagnostics.",
     }
@@ -95,6 +199,15 @@
       this._error = "";
       this._status = "idle";
       this._system = null;
+      this._model = null;
+      this._hubDirectory = null;
+      this._hubEvents = null;
+      this._admin = null;
+      this._chat = [];
+      this._chatBusy = false;
+      this._conversationId = null;
+      this._selectedRoom = "";
+      this._busyEntities = new Set();
       this._systemBusy = false;
       this._systemError = "";
       this._systemRequest = 0;
@@ -102,6 +215,8 @@
       this._connected = false;
       this.shadowRoot.addEventListener("click", (event) => this._onClick(event));
       this.shadowRoot.addEventListener("change", (event) => this._onChange(event));
+      this.shadowRoot.addEventListener("input", (event) => this._onInput(event));
+      this.shadowRoot.addEventListener("submit", (event) => { event.preventDefault(); void this._onSubmit(event); });
     }
 
     set hass(value) {
@@ -119,6 +234,14 @@
         this._manifest = null;
         this._systemRequest += 1;
         this._system = null;
+        this._model = null;
+        this._hubDirectory = null;
+        this._hubEvents = null;
+        this._admin = null;
+        this._chat = [];
+        this._conversationId = null;
+        this._selectedRoom = "";
+        this._busyEntities.clear();
         this._systemBusy = false;
         this._systemError = "";
         this._error = "";
@@ -152,6 +275,12 @@
       this._systemBusy = false;
       this._manifest = null;
       this._system = null;
+      this._model = null;
+      this._hubDirectory = null;
+      this._hubEvents = null;
+      this._admin = null;
+      this._chat = [];
+      this._conversationId = null;
     }
 
     async refresh() {
@@ -170,8 +299,31 @@
             user !== this._hass?.user?.id) return;
         if (!result || !Array.isArray(result.rooms) || !Array.isArray(result.entities))
           throw new Error("Invalid STEVORA manifest");
+        const model = await this._hass.callWS({ type: "stevora/panel/generate", language: lang });
+        if (token !== this._request || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        if (!model || model.installation_id !== result.installation_id ||
+            model.revision !== result.revision || !Array.isArray(model.sections))
+          throw new Error("Panel model/manifest mismatch");
         this._manifest = result;
+        this._model = model;
         this._status = "ready";
+        this._hubDirectory = null;
+        this._hubEvents = null;
+        const optional = [
+          this._hass.callWS({type:"stevora/hub/scenes"}),
+          this._hass.callWS({type:"stevora/hub/events",limit:25}),
+          this._hass.user?.is_admin ? this._hass.callWS({type:"stevora/admin/rooms/get"}) : Promise.resolve(null)
+        ];
+        const results = await Promise.allSettled(optional);
+        if (token !== this._request || connection !== this._hass?.connection ||
+            user !== this._hass?.user?.id) return;
+        if (results[0].status === "fulfilled" && results[0].value?.installation_id === result.installation_id)
+          this._hubDirectory = results[0].value;
+        if (results[1].status === "fulfilled" && results[1].value?.installation_id === result.installation_id)
+          this._hubEvents = results[1].value;
+        if (results[2].status === "fulfilled" && this._hass.user?.is_admin)
+          this._admin = results[2].value;
         if (this._hass.user?.is_admin) void this._refreshSystem();
       } catch (_error) {
         if (token !== this._request || connection !== this._hass?.connection ||
@@ -231,7 +383,7 @@
       if (target.hasAttribute("data-refresh")) { void this.refresh(); return; }
       if (target.hasAttribute("data-system-refresh")) { void this._refreshSystem(); return; }
       const view = target.getAttribute("data-view");
-      if (!["home", "rooms", "system", "about"].includes(view)) return;
+      if (!["home", "rooms", "devices", "lighting", "climate", "scenes", "automation", "assist", "system", "setup", "about"].includes(view)) return;
       this._view = view;
       this.render();
       if (view === "system" && this._hass?.user?.is_admin && !this._system && !this._systemBusy)
@@ -305,7 +457,7 @@
             <div class="kv"><span>${escapeHTML(t.entityCount)}</span>
               <strong>${sys && Number.isFinite(sys.registered_entities) ? sys.registered_entities : "—"}</strong></div>
             <div class="kv"><span>${escapeHTML(t.oslayer)}</span>
-              <strong>0.2.0 Developer Preview</strong></div>
+              <strong>1.0.0-alpha.1 Developer Preview</strong></div>
             <button class="button secondary" data-system-refresh type="button">${escapeHTML(t.checkStatus)}</button>
           </article>
           <article class="card"><h2>${escapeHTML(t.officialUpdates)}</h2>
@@ -324,6 +476,12 @@
       const count = this._counts();
       const hubStatus = this._manifest?.modules?.home_hub?.status || "not_included";
       const hub = hubStatus === "active" ? t.online : hubStatus === "disabled" ? t.inactive : t.emptyHub;
+      if (this._view === "devices") return this._deviceView(t, "all");
+      if (this._view === "lighting") return this._deviceView(t, "lighting");
+      if (this._view === "climate") return this._deviceView(t, "climate");
+      if (this._view === "scenes" || this._view === "automation") return this._sceneView(t);
+      if (this._view === "assist") return this._assistView(t);
+      if (this._view === "setup") return this._setupView(t);
       if (this._view === "home") return `
         <section class="hero">
           <div><span class="eyebrow">${escapeHTML(t.eyebrow)}</span>
@@ -362,8 +520,11 @@
       if (!this.shadowRoot) return;
       const t = COPY[this._language];
       const menu = [
-        ["home", "⌂", t.home], ["rooms", "▦", t.rooms],
-        ["system", "◉", t.system], ["about", "ⓘ", t.about]
+        ["home","⌂",t.home],["rooms","▦",t.rooms],["devices","▤",t.devicesTitle],
+        ["lighting","☼",t.lighting],["climate","◈",t.climate],
+        ["scenes","✦",t.scenes],["automation","◇",t.automation],
+        ["assist","◉",t.assist],["system","⚙",t.system],
+        ["setup","≡",t.setup],["about","ⓘ",t.about]
       ];
       const nav = menu.map(([id, icon, name]) => `
         <button type="button" data-view="${id}" class="nav-item ${this._view === id ? "selected" : ""}"
@@ -374,7 +535,7 @@
         ? `<div class="notice error" role="alert">${escapeHTML(t.error)} · ${escapeHTML(this._error)}</div>`
         : this._status === "loading" ? `<div class="notice" role="status">${escapeHTML(t.loading)}</div>` : "";
       this.shadowRoot.innerHTML = `
-        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=0.2.0">
+        <link rel="stylesheet" href="/stevora_os_static/stevora-os.css?v=1.0.0-alpha.1">
         <div class="shell">
           <aside class="side">
             <div class="brand"><span class="brand-mark" aria-hidden="true">S</span>
@@ -390,7 +551,7 @@
                 <select id="stevora-os-language" aria-label="${escapeHTML(t.lang)}">
                   <option value="bg" ${this._language === "bg" ? "selected" : ""}>BG</option>
                   <option value="en" ${this._language === "en" ? "selected" : ""}>EN</option></select>
-                <span class="preview-pill">0.2.0 PREVIEW</span></div></header>
+                <span class="preview-pill">1.0 ALPHA</span></div></header>
             ${note}
             <div class="content">${this._content(t)}</div>
             <footer>STEVORA OS Experience · Powered by Home Assistant · <strong>Developer Preview</strong></footer>
