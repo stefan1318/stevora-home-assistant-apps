@@ -77,7 +77,13 @@ func main() {
 
 func newRouter(staticRoot string,core *url.URL) http.Handler {
  proxy:=httputil.NewSingleHostReverseProxy(core)
+ proxy.ModifyResponse=brandLogin
  proxy.Director=func(r *http.Request){
+  if r.Method==http.MethodGet && r.URL.Path=="/auth/authorize" {
+   r.Header.Set("Accept-Encoding","identity")
+   r.Header.Del("If-None-Match")
+   r.Header.Del("If-Modified-Since")
+  }
   r.URL.Scheme=core.Scheme
   r.URL.Host=core.Host
   r.Header.Del("X-Forwarded-For")

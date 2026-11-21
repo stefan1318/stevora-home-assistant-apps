@@ -1,0 +1,29 @@
+html:root {
+  color-scheme: dark;
+  background: #081829;
+}
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  color: #edf6ff;
+  background: radial-gradient(ellipse at top, #183954, #081829 65%);
+  font-family: system-ui, sans-serif;
+}
+.content > .header { display: none; }
+.stevora-login-heading {
+  text-align: center;
+  margin: 0 auto 1.5rem;
+}
+.stevora-login-heading img { border-radius: 16px; }
+.stevora-login-heading h1 { margin: .75rem 0; font-size: 1.55rem; }
+.content ha-authorize {
+  --primary-text-color: #edf6ff;
+  --secondary-text-color: #b5ccdf;
+  --primary-background-color: #10253b;
+  --card-background-color: #10253b;
+  --ha-card-background: #10253b;
+  --primary-color: #83d4ff;
+  --ha-card-border-color: #36526a;
+  --ha-card-border-radius: 18px;
+}
