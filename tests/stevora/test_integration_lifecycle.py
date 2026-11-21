@@ -104,6 +104,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
         core.HomeAssistant = object
         entries = types.ModuleType("homeassistant.config_entries")
         entries.ConfigEntry = _Entry
+        entries.SOURCE_IMPORT = "import"  # Matches Home Assistant config_entries constant
 
         self.module_patch = patch.dict(sys.modules, {
             package.__name__: package,
