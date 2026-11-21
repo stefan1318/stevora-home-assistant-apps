@@ -1,15 +1,15 @@
-name: STEVORA OS Native Integrated Dev1 - Real OVA and UEFI Boot
+name: STEVORA OS Native Integrated Dev2 - Real OVA and UEFI Boot
 
 on:
   push:
     branches:
-      - feature/stevora-os-native-unified-dev1-20261121
+      - feature/stevora-os-native-dev2-onboarding
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
   pull_request:
     branches:
-      - feature/stevora-os-native-unified-dev1-20261121
+      - feature/stevora-os-native-dev2-onboarding
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
@@ -36,9 +36,16 @@ jobs:
           bash -n distribution/native-image/scripts/prepare-haos.sh
           bash -n distribution/native-image/scripts/qemu-smoke.sh
           test -s custom_components/stevora_os/frontend/icons/stevora-192.png
+          node --check distribution/native-image/web/setup.js
           node --check distribution/native-image/web/app.js
           (cd distribution/native-image/gateway && go test -v ./...)
           echo "Source contracts PASS. This is not an image boot test."
+
+      - name: Test first boot and interrupted setup in Chrome with simulated Core
+        run: |
+          python3 -m venv "$RUNNER_TEMP/stevora-browser"
+          "$RUNNER_TEMP/stevora-browser/bin/pip" install playwright==1.56.0
+          "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_onboarding.py
 
   build-ova:
     if: github.event_name != 'pull_request'
@@ -137,7 +144,7 @@ jobs:
           done
           (cd release && sha256sum stevora-native-integrated-ova.* > SHA256SUMS.txt)
           cat > release/BUILD-IDENTITY.txt <<EOF
-          STEVORA OS Native Integrated Developer Preview 1
+          STEVORA OS Native Integrated Developer Preview 2
           Git commit: ${GITHUB_SHA}
           Pinned Home Assistant OS source: ${UPSTREAM_HAOS_SHA}
           Native boot & HTTPS TCP/443 QEMU test: PASS
@@ -147,7 +154,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-Native-Integrated-Dev1-OVA-QEMU-PASS
+          name: STEVORA-OS-Native-Integrated-Dev2-OVA-QEMU-PASS
           path: release/*
           if-no-files-found: error
           retention-days: 7

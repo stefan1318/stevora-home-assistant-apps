@@ -138,40 +138,33 @@
     if(!state.token)showLogin();
     else await connect();
   }
-  let loginGeneration = 0;
-  async function checkFirstBoot(button, generation) {
-    while (button.isConnected && generation === loginGeneration) {
-      try {
-        const response = await fetch("/api/onboarding", {cache:"no-store", signal:AbortSignal.timeout(8000)});
-        let needsSetup = false;
-        if (response.ok) {
-          const steps = await response.json();
-          if (!Array.isArray(steps)) throw new Error("Waiting for Core");
-          needsSetup = steps.some(step => step.done === false);
-        } else if (response.status !== 404 && response.status !== 401) {
-          throw new Error("Waiting for Core");
-        }
-        if (!button.isConnected || generation !== loginGeneration) return;
-        button.dataset.setup = String(needsSetup);
-        button.textContent = needsSetup ? (locale==="bg" ? "Настрой този дом" : "Set up this home") : t("loginButton");
-        button.disabled = false;
-        q("#connection-label").textContent = needsSetup ? (locale==="bg" ? "Първоначална настройка" : "First-time setup") : t("login");
+  let loginMessage = "";
+  const setup = createStevoraSetup({
+    screen:q("#screen"), language:()=>locale, call,
+    authenticated:()=>state.connected && Boolean(state.token),
+    post:(step,data)=>coreREST("/api/onboarding/"+step,"POST",data),
+    authorize:async code=>{
+      await exchange({grant_type:"authorization_code",code,client_id:location.origin+"/"});
+      // The established session resumes at Core's first unfinished step.
+      await connect();
+    },
+    enter:async ()=>{
+      if (state.connected) {
+        document.body.classList.remove("setup-mode");
+        state.login=false;
+        await loadData();
         return;
-      } catch {
-        await sleep(4000);
       }
+      q("#screen").innerHTML='<section class="setup-card"><img alt="STEVORA" src="/stevora-login.png" width="64" height="64"><h1>'+esc(t("login"))+'</h1><p>'+esc(t("loginDesc"))+'</p><button class="primary" id="begin-auth">'+esc(t("loginButton"))+'</button></section>';
+      if(loginMessage)notice(loginMessage,true);
+      q("#connection-label").textContent=t("login");
     }
-  }
+  });
   function showLogin(message=""){
-    resetSession();state.login=true;
-    q("#conn-indicator").textContent="LOGIN";
-    q("#connection-label").textContent=t("awaiting");
-    q("#screen").innerHTML='<section class="login-card"><img alt="STEVORA" src="/stevora-192.png" width="100" height="100"><h1>'+esc(t("login"))+'</h1><p>'+esc(t("loginDesc"))+'</p><button class="primary" id="begin-auth">'+esc(t("loginButton"))+'</button>'+(message?'<p class="warn">'+esc(message)+'</p>':"")+'</section>';
+    resetSession();state.login=true;loginMessage=message;
     nav();
-    const button = q("#begin-auth");
-    button.disabled = true;
-    button.textContent = t("stillStarting");
-    void checkFirstBoot(button, ++loginGeneration);
+    q("#connection-label").textContent=t("awaiting");
+    void setup.run();
   }
   function startAuth(){
     const nonce=crypto.randomUUID();
@@ -200,11 +193,12 @@
       if(msg.type==="auth_required"){ws.send(JSON.stringify({type:"auth",access_token:state.token}));return}
       if(msg.type==="auth_invalid"){showLogin(t("authError"));return}
       if(msg.type==="auth_ok"){
+        loginMessage="";notice("");
         state.connected=true;state.login=false;
         q("#conn-indicator").textContent="ONLINE";
         q("#conn-indicator").className="status online";
         q("#connection-label").textContent="Home Assistant Core "+esc(msg.ha_version||"");
-        await loadData();
+        await setup.run();
         return;
       }
       if(msg.type==="result"){
@@ -226,7 +220,7 @@
         }
       }
     });
-    ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();});
+    ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);});
   }
   function rejectPending() {
     for(const task of state.pending.values()){clearTimeout(task.timer);task.reject(new Error("Connection closed"))}
@@ -444,7 +438,7 @@
     '<form data-form="assist"><input name="message" maxlength="500" required autocomplete="off" placeholder="'+esc(t("prompt"))+'"><button type="submit">'+esc(t("send"))+'</button></form></section>';
   }
   function renderContent(){
-    if(state.login)return;
+    if(state.login || document.body.classList.contains("setup-mode"))return;
     nav();
     let result;
     switch(state.view){
@@ -669,11 +663,11 @@
   }
   document.addEventListener("click",async ev=>{
     const btn=ev.target.closest("button");if(!btn)return;
-    if(btn.id==="begin-auth"){if(btn.dataset.setup==="true")location.assign("/onboarding.html");else startAuth();return}
+    if(btn.id==="begin-auth"){startAuth();return}
     if(btn.id==="logout"){resetSession();showLogin();return}
     if(btn.id==="lang-toggle"){
       locale=locale==="bg"?"en":"bg";sessionStorage.setItem("stevora.lang",locale);
-      if(state.login)showLogin();else renderContent();return;
+      if(document.body.classList.contains("setup-mode")){nav();await setup.run();}else renderContent();return;
     }
     if(btn.id==="menu-toggle"){q("#sidebar").classList.toggle("mobile-open");return}
     if(btn.id==="refresh"){if(state.connected)await loadData();return}

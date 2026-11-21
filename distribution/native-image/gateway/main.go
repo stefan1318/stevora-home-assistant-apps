@@ -29,7 +29,7 @@ import (
  "time"
 )
 
-const version = "native-integrated-dev.0"
+const version = "native-integrated-dev.2"
 
 func main() {
  root := flag.String("root", "/usr/share/stevora-os", "read-only static frontend root")

@@ -58,6 +58,7 @@ install -m 0644 "$SELF_DIR/web/index.html" "$PUBLIC_DIR/index.html"
 install -m 0644 "$SELF_DIR/web/app.css" "$PUBLIC_DIR/app.css"
 install -m 0644 "$SELF_DIR/web/stevora-login.css" "$PUBLIC_DIR/stevora-login.css"
 install -m 0644 "$SELF_DIR/web/stevora-login.png" "$PUBLIC_DIR/stevora-login.png"
+install -m 0644 "$SELF_DIR/web/setup.js" "$PUBLIC_DIR/setup.js"
 install -m 0644 "$SELF_DIR/web/app.js" "$PUBLIC_DIR/app.js"
 install -m 0644 "$PROJECT_ROOT/custom_components/stevora_os/frontend/icons/stevora-192.png" "$PUBLIC_DIR/stevora-192.png"
 cp -a "$PROJECT_ROOT/custom_components/stevora" "$COMPONENTS_DIR/stevora"
@@ -73,7 +74,7 @@ python3 "$SELF_DIR/scripts/patch-data-partition.py" "$DATA_SCRIPT"
 cat > "$PUBLIC_DIR/build.json" <<'STEVORA_NATIVE_META'
 {
   "product": "STEVORA OS",
-  "release": "native-integrated-dev.1",
+  "release": "native-integrated-dev.2",
   "capabilities": ["native-host-boot", "https-root-frontend", "ha-core-oauth", "supervisor-api-through-core"],
   "real_device_control": false,
   "system_bridge_enabled": true,
