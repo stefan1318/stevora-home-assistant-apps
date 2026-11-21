@@ -9,7 +9,7 @@ Canonical standard: stefan1318/stevora-memory-sync/PRODUCT_STANDARDS.md
 - HA onboarding required visiting port 8123 manually; STEVORA sign-in redirects to official HA authentication and returns.
 
 ## Required implementation work
-1. Identify the real STEVORA OS image source repository, build workflow, ingress source, configuration templates and exact versions. This is a BLOCKER: this repository alone does not prove ownership of the OS image.
+1. Verified source: this repository, branch `feature/stevora-os-native-integrated-rc0-20261121`, commit `1b7361adab00afbc44faa76e39439b72939caa62`, workflow `.github/workflows/stevora-os-native-integrated-build.yml`, sources `distribution/native-image/`. Successful OVA/QEMU run #44840846508 is a boot-only validation, not product acceptance. Continue implementation from this source line; document provenance of every subsequent build.
 2. Core startup: use default HA Core port 8123, keep STEVORA gateway listener separate, detect collisions and preserve existing user configuration. Back up before any migration.
 3. First-boot: branded BG/EN wizard, Core download/installation/readiness status, official HA onboarding APIs, account creation without storing credentials in STEVORA, resume after restart, error/retry paths.
 4. Login: preserve official HA authentication, MFA, identity providers, secure redirects, CSRF/state and role checks. Brand supported surfaces only; do not bypass official auth.
@@ -29,4 +29,4 @@ Canonical standard: stefan1318/stevora-memory-sync/PRODUCT_STANDARDS.md
 - Android/iOS contract tests, migration from existing preview, backup/restore and rollback tested.
 - Record source commit, CI links, image checksum, and PROPOSED/IMPLEMENTED/TESTED/RELEASED status per module.
 
-Do not merge this requirements PR as evidence of implementation; actual OS source and build must be located before any implementation claim.
+Do not merge this requirements PR as evidence of implementation. Source is now identified; first code fix is PR #25 for first-boot Core HTTP 8123. Full onboarding, OS module integration and release tests remain pending.
