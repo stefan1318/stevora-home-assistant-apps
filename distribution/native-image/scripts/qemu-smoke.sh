@@ -36,7 +36,7 @@ qemu-system-x86_64 \
   -drive "if=pflash,format=raw,readonly=on,file=${FIRMWARE}" \
   -drive "if=pflash,format=raw,file=${VARSVARS}" \
   -drive "if=virtio,format=qcow2,file=${IMAGE}" \
-  -netdev user,id=n0,hostfwd=tcp:127.0.0.1:18080-:80 \
+  -netdev user,id=n0,hostfwd=tcp:127.0.0.1:18080-:80,hostfwd=tcp:127.0.0.1:18443-:443 \
   -device virtio-net-pci,netdev=n0 \
   -display none -monitor none -serial "file:${SERIAL}" -no-reboot \
   > "${WORKDIR}/qemu.log" 2>&1 &
@@ -47,15 +47,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Starting OVA/QEMU native boot check (UEFI, host TCP 18080 -> VM TCP 80)."
+echo "Starting UEFI/QEMU boot check (host 18443 to VM 443 HTTPS)."
 GOOD=0
 for attempt in $(seq 1 120); do
   if ! kill -0 "${QEMU_PID}" 2>/dev/null; then
     echo "QEMU exited before STEVORA could serve its root UI." >&2
     break
   fi
-  if curl -fsS --max-time 3 http://127.0.0.1:18080/ > "${WORKDIR}/page.html"; then
-    if grep -q '<title>STEVORA OS — Native Developer Preview</title>' "${WORKDIR}/page.html"; then
+  if curl -ksS --fail --max-time 5 https://127.0.0.1:18443/ > "${WORKDIR}/page.html"; then
+    if grep -q '<title>STEVORA OS — Native Integrated Preview</title>' "${WORKDIR}/page.html"; then
       GOOD=1
       break
     fi
@@ -70,15 +70,15 @@ if [[ "${GOOD}" != 1 ]]; then
   exit 1
 fi
 
-curl -fsS --max-time 5 http://127.0.0.1:18080/build.json > "${WORKDIR}/build.json"
+curl -ksS --fail --max-time 5 https://127.0.0.1:18443/build.json > "${WORKDIR}/build.json"
 python3 - "${WORKDIR}/build.json" <<'PY'
 import json, pathlib, sys
 data = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert data["product"] == "STEVORA OS"
-assert data["release"] == "native-developer-preview-0.1"
-assert data["real_device_control"] is False
-assert data["system_bridge_enabled"] is False
-print("Native boot+HTTP service PASS; no fake control claims.")
+assert data["release"] == "native-integrated-dev.0"
+assert data["test_only"] is True
+assert data["signed_stevora_ota"] is False
+print("Native boot+HTTPS service PASS; unsigned update remains disabled.")
 PY
 
-echo "Native x86_64 OVA boot verified: STEVORA root / reachable on TCP/80."
+echo "Native x86_64 image boot verified: STEVORA root / reachable on HTTPS TCP/443."

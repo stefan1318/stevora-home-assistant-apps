@@ -31,6 +31,26 @@ class StevoraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_VOICE, default=False): bool,
         }))
 
+    async def async_step_import(self, user_input=None):
+        """Configure the built-in STEVORA adapter for a native OS image.
+
+        Only invoked when the STEVORA native image placed an explicit
+        native_bootstrap marker in Home Assistant configuration.yaml.
+        """
+        await self.async_set_unique_id("stevora_home")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title="STEVORA Home",
+            data={
+                CONF_LANGUAGE: DEFAULT_LANGUAGE,
+                CONF_AUTO_DISCOVERY: True,
+                CONF_INCLUDE_UNASSIGNED: False,
+                CONF_PANEL_ENABLED: False,
+                CONF_HOME_HUB_ENABLED: True,
+                CONF_VOICE: False,
+            },
+        )
+
     @staticmethod
     def async_get_options_flow(config_entry):
         return StevoraOptionsFlow()

@@ -1,0 +1,147 @@
+name: STEVORA OS Native Integrated Dev0 - Real OVA and UEFI Boot
+
+on:
+  push:
+    branches:
+      - feature/stevora-os-native-integrated-rc0-20261121
+    paths:
+      - 'distribution/native-image/**'
+      - '.github/workflows/stevora-os-native-integrated-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stevora-native-integrated-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-validation:
+    name: Native image source contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Python and shell build contracts
+        run: |
+          python3 -m unittest discover -s distribution/native-image/tests -p 'test_*.py' -v
+          python3 -m py_compile distribution/native-image/scripts/patch-data-partition.py
+          bash -n distribution/native-image/scripts/prepare-haos.sh
+          bash -n distribution/native-image/scripts/qemu-smoke.sh
+          test -s custom_components/stevora_os/frontend/icons/stevora-192.png
+          node --check distribution/native-image/web/app.js
+          (cd distribution/native-image/gateway && go test -v ./...)
+          echo "Source contracts PASS. This is not an image boot test."
+
+  build-ova:
+    name: Native STEVORA OS OVA image + actual QEMU boot
+    runs-on: ubuntu-24.04
+    needs: source-validation
+    timeout-minutes: 330
+    env:
+      UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+
+      - name: Build native Linux AMD64 TLS gateway
+        run: |
+          cd distribution/native-image/gateway
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o stevora-native-gateway .
+          test -x stevora-native-gateway
+          file stevora-native-gateway
+
+      - name: Inspect build resources
+        run: |
+          df -h /
+          free -h
+          docker --version
+          echo "Disk + memory availability is a real image build gate."
+
+      - name: Free unused runner SDK space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h /
+
+      - name: Fetch pinned upstream Home Assistant OS source
+        run: |
+          git clone --filter=blob:none --depth 1 --branch dev \
+            https://github.com/home-assistant/operating-system.git haos
+          git -C haos fetch --no-tags --depth 1 origin "${UPSTREAM_HAOS_SHA}"
+          git -C haos checkout --detach "${UPSTREAM_HAOS_SHA}"
+          git -C haos submodule update --init --depth 1
+          test "$(git -C haos rev-parse HEAD)" = "${UPSTREAM_HAOS_SHA}"
+          test -f haos/buildroot/Makefile
+
+      - name: Apply STEVORA-native OS rootfs and service overlay
+        run: |
+          bash distribution/native-image/scripts/prepare-haos.sh haos
+          bash -n haos/buildroot-external/package/hassio/create-data-partition.sh
+          grep -q 'native_bootstrap: true' haos/buildroot-external/package/hassio/create-data-partition.sh
+          test -s haos/buildroot-external/stevora-custom-components/stevora/manifest.json
+          test -x haos/buildroot-external/rootfs-overlay/usr/bin/stevora-native-gateway
+          git -C haos diff --stat
+          grep -q '^CONFIG_HTTPD=y$' haos/buildroot-external/busybox.config
+          grep -q '^enable stevora-native-web.service$' \
+            haos/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset
+
+      - name: Build complete OVA via official HAOS Buildroot container
+        working-directory: haos
+        env:
+          MAKEFLAGS: -j2
+        run: |
+          scripts/enter.sh make O=output_ova ova
+          find output_ova/images -maxdepth 1 -type f -printf '%f %s bytes\n'
+          test -n "$(find output_ova/images -maxdepth 1 -name 'haos_ova-*.qcow2.xz' -print -quit)"
+
+      - name: Install QEMU/UEFI test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf xz-utils
+
+      - name: Uncompress actual generated QCOW2 for boot test
+        id: image
+        run: |
+          IMAGE="$(find haos/output_ova/images -maxdepth 1 -name 'haos_ova-*.qcow2.xz' -print -quit)"
+          test -n "$IMAGE"
+          unxz --keep "$IMAGE"
+          echo "qcow2=${IMAGE%.xz}" >> "$GITHUB_OUTPUT"
+          echo "qcow2_xz=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Boot generated UEFI image and check STEVORA native root page
+        timeout-minutes: 15
+        run: |
+          bash distribution/native-image/scripts/qemu-smoke.sh "${{ steps.image.outputs.qcow2 }}"
+
+      - name: Package only verified STEVORA OS native image
+        run: |
+          mkdir -p release
+          cp "${{ steps.image.outputs.qcow2_xz }}" release/stevora-native-integrated-ova.qcow2.xz
+          for ext in vdi.zip vhdx.zip; do
+            FILE="$(find haos/output_ova/images -maxdepth 1 -name "haos_ova-*.${ext}" -print -quit)"
+            if [ -n "$FILE" ]; then
+              cp "$FILE" "release/stevora-native-integrated-ova.${ext}"
+            fi
+          done
+          (cd release && sha256sum stevora-native-integrated-ova.* > SHA256SUMS.txt)
+          cat > release/BUILD-IDENTITY.txt <<EOF
+          STEVORA OS Native Integrated Developer Preview 0
+          Git commit: ${GITHUB_SHA}
+          Pinned Home Assistant OS source: ${UPSTREAM_HAOS_SHA}
+          Native boot & HTTPS TCP/443 QEMU test: PASS
+          WARNING: OAuth/MFA, Apps, Integrations and backups require real VM acceptance. OS OTA and restore are disabled.
+          EOF
+          ls -lh release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-OS-Native-Integrated-Dev0-OVA-QEMU-PASS
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

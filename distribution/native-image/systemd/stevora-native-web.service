@@ -1,14 +1,17 @@
 [Unit]
-Description=STEVORA OS Native Preview HTTP bootstrap (static files only)
+Description=STEVORA OS Native HTTPS Gateway and Core API Reverse Proxy
 Documentation=https://github.com/stefan1318/stevora-home-assistant-apps
-After=network.target
+After=network-online.target haos-data.service
+Wants=network-online.target
+RequiresMountsFor=/mnt/data
 ConditionPathExists=/usr/share/stevora-os/index.html
+ConditionPathExists=/usr/bin/stevora-native-gateway
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/httpd -f -p 80 -h /usr/share/stevora-os
-Restart=on-failure
-RestartSec=5s
+ExecStart=/usr/bin/stevora-native-gateway -root /usr/share/stevora-os -cert-dir /mnt/data/stevora/https -upstream http://127.0.0.1:8123 -http :80 -https :443
+Restart=always
+RestartSec=8s
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -19,6 +22,8 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 LockPersonality=yes
+ReadWritePaths=/mnt/data
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

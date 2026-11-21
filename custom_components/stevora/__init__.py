@@ -1,7 +1,7 @@
 """STEVORA integration: capability discovery, premium panel and local Home Hub."""
 import logging
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
 from homeassistant.components import websocket_api
 from homeassistant.components.http import StaticPathConfig
 from pathlib import Path
@@ -52,6 +52,19 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     manager = AdminManagers(hass)
     await manager.load()
     hass.data.setdefault(DOMAIN, {})["_admin_managers"] = manager
+    native = config.get(DOMAIN, {})
+    # Image-provided config marker, never automatically applied to an existing
+    # HA setup unless an explicitly pinned native image installed it.
+    if isinstance(native, dict) and native.get("native_bootstrap") is True:
+        if not hass.config_entries.async_entries(DOMAIN):
+            hass.async_create_task(
+                hass.config_entries.flow.async_init(
+                    DOMAIN,
+                    context={"source": SOURCE_IMPORT},
+                    data={},
+                ),
+                "STEVORA native adapter bootstrap",
+            )
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
