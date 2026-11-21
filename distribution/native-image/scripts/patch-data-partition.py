@@ -25,6 +25,8 @@ sudo cp -a "$stevora_adapter" "$data_dir/supervisor/homeassistant/custom_compone
 if [ ! -e "$data_dir/supervisor/homeassistant/configuration.yaml" ]; then
   sudo tee "$data_dir/supervisor/homeassistant/configuration.yaml" > /dev/null <<'STEVORA_NATIVE_CONFIGURATION'
 default_config:
+http:
+  server_port: 8123
 stevora:
   native_bootstrap: true
 STEVORA_NATIVE_CONFIGURATION
