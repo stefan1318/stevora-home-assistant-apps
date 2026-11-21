@@ -142,9 +142,9 @@ func newRouter(staticRoot string,core *url.URL) http.Handler {
 func isCorePath(p string) bool {
  // Narrow allowlist for official Core login, OAuth exchange, WebSockets and
  // frontend assets used by the official login screen. No arbitrary proxy.
- prefixes:=[]string{"/auth/","/api/","/frontend_latest/","/static/","/local/","/hacsfiles/"}
+ prefixes:=[]string{"/auth/","/api/","/frontend_latest/","/frontend_es5/","/stevora_static/","/onboarding/","/static/","/local/","/hacsfiles/"}
  for _,v:=range prefixes {if strings.HasPrefix(p,v){return true}}
- return p=="/auth" || p=="/manifest.json" || p=="/service_worker.js"
+ return p=="/onboarding.html" || p=="/stevora" || p=="/stevora/" || p=="/auth" || p=="/manifest.json" || p=="/service_worker.js"
 }
 
 func ensureCertificate(dir string)(string,string,error){

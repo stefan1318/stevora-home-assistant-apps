@@ -23,6 +23,10 @@ from .admin_api import register as register_admin_commands
 @websocket_api.websocket_command({"type": "stevora/manifest", vol.Optional("language"): vol.In(("bg", "en"))})
 @websocket_api.async_response
 async def websocket_manifest(hass, connection, msg):
+    await send_manifest(hass, connection, msg)
+
+
+async def send_manifest(hass, connection, msg):
     """Return only entities this authenticated HA user may read/control."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
@@ -31,6 +35,13 @@ async def websocket_manifest(hass, connection, msg):
     manifest = build_manifest(hass, entries[0])
     scoped = project_manifest_for_user(manifest, connection.user)
     connection.send_result(msg["id"], localized_manifest(scoped, msg.get("language") or scoped.get("preferred_language", "en")))
+
+@websocket_api.websocket_command({"type": "stevora/os/v1/manifest", vol.Optional("language"): vol.In(("bg", "en"))})
+@websocket_api.async_response
+async def websocket_os_manifest(hass, connection, msg):
+    """Versioned OS client API with the same per-user projection as legacy clients."""
+    await send_manifest(hass, connection, msg)
+
 
 @websocket_api.websocket_command({"type": "stevora/panel/generate", vol.Optional("language"): vol.In(("bg", "en"))})
 @websocket_api.async_response
@@ -47,6 +58,7 @@ async def websocket_panel_generate(hass, connection, msg):
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
     websocket_api.async_register_command(hass, websocket_panel_generate)
+    websocket_api.async_register_command(hass, websocket_os_manifest)
     register_admin_commands(hass)
     register_hub_commands(hass)
     manager = AdminManagers(hass)

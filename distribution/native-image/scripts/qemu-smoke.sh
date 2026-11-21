@@ -75,7 +75,7 @@ python3 - "${WORKDIR}/build.json" <<'PY'
 import json, pathlib, sys
 data = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert data["product"] == "STEVORA OS"
-assert data["release"] == "native-integrated-dev.0"
+assert data["release"] == "native-integrated-dev.1"
 assert data["test_only"] is True
 assert data["signed_stevora_ota"] is False
 print("Native boot+HTTPS service PASS; unsigned update remains disabled.")

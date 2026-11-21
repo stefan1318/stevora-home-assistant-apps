@@ -1,9 +1,9 @@
-name: STEVORA OS Native Integrated Dev0 - Real OVA and UEFI Boot
+name: STEVORA OS Native Integrated Dev1 - Real OVA and UEFI Boot
 
 on:
   push:
     branches:
-      - feature/stevora-os-native-integrated-rc0-20261121
+      - feature/stevora-os-native-unified-dev1-20261121
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
@@ -130,7 +130,7 @@ jobs:
           done
           (cd release && sha256sum stevora-native-integrated-ova.* > SHA256SUMS.txt)
           cat > release/BUILD-IDENTITY.txt <<EOF
-          STEVORA OS Native Integrated Developer Preview 0
+          STEVORA OS Native Integrated Developer Preview 1
           Git commit: ${GITHUB_SHA}
           Pinned Home Assistant OS source: ${UPSTREAM_HAOS_SHA}
           Native boot & HTTPS TCP/443 QEMU test: PASS
@@ -140,7 +140,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-Native-Integrated-Dev0-OVA-QEMU-PASS
+          name: STEVORA-OS-Native-Integrated-Dev1-OVA-QEMU-PASS
           path: release/*
           if-no-files-found: error
           retention-days: 7

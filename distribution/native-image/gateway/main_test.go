@@ -12,7 +12,7 @@ import (
 )
 
 func TestCoreRouteAllowlist(t *testing.T){
- allow:=[]string{"/auth/authorize","/auth/token","/api/websocket","/api/states","/frontend_latest/a.js"}
+ allow:=[]string{"/auth/authorize","/auth/token","/api/websocket","/api/states","/frontend_latest/a.js","/onboarding.html","/stevora","/stevora_static/stevora-panel.js"}
  for _,route:=range allow{if !isCorePath(route){t.Errorf("%s must proxy to HA Core",route)}}
  deny:=[]string{"/","/app.js","/stevora-192.png","/etc/passwd","/api-root","/supervisor"}
  for _,route:=range deny{if isCorePath(route){t.Errorf("%s must not proxy",route)}}

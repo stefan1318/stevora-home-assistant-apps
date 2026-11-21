@@ -71,7 +71,7 @@ python3 "$SELF_DIR/scripts/patch-data-partition.py" "$DATA_SCRIPT"
 cat > "$PUBLIC_DIR/build.json" <<'STEVORA_NATIVE_META'
 {
   "product": "STEVORA OS",
-  "release": "native-integrated-dev.0",
+  "release": "native-integrated-dev.1",
   "capabilities": ["native-host-boot", "https-root-frontend", "ha-core-oauth", "supervisor-api-through-core"],
   "real_device_control": false,
   "system_bridge_enabled": true,

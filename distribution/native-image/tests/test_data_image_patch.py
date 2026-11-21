@@ -29,8 +29,8 @@ class TestDataImagePatch(unittest.TestCase):
             self.assertEqual(patched.count(MODULE.MARKER), 1)
             self.assertEqual(patched.count(MODULE.PINNED_UNMOUNT), 1)
             self.assertIn("native_bootstrap: true", patched)
-            self.assertIn("http:\\n  server_port: 8123", patched)
-            self.assertNotIn("server_port: 80\\n", patched)
+            self.assertIn("http:\n  server_port: 8123", patched)
+            self.assertNotIn("server_port: 80\n", patched)
             self.assertIn("stevora-custom-components/stevora", patched)
             subprocess.run(["bash", "-n", str(filename)], check=True)
             with self.assertRaisesRegex(ValueError, "already installed"):

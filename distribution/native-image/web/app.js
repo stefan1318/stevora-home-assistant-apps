@@ -63,7 +63,7 @@
       stillStarting:"Home Assistant Core is still booting",search:"Search…",
     }
   };
-  let locale = sessionStorage.getItem("stevora.lang")==="en"?"en":langDefault;
+  let locale = ["bg","en"].includes(sessionStorage.getItem("stevora.lang")) ? sessionStorage.getItem("stevora.lang") : langDefault;
   const t = k => LS[locale][k] || k;
   const state = {
     view:"home",login:false,token:null,refresh:null,expires:0,
@@ -97,7 +97,7 @@
     state.ws=null;
     for(const pending of state.pending.values())pending.reject(new Error("Session ended"));
     state.pending.clear();
-    state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
+    state.people=[];state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
     state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
     state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
   }
@@ -138,11 +138,40 @@
     if(!state.token)showLogin();
     else await connect();
   }
+  let loginGeneration = 0;
+  async function checkFirstBoot(button, generation) {
+    while (button.isConnected && generation === loginGeneration) {
+      try {
+        const response = await fetch("/api/onboarding", {cache:"no-store", signal:AbortSignal.timeout(8000)});
+        let needsSetup = false;
+        if (response.ok) {
+          const steps = await response.json();
+          if (!Array.isArray(steps)) throw new Error("Waiting for Core");
+          needsSetup = steps.some(step => step.done === false);
+        } else if (response.status !== 404 && response.status !== 401) {
+          throw new Error("Waiting for Core");
+        }
+        if (!button.isConnected || generation !== loginGeneration) return;
+        button.dataset.setup = String(needsSetup);
+        button.textContent = needsSetup ? (locale==="bg" ? "Настрой този дом" : "Set up this home") : t("loginButton");
+        button.disabled = false;
+        q("#connection-label").textContent = needsSetup ? (locale==="bg" ? "Първоначална настройка" : "First-time setup") : t("login");
+        return;
+      } catch {
+        await sleep(4000);
+      }
+    }
+  }
   function showLogin(message=""){
     resetSession();state.login=true;
     q("#conn-indicator").textContent="LOGIN";
     q("#connection-label").textContent=t("awaiting");
     q("#screen").innerHTML='<section class="login-card"><img alt="STEVORA" src="/stevora-192.png" width="100" height="100"><h1>'+esc(t("login"))+'</h1><p>'+esc(t("loginDesc"))+'</p><button class="primary" id="begin-auth">'+esc(t("loginButton"))+'</button>'+(message?'<p class="warn">'+esc(message)+'</p>':"")+'</section>';
+    nav();
+    const button = q("#begin-auth");
+    button.disabled = true;
+    button.textContent = t("stillStarting");
+    void checkFirstBoot(button, ++loginGeneration);
   }
   function startAuth(){
     const nonce=crypto.randomUUID();
@@ -170,7 +199,7 @@
       if(msg.type==="auth_required"){ws.send(JSON.stringify({type:"auth",access_token:state.token}));return}
       if(msg.type==="auth_invalid"){showLogin(t("authError"));return}
       if(msg.type==="auth_ok"){
-        state.connected=true;
+        state.connected=true;state.login=false;
         q("#conn-indicator").textContent="ONLINE";
         q("#conn-indicator").className="status online";
         q("#connection-label").textContent="Home Assistant Core "+esc(msg.ha_version||"");
@@ -184,7 +213,12 @@
       }
       if(msg.type==="event" && msg.event?.event_type==="state_changed"){
         const e=msg.event.data?.new_state;
-        if(e?.entity_id){
+        if(msg.event.data?.entity_id?.startsWith("person.")){
+          state.people=state.people.filter(person=>person.entity_id!==msg.event.data.entity_id);
+          if(e)state.people.push(e);
+          if(state.view==="people")renderContent();
+        }
+        if(e?.entity_id && state.stevoraManifest?.entities?.some(item=>item.entity_id===e.entity_id)){
           const i=state.entities.findIndex(v=>v.entity_id===e.entity_id);
           if(i>=0)state.entities[i]=e;else state.entities.push(e);
           if(["home","rooms","devices","lighting","climate","scenes","automations"].includes(state.view))renderContent();
@@ -235,7 +269,15 @@
         tryCall({type:"config/entity_registry/list"},[]),
         tryCall({type:"config/device_registry/list"},[]),
       ]);
-      const manifest=await tryCall({type:"stevora/manifest",language:locale},null);
+      state.people=(entities||[]).filter(e=>e.entity_id.startsWith("person."));
+      const assistants=await tryCall({type:"conversation/agent/list"}, {agents:[]});
+      const agents=assistants.agents || [];
+      const preferred=await tryCall({type:"stevora/assistants/resolve"}, {});
+      const pipelines=await tryCall({type:"assist_pipeline/pipeline/list"}, {});
+      const pipeline=pipelines.pipelines?.find(item=>item.id===(preferred.pipeline_id || pipelines.preferred_pipeline));
+      state.agent=agents.find(agent=>agent.id===pipeline?.conversation_engine)?.id ||
+        (!preferred.pipeline_id && agents.find(agent=>agent.id==="conversation.home_assistant")?.id) || null;
+      const manifest=await tryCall({type:"stevora/os/v1/manifest",language:locale},null);
       state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
       const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
       state.entities=(Array.isArray(entities)?entities:[])
@@ -261,7 +303,7 @@
       ]);
       state.apps=installed.addons||[];state.store=store.addons||[];
     }
-    if(view==="system"){
+    if(view==="system" || view==="updates"){
       const names=["/supervisor/info","/os/info","/host/info","/core/info","/network/info","/jobs/info"];
       const results=await Promise.all(names.map(n=>supervisor(n).catch(e=>({error:formatError(e)}))));
       state.system=Object.fromEntries(names.map((n,i)=>[n,results[i]]));
@@ -281,7 +323,7 @@
     return state.entities.filter(e=>(!domain||domain==="all"||e.entity_id.startsWith(domain+"."))&&isAllowed(e)&&(!state.room||entityArea(e)===state.room));
   }
   function nav(){
-    const map={home:t("home"),rooms:t("rooms"),devices:t("devices"),lighting:t("lighting"),climate:t("climate"),scenes:t("scenes"),automations:t("automations"),integrations:t("integrations"),apps:t("apps"),system:t("system"),backups:t("backups"),users:t("users"),assist:t("assist")};
+    const map={updates:locale==="bg"?"Обновявания":"Update Center",people:locale==="bg"?"Хора и присъствие":"People & Presence",home:t("home"),rooms:t("rooms"),devices:t("devices"),lighting:t("lighting"),climate:t("climate"),scenes:t("scenes"),automations:t("automations"),integrations:t("integrations"),apps:t("apps"),system:t("system"),backups:t("backups"),users:t("users"),assist:t("assist")};
     q("#navigation").querySelectorAll("[data-view]").forEach(btn=>{
       const view=btn.getAttribute("data-view");
       btn.classList.toggle("selected",view===state.view);
@@ -395,6 +437,7 @@
     '<div class="cards">'+(u.map(x=>'<article class="device-card"><strong>'+esc(x.name||"")+'</strong><small>'+esc(x.id||"")+'</small><p>'+esc(x.is_admin?"Administrator":"User")+'</p></article>').join("")||empty())+'</div>';
   }
   function assistView(){
+    if(!state.agent)return hdr(t("assist"))+empty(t("unknown"));
     return hdr(t("assist"),t("noAudio"))+
     '<section class="panel"><div id="chat-messages" class="chat">'+(state.messages.map(m=>'<p class="'+(m.role==="user"?"mine":"theirs")+'">'+esc(m.text)+'</p>').join(""))+'</div>'+
     '<form data-form="assist"><input name="message" maxlength="500" required autocomplete="off" placeholder="'+esc(t("prompt"))+'"><button type="submit">'+esc(t("send"))+'</button></form></section>';
@@ -405,10 +448,17 @@
     let result;
     switch(state.view){
       case "home":result=home();break;
+      case "people":result=hdr(locale==="bg"?"Хора и присъствие":"People & Presence")+
+        '<div class="cards">'+((state.people||[]).map(person=>stat(person.attributes?.friendly_name||person.entity_id,person.state)).join("")||empty())+'</div>';break;
       case "rooms":result=roomsView();break;
       case "devices":case "lighting":case "climate":case "scenes":case "automations":result=entityScreen(state.view);break;
       case "integrations":result=integrationView();break;
       case "apps":result=appsView();break;
+      case "updates":result=state.admin ? hdr(locale==="bg"?"Обновявания":"Update Center",t("updateCaution"))+
+        '<div class="cards">'+["/os/info","/core/info","/supervisor/info"].map(path=>{
+          const item=state.system[path]||{};
+          return stat(path.split("/")[1],(item.version||t("unknown"))+" → "+(item.version_latest||t("unknown")));
+        }).join("")+'</div>' : empty(t("notAdmin"));break;
       case "system":result=systemView();break;
       case "backups":result=backupView();break;
       case "users":result=usersView();break;
@@ -418,12 +468,12 @@
     q("#screen").innerHTML=result;
   }
   function setView(view){
-    const allowed=["home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
+    const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
     if(!allowed.includes(view))return;
     state.view=view;state.filter="";state.room="";
     q("#sidebar").classList.remove("mobile-open");
     renderContent();
-    if(["integrations","apps","system","backups","users"].includes(view)&&state.admin){
+    if(["integrations","apps","system","updates","backups","users"].includes(view)&&state.admin){
       notice(t("connecting"));
       loadAdmin(view).then(()=>{notice("");renderContent()}).catch(e=>notice(formatError(e),true));
     }
@@ -610,7 +660,7 @@
     renderContent();
     let answer;
     try{
-      const response=await call({type:"conversation/process",text:s,language:locale});
+      const response=await call({type:"conversation/process",agent_id:state.agent,text:s,language:locale});
       answer=response?.response?.speech?.plain?.speech||t("notSupported");
     }catch(e){answer=formatError(e)}
     state.messages.push({role:"assistant",text:answer});
@@ -618,7 +668,7 @@
   }
   document.addEventListener("click",async ev=>{
     const btn=ev.target.closest("button");if(!btn)return;
-    if(btn.id==="begin-auth"){startAuth();return}
+    if(btn.id==="begin-auth"){if(btn.dataset.setup==="true")location.assign("/onboarding.html");else startAuth();return}
     if(btn.id==="logout"){resetSession();showLogin();return}
     if(btn.id==="lang-toggle"){
       locale=locale==="bg"?"en":"bg";sessionStorage.setItem("stevora.lang",locale);

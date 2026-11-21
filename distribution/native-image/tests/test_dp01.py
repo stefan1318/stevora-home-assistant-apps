@@ -49,7 +49,7 @@ class NativeIntegratedContract(unittest.TestCase):
         ast.parse(source);ast.parse(flow)
         self.assertIn("SOURCE_IMPORT",source)
         self.assertIn("native_bootstrap",source)
-        self.assertIn("CONF_PANEL_ENABLED: False",flow)
+        self.assertIn("CONF_PANEL_ENABLED: True",flow)
         self.assertIn("CONF_HOME_HUB_ENABLED: True",flow)
 
     def test_native_app_has_real_protocol_types(self):
@@ -77,7 +77,7 @@ class NativeIntegratedContract(unittest.TestCase):
         self.assertIn("qemu-system-x86_64",qemu)
         self.assertIn("hostfwd=tcp:127.0.0.1:18443-:443",qemu)
         self.assertIn("https://127.0.0.1:18443/",qemu)
-        self.assertIn('native-integrated-dev.0',qemu)
+        self.assertIn('native-integrated-dev.1',qemu)
 
     def test_no_hardcoded_personal_identifiers(self):
         text="\n".join(p.read_text() for p in [WEB/"app.js",WEB/"index.html",SCRIPTS/"prepare-haos.sh"]).lower()

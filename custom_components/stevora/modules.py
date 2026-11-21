@@ -42,6 +42,12 @@ def describe_modules(hass, entry) -> dict:
                   "active" if hub is not None and getattr(hub, "active", False) else
                   running.get("hub_status", "pending"))
 
+    voice = {"bundled": False, "enabled": False, "status": "not_included"}
+    if entry.data.get("native_bootstrap"):
+        from .assistant_manager import available_pipelines
+        enabled = bool(available_pipelines(hass))
+        voice = {"bundled": True, "enabled": enabled, "status": "active" if enabled else "unavailable"}
+
     return {
         "core": {"bundled": True, "enabled": True, "status": "active"},
         "home_panel": {
@@ -50,6 +56,6 @@ def describe_modules(hass, entry) -> dict:
             "status": panel_status,
         },
         "home_hub": {"bundled": True, "enabled": hub_enabled, "status": hub_status},
-        "hey_stevora": {"bundled": False, "enabled": False, "status": "not_included"},
+        "hey_stevora": voice,
         "memory_sync": {"bundled": False, "enabled": False, "status": "not_included"},
     }

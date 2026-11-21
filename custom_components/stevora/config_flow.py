@@ -45,9 +45,10 @@ class StevoraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_LANGUAGE: DEFAULT_LANGUAGE,
                 CONF_AUTO_DISCOVERY: True,
                 CONF_INCLUDE_UNASSIGNED: False,
-                CONF_PANEL_ENABLED: False,
+                CONF_PANEL_ENABLED: True,
                 CONF_HOME_HUB_ENABLED: True,
-                CONF_VOICE: False,
+                CONF_VOICE: True,
+                "native_bootstrap": True,
             },
         )
 
