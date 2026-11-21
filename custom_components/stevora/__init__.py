@@ -68,6 +68,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     # Image-provided config marker, never automatically applied to an existing
     # HA setup unless an explicitly pinned native image installed it.
     if isinstance(native, dict) and native.get("native_bootstrap") is True:
+        from .native_admin import NativeAdminView
+        hass.http.register_view(NativeAdminView)
         if not hass.config_entries.async_entries(DOMAIN):
             hass.async_create_task(
                 hass.config_entries.flow.async_init(

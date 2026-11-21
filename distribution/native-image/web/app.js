@@ -24,7 +24,7 @@
       restart:"Рестарт",update:"Обнови",install:"Инсталирай",remove:"Премахни",
       details:"Детайли",logs:"Логове",save:"Запази",confirm:"Потвърждение",
       backupCreate:"Създай пълен архив",backupRestore:"Възстанови",backupCaution:"Възстановяването и OS обновленията са заключени до проверка на подписите и възстановяване.",
-      updateCaution:"STEVORA OS има собствен image; upstream HA OS update може да го замени. OS обновяването остава блокирано в тази тестова версия.",
+      updateCaution:"Инсталирай подписани пакети за STEVORA от „Обновявания“.",
       systemReadOnly:"Системните данни са реални. Промените в мрежа, диск, OS и потребителски роли са заключени в тази версия.",
       noAudio:"Гласовото управление е достъпно само при реално конфигуриран pipeline. Тук Assist предлага текстов чат.",
       send:"Изпрати",prompt:"Команда или въпрос",automationNote:"Показват се действителните автоматизации. Изпълнението и редактирането зависят от HA права.",
@@ -51,7 +51,7 @@
       restart:"Restart",update:"Update",install:"Install",remove:"Remove",
       details:"Details",logs:"Logs",save:"Save",confirm:"Confirm",
       backupCreate:"Create full backup",backupRestore:"Restore",backupCaution:"Restore and OS updates are locked until signed update and recovery validation.",
-      updateCaution:"STEVORA OS has its own image; upstream HA OS updates can overwrite it. OS updates remain disabled in this test build.",
+      updateCaution:"Install signed STEVORA packages in Update Center.",
       systemReadOnly:"These are real system values. Network, disk, OS and role changes remain locked in this preview.",
       noAudio:"Voice functions require a configured backend voice pipeline. This Assist panel supports text chat.",
       send:"Send",prompt:"Command or question",automationNote:"Real automations are listed. Execution and editing are subject to HA permissions.",
@@ -91,6 +91,7 @@
   }
   function formatError(error){return (error?.message || error?.code || String(error)).slice(0,300)}
   function resetSession() {
+    document.cookie="ingress_session=;Path=/api/hassio_ingress/;Max-Age=0;SameSite=Strict;Secure";
     try {sessionStorage.removeItem(authKey);sessionStorage.removeItem("stevora.oauth.state")}catch{}
     state.token=null;state.refresh=null;state.expires=0;state.connected=false;
     if(state.ws){try{state.ws.close()}catch{}}
@@ -241,6 +242,7 @@
     const response=await fetch(path,{
       method,headers:{
         "Authorization":"Bearer "+state.token,
+        ...(path.startsWith("/api/config/config_entries/")?{"HA-Frontend-Base":location.origin}:{}),
         ...(body!==null?{"Content-Type":"application/json"}:{})
       },
       body:body!==null?JSON.stringify(body):undefined,
@@ -253,7 +255,9 @@
   async function supervisor(endpoint,method="GET",data) {
     if(!state.admin)throw new Error(t("notAdmin"));
     if(!/^\/[a-z0-9_./-]+$/.test(endpoint)||endpoint.includes(".."))throw new Error("Invalid endpoint");
-    return call({type:"supervisor/api",endpoint,method,...(data?{data}:{})},90000);
+    const response=await call({type:"supervisor/api",endpoint,method:method.toLowerCase(),...(data?{data}:{})},120000);
+    if(response?.result==="error")throw new Error(response.message||"Supervisor error");
+    return response?.result==="ok"?response.data:response;
   }
   async function loadData() {
     try {
@@ -291,13 +295,17 @@
   }
   async function loadAdmin(view) {
     if(!state.admin)return;
-    if(view==="integrations")state.configEntries=await tryCall({type:"config_entries/get"},[]);
+    if(view==="integrations"){
+      state.configEntries=await tryCall({type:"config_entries/get"},[]);
+      state.handlers=await coreREST("/api/config/config_entries/flow_handlers?type=integration").catch(()=>[]);
+    }
     if(view==="apps"){
       const [installed,store]=await Promise.all([
         supervisor("/addons").catch(()=>({})),supervisor("/store").catch(()=>({}))
       ]);
       state.apps=installed.addons||[];state.store=store.addons||[];
     }
+    if(view==="updates")state.updateInfo=await updateRequest().then(r=>r.json()).catch(()=>null);
     if(view==="system" || view==="updates"){
       const names=["/supervisor/info","/os/info","/host/info","/core/info","/network/info","/jobs/info"];
       const results=await Promise.all(names.map(n=>supervisor(n).catch(e=>({error:formatError(e)}))));
@@ -383,8 +391,8 @@
     if(!state.admin)return hdr(t("integrations"))+empty(t("notAdmin"));
     const entries=Array.isArray(state.configEntries)?state.configEntries:[];
     return hdr(t("integrations"),t("integrationsNote"))+'<div class="metrics">'+stat(t("installed"),entries.length)+'</div><div class="filters"><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div><div class="cards">'+
-    (entries.filter(e=>matches(e.title+" "+e.domain)).map(e=>'<article class="device-card"><strong>'+esc(e.title||e.domain)+'</strong><small>'+esc(e.domain||"")+'</small><p>'+esc(e.state||"")+'</p><div class="actions"><button data-entry="'+esc(e.entry_id)+'" data-entry-action="details">'+esc(t("details"))+'</button></div></article>').join("")||empty())+'</div>'+
-    '<section class="panel"><h2>'+esc(t("install"))+' '+esc(t("integrations"))+'</h2><form data-form="add-integration"><input name="domain" required pattern="[a-z0-9_]+" maxlength="64" placeholder="Integration domain (e.g. mqtt)"><button type="submit">'+esc(t("install"))+'</button></form><div id="flow-output"></div></section>';
+    (entries.filter(e=>matches(e.title+" "+e.domain)).map(e=>'<article class="device-card"><strong>'+esc(e.title||e.domain)+'</strong><small>'+esc(e.domain||"")+'</small><p>'+esc(e.state||"")+'</p><div class="actions"><button data-entry="'+esc(e.entry_id)+'" data-entry-action="details">'+esc(t("details"))+'</button>'+(e.supports_options?'<button data-options="'+esc(e.entry_id)+'">'+esc(tr("Настройки","Configure"))+'</button>':'')+'</div></article>').join("")||empty())+'</div>'+
+    '<section class="panel"><h2>'+esc(t("install"))+' '+esc(t("integrations"))+'</h2><form data-form="add-integration"><input name="domain" list="integration-domains" required pattern="[a-z0-9_]+" maxlength="64" placeholder="Tuya, MQTT…"><datalist id="integration-domains">'+(state.handlers||[]).map(id=>'<option value="'+esc(id)+'"></option>').join("")+'</datalist><button type="submit">'+esc(t("install"))+'</button></form><div id="flow-output"></div></section>';
   }
   function appsView(){
     if(!state.admin)return hdr(t("apps"))+empty(t("notAdmin"));
@@ -402,12 +410,24 @@
         '<button data-addon="'+esc(id)+'" data-addon-action="logs">'+esc(t("logs"))+'</button>'+
         '<button data-addon="'+esc(id)+'" data-addon-action="options">'+esc(t("details"))+'</button>'+
         '<button data-addon="'+esc(id)+'" data-addon-action="uninstall" class="danger">'+esc(t("remove"))+'</button>';
+      if(current && a.state==="started" && a.ingress!==false)buttons+='<button data-addon="'+esc(id)+'" data-addon-action="open">'+esc(tr("Отвори","Open"))+'</button>';
       if(current && a.update_available)buttons+='<button data-addon="'+esc(id)+'" data-addon-action="update">'+esc(t("update"))+'</button>';
       return '<article class="device-card"><strong>'+esc(a.name||id)+'</strong><small>'+esc(id)+'</small><p>'+esc(a.description||"")+'</p><small>'+esc((a.state||"not installed")+" · "+(a.version||""))+'</small><div class="actions">'+buttons+'</div></article>';
     };
     return hdr(t("apps"),t("managed"))+stat(t("installed"),installed.length)+
       '<section class="panel"><h2>'+esc(t("installed"))+'</h2><div class="filters"><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div><div class="cards">'+(installed.map(a=>appCard(a)).join("")||empty())+'</div></section>'+
-      '<section class="panel"><h2>'+esc(t("available"))+'</h2><div class="cards">'+(catalog.filter(a=>!installedIds.has(a.slug)).slice(0,60).map(a=>appCard(a,true)).join("")||empty())+'</div></section>';
+      '<section class="panel"><h2>'+esc(t("available"))+'</h2><div class="cards">'+(catalog.filter(a=>!installedIds.has(a.slug)).map(a=>appCard(a,true)).join("")||empty())+'</div></section>';
+  }
+  async function updateRequest(file){
+    const response=await fetch("/stevora-update",{method:file?"POST":"GET",
+      headers:{Authorization:"Bearer "+state.token,...(file?{"Content-Type":"application/octet-stream"}:{})},
+      body:file||undefined,cache:"no-store"});
+    if(!response.ok)throw new Error((await response.text()).slice(0,160));return response;
+  }
+  function osUpload(){
+    const info=state.updateInfo;
+    const status=info?.publisher_configured?(info.status||"idle"):tr("Необходим е доверен сертификат на издателя.","A trusted publisher certificate is required.");
+    return '<section class="panel"><h2>STEVORA OS Update</h2><p>'+esc(status)+'</p><form class="update-upload" data-form="os-update"><input type="file" name="bundle" accept=".raucb" required><button '+(!info?.publisher_configured?'disabled':'')+'>'+esc(tr("Инсталирай подписан пакет","Install signed bundle"))+'</button></form></section>';
   }
   function systemView(){
     if(!state.admin)return hdr(t("system"))+empty(t("notAdmin"));
@@ -449,7 +469,7 @@
       case "devices":case "lighting":case "climate":case "scenes":case "automations":result=entityScreen(state.view);break;
       case "integrations":result=integrationView();break;
       case "apps":result=appsView();break;
-      case "updates":result=state.admin ? hdr(locale==="bg"?"Обновявания":"Update Center",t("updateCaution"))+
+      case "updates":result=state.admin ? hdr(locale==="bg"?"Обновявания":"Update Center",tr("Версии на системата","System versions"))+osUpload()+
         '<div class="cards">'+["/os/info","/core/info","/supervisor/info"].map(path=>{
           const item=state.system[path]||{};
           return stat(path.split("/")[1],(item.version||t("unknown"))+" → "+(item.version_latest||t("unknown")));
@@ -493,18 +513,28 @@
   }
   async function addonAction(slugId,action){
     if(!state.admin||!slug(slugId))throw new Error(t("notAdmin"));
-    const allowed=["install","start","stop","restart","update","uninstall","logs","options"];
+    const allowed=["install","start","stop","restart","update","uninstall","logs","options","open"];
     if(!allowed.includes(action))throw new Error("Unknown action");
+    if(action==="open"){
+      const data=await call({type:"supervisor/ingress/info",slug:slugId});
+      if(!data.ingress_url)throw new Error(tr("Добавката няма уеб интерфейс през Ingress.","This app has no Ingress interface."));
+      const url=new URL(data.ingress_url,location.origin);
+      if(url.origin!==location.origin || !url.pathname.startsWith("/api/hassio_ingress/"))throw new Error("Invalid ingress URL");
+      const result=await call({type:"supervisor/ingress/session",slug:slugId});
+      if(typeof result.session!=="string" || !/^[a-zA-Z0-9_.=-]+$/.test(result.session))throw new Error("Invalid ingress session");
+      document.cookie="ingress_session="+result.session+";Path=/api/hassio_ingress/;SameSite=Strict;Secure";
+      location.assign(url.href);return;
+    }
     if(action==="logs"){
-      const data=await supervisor("/addons/"+slugId+"/logs");
-      showTextModal("Logs: "+slugId,JSON.stringify(data,null,2).slice(0,15000));return;
+      const data=await coreREST("/api/hassio/addons/"+slugId+"/logs");
+      showTextModal("Logs: "+slugId,String(data).slice(-15000));return;
     }
     if(action==="options"){
       const data=await supervisor("/addons/"+slugId+"/info");
       showOptionsModal(slugId,data);return;
     }
     const kind=action==="update"?"/store/addons/"+slugId+"/update":
-       action==="install"?"/store/addons/"+slugId+"/install":
+       action==="install"?"/addons/"+slugId+"/install":
        "/addons/"+slugId+"/"+action;
     const destructive=action==="uninstall"||action==="update"||action==="stop";
     if(destructive){
@@ -525,111 +555,66 @@
     document.body.append(dialog);dialog.showModal();
   }
   function showOptionsModal(slugId,data) {
-    const raw=JSON.stringify(data.options||{},null,2);
-    const dialog=document.createElement("dialog");dialog.className="details-dialog";
-    const heading=document.createElement("h2");heading.textContent=(data.name||slugId)+" · Options";
-    const hint=document.createElement("p");hint.textContent="Edit JSON options. Supervisor validates the schema.";
-    const field=document.createElement("textarea");field.value=raw;field.rows=15;
+    const original=data.options||{};
+    const dialog=document.createElement("dialog");dialog.className="details-dialog flow-dialog";
+    const title=document.createElement("h2");title.textContent=(data.name||slugId)+" · "+t("details");
+    const form=document.createElement("form");
+    const readers=[];
+    const schema=Array.isArray(data.schema)?data.schema:Object.entries(data.schema||{}).map(([name,type])=>({name,type}));
+    const definitions=new Map(schema.map(field=>[field.name,field]));
+    for(const name of new Set([...Object.keys(original),...definitions.keys()])){
+      if(!name)continue;
+      const value=original[name],spec=definitions.get(name)||{};
+      const kind=String(spec.type||"");
+      const bool=typeof value==="boolean"||kind==="boolean"||kind==="bool";
+      const numeric=typeof value==="number"||["integer","float","int","port"].includes(kind);
+      const structured=(value!=null&&typeof value==="object")||["list","schema","dict"].includes(kind);
+      const label=document.createElement("label");label.textContent=name+(structured?" (JSON)":"");
+      const field=document.createElement(structured?"textarea":"input");
+      if(!structured)field.type=bool?"checkbox":numeric?"number":/password|secret|token|key/i.test(name+kind)?"password":"text";
+      if(numeric)field.step="any";
+      if(bool)field.checked=Boolean(value);
+      else field.value=value==null?"":structured?JSON.stringify(value,null,2):String(value);
+      let changed=false;field.oninput=()=>{changed=true;};
+      readers.push(options=>{
+        if(!changed)return;
+        options[name]=bool?field.checked:numeric?field.valueAsNumber:structured?JSON.parse(field.value):field.value;
+        if(numeric&&!Number.isFinite(options[name]))throw new Error(name);
+      });
+      label.append(field);form.append(label);
+    }
+    const error=document.createElement("p");error.setAttribute("role","alert");
     const save=document.createElement("button");save.textContent=t("save");
-    save.addEventListener("click",async()=>{
+    const close=document.createElement("button");close.type="button";close.textContent=tr("Затвори","Close");close.onclick=()=>dialog.close();
+    form.onsubmit=async event=>{
+      event.preventDefault();save.disabled=true;
       try{
-        const options=JSON.parse(field.value);
-        if(!options||Array.isArray(options)||typeof options!=="object")throw new Error("Options must be JSON object");
-        if(!confirm(t("confirm")+" "+slugId+"?"))return;
+        const options={...original};readers.forEach(read=>read(options));
+        const validation=await supervisor("/addons/"+slugId+"/options/validate","POST",{options});
+        if(validation?.valid===false)throw new Error(validation.message||"Invalid options");
         await supervisor("/addons/"+slugId+"/options","POST",{options});
         dialog.close();await loadAdmin("apps");renderContent();
-      }catch(e){notice(formatError(e),true)}
-    });
-    const close=document.createElement("button");close.textContent="Close";close.addEventListener("click",()=>dialog.close());
-    dialog.append(heading,hint,field,save,close);
+      }catch(e){error.textContent=formatError(e);}finally{save.disabled=false;}
+    };
+    form.append(save,close);dialog.append(title,form,error);
     dialog.addEventListener("close",()=>dialog.remove());document.body.append(dialog);dialog.showModal();
   }
   async function addIntegration(form){
     if(!state.admin)throw new Error(t("notAdmin"));
     const domain=form.querySelector('input[name="domain"]')?.value.trim();
     if(!/^[a-z0-9_]+$/.test(domain||""))throw new Error("Invalid integration domain");
-    const result=await coreREST("/api/config/config_entries/flow","POST",{handler:domain});
-    await processFlow(domain,result);
+    await openFlow(domain);
   }
-  async function processFlow(domain,result){
-    if(result?.type==="create_entry"){
-      notice("Integration configured: "+(result.title||domain));
-      await loadAdmin("integrations");renderContent();return;
-    }
-    if(result?.type==="abort"){
-      notice("Integration setup: "+(result.reason||"aborted"),true);return;
-    }
-    // Some HA integrations (including Tuya) use QR, external-step, progress
-    // and rich description flows. Never replace these with a text input.
-    // Hand unsupported steps back to HA's authoritative flow UI.
-    const unsupportedStep = result?.type!=="form" || !result?.flow_id ||
-      result?.type==="external" || result?.type==="show_progress" ||
-      result?.type==="show_progress_done" || result?.type==="menu" ||
-      result?.type==="progress" || result?.type==="external_done" ||
-      !!result?.description_placeholders?.qr_code ||
-      !!result?.description_placeholders?.qr_image ||
-      !!result?.description_placeholders?.qr_url ||
-      !!result?.description_placeholders?.qr_code_url ||
-      /qr|scan.*code|сканирай/i.test(String(result?.description||""));
-    if(unsupportedStep || domain==="tuya"){
-      const dlg=document.createElement("dialog");dlg.className="details-dialog";
-      const title=document.createElement("h2");
-      title.textContent=domain==="tuya"?"Tuya — QR verification":"Integration setup: "+domain;
-      const explanation=document.createElement("p");
-      explanation.textContent=domain==="tuya"
-        ?"Tuya may require a QR code or mobile app verification. Complete this step in the official Home Assistant integration flow; STEVORA does not replace it with a text field."
-        :"This integration requires an interactive step that is not supported by the STEVORA form renderer. Continue in the official Home Assistant integration UI.";
-      const link=document.createElement("a");
-      link.href="/config/integrations";link.textContent="Open Home Assistant integrations";
-      link.style.cssText="display:inline-block;margin:12px 0;color:#8bdcff";
-      const close=document.createElement("button");close.type="button";close.textContent="Close";
-      close.onclick=()=>dlg.close();
-      dlg.append(title,explanation,link,close);
-      dlg.addEventListener("close",()=>dlg.remove());document.body.append(dlg);dlg.showModal();
-      return;
-    }
-    // Generic HA selector forms are a large compatibility surface. Simple
-    // field types get native controls. Unsupported schema types are exposed
-    // as JSON instead of guessing credentials or silently submitting data.
-    const fields=Array.isArray(result.data_schema)?result.data_schema:[];
-    const dlg=document.createElement("dialog");dlg.className="details-dialog";
-    const title=document.createElement("h2");title.textContent="Configure "+domain+": "+(result.step_id||"user");
-    const form=document.createElement("form");form.method="dialog";
-    for(const field of fields){
-      if(typeof field.name!=="string")continue;
-      const label=document.createElement("label");label.textContent=field.name;
-      label.style.display="grid";label.style.margin="11px 0";label.style.gap="7px";
-      const input=document.createElement("input");
-      input.name=field.name;
-      input.required=!!field.required;
-      input.type=field.type==="boolean"?"checkbox":field.type==="integer"||field.type==="float"?"number":"text";
-      if(field.type==="float")input.step="any";
-      if(field.default!==undefined && field.type!=="boolean")input.value=String(field.default);
-      if(field.type==="boolean")input.checked=!!field.default;
-      input.style.cssText="background:#0d2741;color:#eaf7ff;padding:11px;border:1px solid #5d89a4;border-radius:9px";
-      label.append(input);form.append(label);
-    }
-    if(!fields.length){
-      const message=document.createElement("p");message.textContent="This config flow uses an unsupported or dynamic schema. No fields will be submitted automatically.";
-      form.append(message);
-    }
-    const submit=document.createElement("button");submit.type="submit";submit.textContent=t("confirm");
-    const cancel=document.createElement("button");cancel.type="button";cancel.textContent="Cancel";cancel.onclick=()=>dlg.close();
-    form.append(submit,cancel);dlg.append(title,form);
-    form.addEventListener("submit",async e=>{
-      e.preventDefault();
-      const data={};
-      for(const input of form.querySelectorAll("input[name]")){
-        let value=input.type==="checkbox"?input.checked:input.value;
-        if(input.type==="number"&&value!=="")value=Number(value);
-        data[input.name]=value;
-      }
-      try{
-        const next=await coreREST("/api/config/config_entries/flow/"+encodeURIComponent(result.flow_id),"POST",data);
-        dlg.close();await processFlow(domain,next);
-      }catch(error){notice(formatError(error),true)}
-    });
-    dlg.addEventListener("close",()=>dlg.remove());document.body.append(dlg);dlg.showModal();
+  const tr=(bg,en)=>locale==="bg"?bg:en;
+  async function openFlow(handler,options=false){
+    if(!state.admin)throw new Error(t("notAdmin"));
+    const base="/api/config/config_entries/"+(options?"options/flow":"flow");
+    const initial=await coreREST(base,"POST",{handler});
+    await stevoraFlow({base,initial,title:options?t("details"):handler,request:coreREST,translate:tr,
+      finished:async result=>{
+        notice(result.type==="abort"?String(result.reason):t("save"),result.type==="abort");
+        await loadAdmin("integrations");renderContent();
+      }});
   }
   async function editAutomation(entityId){
     if(!state.admin)throw new Error(t("notAdmin"));
@@ -726,6 +711,7 @@
       catch(e){notice(formatError(e),true)}
       return;
     }
+    if(btn.dataset.options){try{await openFlow(btn.dataset.options,true)}catch(e){notice(formatError(e),true)}return;}
     const entry=btn.getAttribute("data-entry");
     if(entry){
       const value=state.configEntries.find(x=>x.entry_id===entry);
@@ -753,6 +739,11 @@
     const form=ev.target.closest("form[data-form]");if(!form)return;
     ev.preventDefault();
     try{
+      if(form.dataset.form==="os-update"){
+        const file=form.elements.bundle.files[0];if(!state.admin||!file||!confirm(tr("Инсталиране в неактивния системен дял?","Install to the inactive OS slot?")))return;
+        const submit=form.querySelector("button");submit.disabled=true;
+        try{await updateRequest(file);await loadAdmin("updates");renderContent();notice(tr("Пакетът е инсталиран. Рестартирай за активиране.","Package installed. Restart to activate."));}finally{submit.disabled=false;}
+      }
       if(form.dataset.form==="assist"){const message=form.querySelector('input[name="message"]').value;await chat(message)}
       if(form.dataset.form==="add-integration")await addIntegration(form);
     }catch(e){notice(formatError(e),true)}

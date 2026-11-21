@@ -7,6 +7,7 @@ package main
 import (
  "context"
  "crypto/ecdsa"
+ "crypto/sha256"
  "crypto/elliptic"
  "crypto/rand"
  "crypto/tls"
@@ -29,7 +30,7 @@ import (
  "time"
 )
 
-const version = "native-integrated-dev.2"
+const version = "native-integrated-dev.3"
 
 func main() {
  root := flag.String("root", "/usr/share/stevora-os", "read-only static frontend root")
@@ -48,7 +49,13 @@ func main() {
  if err != nil {log.Fatal(err)}
  tlsKeyPair, err := tls.LoadX509KeyPair(cert,key)
  if err != nil {log.Fatal(err)}
- router := newRouter(*root,u)
+ ca,_,err:=installationCA(*certDir)
+ if err!=nil{log.Fatal(err)}
+ log.Printf("STEVORA mobile trust anchor SHA-256: %X",sha256.Sum256(ca.Raw))
+ router:=http.NewServeMux()
+ router.HandleFunc("/stevora-local-ca.cer",publicCA(ca))
+ router.Handle("/stevora-update",newUpdateHandler(u))
+ router.Handle("/",newRouter(*root,u))
  server := &http.Server{
   Addr:*httpsAddr,Handler:router,ReadHeaderTimeout:10*time.Second,
   IdleTimeout:75*time.Second,MaxHeaderBytes:1<<20,
@@ -154,11 +161,12 @@ func isCorePath(p string) bool {
 }
 
 func ensureCertificate(dir string)(string,string,error){
+ ca,issuer,err:=installationCA(dir);if err!=nil{return "","",err}
  certPath:=filepath.Join(dir,"server.crt")
  keyPath:=filepath.Join(dir,"server.key")
  if pair,err:=tls.LoadX509KeyPair(certPath,keyPath);err==nil && len(pair.Certificate)>0 {
   parsed,err:=x509.ParseCertificate(pair.Certificate[0])
-  if err==nil && time.Until(parsed.NotAfter)>15*24*time.Hour && certCoversInterfaces(parsed){
+  if err==nil && parsed.CheckSignatureFrom(ca)==nil && time.Until(parsed.NotAfter)>15*24*time.Hour && certCoversInterfaces(parsed){
    return certPath,keyPath,nil
   }
  }
@@ -167,12 +175,13 @@ func ensureCertificate(dir string)(string,string,error){
  now:=time.Now()
  template:=&x509.Certificate{
   SerialNumber:serial,Subject:pkix.Name{CommonName:"STEVORA OS Local Test"},
-  NotBefore:now.Add(-time.Hour),NotAfter:now.Add(365*24*time.Hour),
+  NotBefore:now.Add(-time.Hour),NotAfter:now.Add(180*24*time.Hour),
   KeyUsage:x509.KeyUsageDigitalSignature,ExtKeyUsage:[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
   DNSNames:[]string{"localhost","stevora.local","homeassistant.local"},
   IPAddresses:append([]net.IP{net.ParseIP("127.0.0.1"),net.ParseIP("::1")},interfaceIPs()...),
  }
- der,err:=x509.CreateCertificate(rand.Reader,template,template,&priv.PublicKey,priv)
+ if host,e:=os.Hostname();e==nil && host!=""{template.DNSNames=append(template.DNSNames,host,host+".local")}
+ der,err:=x509.CreateCertificate(rand.Reader,template,ca,&priv.PublicKey,issuer)
  if err!=nil{return "","",err}
  encoded,err:=x509.MarshalECPrivateKey(priv);if err!=nil{return "","",err}
  if err=writeAtomic(certPath,pem.EncodeToMemory(&pem.Block{Type:"CERTIFICATE",Bytes:der}),0600);err!=nil{return "","",err}

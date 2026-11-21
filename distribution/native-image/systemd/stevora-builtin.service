@@ -1,0 +1,16 @@
+[Unit]
+Description=Mount the STEVORA OS version of the bundled Core component
+DefaultDependencies=no
+RequiresMountsFor=/mnt/data/supervisor/homeassistant
+Before=docker.service haos-supervisor.service
+ConditionPathExists=/mnt/data/stevora-native-image
+ConditionPathIsDirectory=/mnt/data/supervisor/homeassistant/custom_components/stevora
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mount --bind /usr/share/stevora-components/stevora /mnt/data/supervisor/homeassistant/custom_components/stevora
+ExecStart=/bin/mount -o remount,bind,ro /mnt/data/supervisor/homeassistant/custom_components/stevora
+
+[Install]
+WantedBy=docker.service

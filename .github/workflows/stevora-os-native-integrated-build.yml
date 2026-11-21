@@ -1,15 +1,15 @@
-name: STEVORA OS Native Integrated Dev2 - Real OVA and UEFI Boot
+name: STEVORA OS Native Integrated Dev3 - Real OVA and UEFI Boot
 
 on:
   push:
     branches:
-      - feature/stevora-os-native-dev2-onboarding
+      - feature/stevora-os-native-dev3-admin-updates
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
   pull_request:
     branches:
-      - feature/stevora-os-native-dev2-onboarding
+      - feature/stevora-os-native-dev3-admin-updates
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
@@ -46,6 +46,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/stevora-browser"
           "$RUNNER_TEMP/stevora-browser/bin/pip" install playwright==1.56.0
           "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_onboarding.py
+          "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_flows.py
 
   build-ova:
     if: github.event_name != 'pull_request'
@@ -142,19 +143,22 @@ jobs:
               cp "$FILE" "release/stevora-native-integrated-ova.${ext}"
             fi
           done
+          BUNDLE="$(find haos/output_ova/images -name '*.raucb' -type f -print -quit)"
+          test -s "$BUNDLE"
+          cp "$BUNDLE" release/stevora-native-integrated-ova.publisher-input.raucb
           (cd release && sha256sum stevora-native-integrated-ova.* > SHA256SUMS.txt)
           cat > release/BUILD-IDENTITY.txt <<EOF
-          STEVORA OS Native Integrated Developer Preview 2
+          STEVORA OS Native Integrated Developer Preview 3
           Git commit: ${GITHUB_SHA}
           Pinned Home Assistant OS source: ${UPSTREAM_HAOS_SHA}
           Native boot & HTTPS TCP/443 QEMU test: PASS
-          WARNING: OAuth/MFA, Apps, Integrations and backups require real VM acceptance. OS OTA and restore are disabled.
+          WARNING: OAuth/MFA, Apps, Integrations and backups require real VM acceptance. Local OS updates require a publisher-signed RAUC bundle. Restore is disabled.
           EOF
           ls -lh release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-Native-Integrated-Dev2-OVA-QEMU-PASS
+          name: STEVORA-OS-Native-Integrated-Dev3-OVA-QEMU-PASS
           path: release/*
           if-no-files-found: error
           retention-days: 7

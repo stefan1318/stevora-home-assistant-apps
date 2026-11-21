@@ -14,3 +14,4 @@
 .setup-card input[type=checkbox] {width:1.25rem;height:1.25rem}
 .setup-card button {margin-top:.65rem}
 .setup-card [role=alert] {color:#ffb6ad}
+.flow-dialog form,.flow-dialog label{display:grid;gap:.5rem}.flow-dialog form{gap:1rem}.flow-dialog input,.flow-dialog select,.flow-dialog textarea{padding:.6rem;background:#102a41;color:#e1f2ff;border:1px solid #527591;border-radius:.5rem}.flow-dialog img{max-width:100%;image-rendering:pixelated}.flow-dialog [role=alert]{color:#ffbcaa}.stevora-cert{color:#9ad9ff}.update-upload{display:grid;gap:.75rem}

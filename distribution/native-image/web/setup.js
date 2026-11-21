@@ -14,7 +14,15 @@ function createStevoraSetup({screen, language, call, post, authorize, enter, aut
     if (response.status === 404 || response.status === 401) {
       // A temporary installation landing page can also return 404.
       const providers = await fetch("/auth/providers", options);
-      if (providers.ok && Array.isArray(await providers.json())) return [];
+      if (providers.ok) {
+        const payload = await providers.json();
+        // Home Assistant returns an object with a providers array on current
+        // Core versions; older integrations may return an array directly.
+        const available = Array.isArray(payload) ? payload :
+          (payload && !Array.isArray(payload) && Array.isArray(payload.providers)
+            ? payload.providers : null);
+        if (available !== null) return [];
+      }
     }
     if (!response.ok) throw new Error("Core " + response.status);
     const value = await response.json();

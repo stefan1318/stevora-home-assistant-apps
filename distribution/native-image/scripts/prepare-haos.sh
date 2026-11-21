@@ -63,6 +63,17 @@ install -m 0644 "$SELF_DIR/web/app.js" "$PUBLIC_DIR/app.js"
 install -m 0644 "$PROJECT_ROOT/custom_components/stevora_os/frontend/icons/stevora-192.png" "$PUBLIC_DIR/stevora-192.png"
 cp -a "$PROJECT_ROOT/custom_components/stevora" "$COMPONENTS_DIR/stevora"
 
+ROOTFS="$HAOS_DIR/buildroot-external/rootfs-overlay"
+install -Dm0644 "$SELF_DIR/systemd/stevora-builtin.service" "$ROOTFS/usr/lib/systemd/system/stevora-builtin.service"
+install -Dm0644 "$SELF_DIR/systemd/rauc-publisher.conf" "$ROOTFS/usr/lib/systemd/system/rauc.service.d/stevora.conf"
+install -Dm0755 "$SELF_DIR/scripts/enroll-publisher.sh" "$ROOTFS/usr/bin/stevoractl-enroll-publisher"
+mkdir -p "$ROOTFS/usr/share/stevora-components"
+cp -a "$COMPONENTS_DIR/stevora" "$ROOTFS/usr/share/stevora-components/"
+printf '%s\n' 'enable stevora-builtin.service' >> "$PRESET"
+for asset in qrcode.js qrcode-LICENSE.txt flows.js; do
+  install -m0644 "$SELF_DIR/web/$asset" "$PUBLIC_DIR/$asset"
+done
+
 # The upstream post-build step runs systemctl preset-all.
 printf '\nenable stevora-native-web.service\n' >> "$PRESET"
 
@@ -74,12 +85,13 @@ python3 "$SELF_DIR/scripts/patch-data-partition.py" "$DATA_SCRIPT"
 cat > "$PUBLIC_DIR/build.json" <<'STEVORA_NATIVE_META'
 {
   "product": "STEVORA OS",
-  "release": "native-integrated-dev.2",
+  "release": "native-integrated-dev.3",
   "capabilities": ["native-host-boot", "https-root-frontend", "ha-core-oauth", "supervisor-api-through-core"],
   "real_device_control": false,
   "system_bridge_enabled": true,
   "apps_management_enabled": true,
-  "updates_management_enabled": false,
+  "local_rauc_upload": true,
+  "publisher_enrollment_required": true,
   "backup_restore_enabled": false,
   "signed_stevora_ota": false,
   "test_only": true

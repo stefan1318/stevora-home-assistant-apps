@@ -19,6 +19,7 @@ if [ ! -f "$stevora_adapter/manifest.json" ]; then
   echo "STEVORA native adapter missing from build checkout" >&2
   exit 1
 fi
+sudo touch "$data_dir/stevora-native-image"
 sudo install -d "$data_dir/supervisor/homeassistant/custom_components"
 sudo cp -a "$stevora_adapter" "$data_dir/supervisor/homeassistant/custom_components/stevora"
 # A user-restored HA config remains authoritative; only first boot is seeded.
