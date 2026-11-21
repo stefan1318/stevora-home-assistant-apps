@@ -26,6 +26,7 @@ jobs:
       - name: Validate Python and shell build contracts
         run: |
           python3 -m unittest discover -s distribution/native-image/tests -p 'test_*.py' -v
+          python3 -m py_compile distribution/native-image/scripts/patch-data-partition.py
           bash -n distribution/native-image/scripts/prepare-haos.sh
           bash -n distribution/native-image/scripts/qemu-smoke.sh
           test -s custom_components/stevora_os/frontend/icons/stevora-192.png
@@ -80,6 +81,10 @@ jobs:
       - name: Apply STEVORA-native OS rootfs and service overlay
         run: |
           bash distribution/native-image/scripts/prepare-haos.sh haos
+          bash -n haos/buildroot-external/package/hassio/create-data-partition.sh
+          grep -q 'native_bootstrap: true' haos/buildroot-external/package/hassio/create-data-partition.sh
+          test -s haos/buildroot-external/stevora-custom-components/stevora/manifest.json
+          test -x haos/buildroot-external/rootfs-overlay/usr/bin/stevora-native-gateway
           git -C haos diff --stat
           grep -q '^CONFIG_HTTPD=y$' haos/buildroot-external/busybox.config
           grep -q '^enable stevora-native-web.service$' \
@@ -123,7 +128,7 @@ jobs:
               cp "$FILE" "release/stevora-native-integrated-ova.${ext}"
             fi
           done
-          (cd release && sha256sum stevora-native-dp01* > SHA256SUMS.txt)
+          (cd release && sha256sum stevora-native-integrated-ova.* > SHA256SUMS.txt)
           cat > release/BUILD-IDENTITY.txt <<EOF
           STEVORA OS Native Integrated Developer Preview 0
           Git commit: ${GITHUB_SHA}
