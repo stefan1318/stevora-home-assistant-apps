@@ -12,8 +12,8 @@
       home:"Начало",rooms:"Помещения",devices:"Устройства",lighting:"Осветление",climate:"Климат",
       scenes:"Сцени",automations:"Автоматизации",integrations:"Интеграции",apps:"Приложения",
       system:"Система",backups:"Архиви",users:"Потребители",assist:"Hey Stevora",
-      login:"Вход в STEVORA OS",loginDesc:"Използва се официалният защитен вход на Home Assistant Core, включително настроените MFA методи.",
-      loginButton:"Вход с Home Assistant",noData:"Няма достъпни данни",unknown:"Недостъпно",reload:"Обнови",
+      login:"Вход в STEVORA OS",loginDesc:"Влез с акаунта за този дом.",
+      loginButton:"Вход в STEVORA",noData:"Няма достъпни данни",unknown:"Недостъпно",reload:"Обнови",
       roomAll:"Всички помещения",total:"Общо",online:"Достъпни",unavailable:"Недостъпни",
       awaiting:"Очаква се Home Assistant Core да стартира",connecting:"Свързване към системата",
       connected:"Свързан",notAdmin:"Функцията изисква HA администраторски достъп.",
@@ -39,8 +39,8 @@
       home:"Home",rooms:"Rooms",devices:"Devices",lighting:"Lighting",climate:"Climate",
       scenes:"Scenes",automations:"Automations",integrations:"Integrations",apps:"Apps",
       system:"System",backups:"Backups",users:"Users",assist:"Hey Stevora",
-      login:"Sign in to STEVORA OS",loginDesc:"Use the official Home Assistant Core sign-in, including its configured MFA providers.",
-      loginButton:"Sign in with Home Assistant",noData:"No accessible data",unknown:"Unavailable",reload:"Refresh",
+      login:"Sign in to STEVORA OS",loginDesc:"Use your account for this home.",
+      loginButton:"Sign in to STEVORA",noData:"No accessible data",unknown:"Unavailable",reload:"Refresh",
       roomAll:"All rooms",total:"Total",online:"Available",unavailable:"Unavailable",
       awaiting:"Waiting for Home Assistant Core",connecting:"Connecting to the system",
       connected:"Connected",notAdmin:"Home Assistant admin rights required.",
@@ -180,6 +180,7 @@
     target.searchParams.set("client_id",location.origin+"/");
     target.searchParams.set("redirect_uri",location.origin+"/");
     target.searchParams.set("state",nonce);
+    target.searchParams.set("stevora_lang",locale);
     location.assign(target.toString());
   }
   async function refreshIfNeeded(){

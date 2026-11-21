@@ -7,6 +7,12 @@ on:
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
+  pull_request:
+    branches:
+      - feature/stevora-os-native-unified-dev1-20261121
+    paths:
+      - 'distribution/native-image/**'
+      - '.github/workflows/stevora-os-native-integrated-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +41,7 @@ jobs:
           echo "Source contracts PASS. This is not an image boot test."
 
   build-ova:
+    if: github.event_name != 'pull_request'
     name: Native STEVORA OS OVA image + actual QEMU boot
     runs-on: ubuntu-24.04
     needs: source-validation
