@@ -559,8 +559,34 @@
     if(result?.type==="abort"){
       notice("Integration setup: "+(result.reason||"aborted"),true);return;
     }
-    if(result?.type!=="form"||!result.flow_id){
-      showTextModal("Configuration flow: "+domain,JSON.stringify(result,null,2));return;
+    // Some HA integrations (including Tuya) use QR, external-step, progress
+    // and rich description flows. Never replace these with a text input.
+    // Hand unsupported steps back to HA's authoritative flow UI.
+    const unsupportedStep = result?.type!=="form" || !result?.flow_id ||
+      result?.type==="external" || result?.type==="show_progress" ||
+      result?.type==="show_progress_done" || result?.type==="menu" ||
+      result?.type==="progress" || result?.type==="external_done" ||
+      !!result?.description_placeholders?.qr_code ||
+      !!result?.description_placeholders?.qr_image ||
+      !!result?.description_placeholders?.qr_url ||
+      !!result?.description_placeholders?.qr_code_url ||
+      /qr|scan.*code|сканирай/i.test(String(result?.description||""));
+    if(unsupportedStep || domain==="tuya"){
+      const dlg=document.createElement("dialog");dlg.className="details-dialog";
+      const title=document.createElement("h2");
+      title.textContent=domain==="tuya"?"Tuya — QR verification":"Integration setup: "+domain;
+      const explanation=document.createElement("p");
+      explanation.textContent=domain==="tuya"
+        ?"Tuya may require a QR code or mobile app verification. Complete this step in the official Home Assistant integration flow; STEVORA does not replace it with a text field."
+        :"This integration requires an interactive step that is not supported by the STEVORA form renderer. Continue in the official Home Assistant integration UI.";
+      const link=document.createElement("a");
+      link.href="/config/integrations";link.textContent="Open Home Assistant integrations";
+      link.style.cssText="display:inline-block;margin:12px 0;color:#8bdcff";
+      const close=document.createElement("button");close.type="button";close.textContent="Close";
+      close.onclick=()=>dlg.close();
+      dlg.append(title,explanation,link,close);
+      dlg.addEventListener("close",()=>dlg.remove());document.body.append(dlg);dlg.showModal();
+      return;
     }
     // Generic HA selector forms are a large compatibility surface. Simple
     // field types get native controls. Unsupported schema types are exposed
