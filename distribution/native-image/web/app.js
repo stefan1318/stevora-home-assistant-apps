@@ -590,7 +590,7 @@
       event.preventDefault();save.disabled=true;
       try{
         const options={...original};readers.forEach(read=>read(options));
-        const validation=await supervisor("/addons/"+slugId+"/options/validate","POST",{options});
+        const validation=await supervisor("/addons/"+slugId+"/options/validate","POST",options);
         if(validation?.valid===false)throw new Error(validation.message||"Invalid options");
         await supervisor("/addons/"+slugId+"/options","POST",{options});
         dialog.close();await loadAdmin("apps");renderContent();

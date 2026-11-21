@@ -26,6 +26,9 @@ with sync_playwright() as pw:
    done.add(key);return reply({})
   if path=='/auth/token': return reply(dict(access_token='mock-access',refresh_token='mock-refresh',expires_in=1800))
   if path=='/auth/providers':return reply([])
+  if path.startswith('/api/hassio_ingress/'):
+   assert 'ingress_session=mock-session' in req.headers.get('cookie','') or 'ingress_session=mock-session' in req.all_headers().get('cookie','')
+   return r.fulfill(content_type='text/html',body='<h1>Test app</h1>')
   f=root/(path.lstrip('/') or 'index.html')
   if f.is_file():return r.fulfill(path=str(f.resolve()))
   reply({},404)
@@ -37,6 +40,16 @@ with sync_playwright() as pw:
    if typ=='auth':return sock.send(json.dumps({'type':'auth_ok','ha_version':'test'}))
    events.append(m)
    vals={'get_config':dict(location_name='Home',latitude=42,longitude=25,time_zone='Europe/Sofia'),'stevora/os/v1/manifest':dict(installation_id='test',entities=[],rooms=[]),'conversation/agent/list':{'agents':[]}}
+   vals['supervisor/ingress/info']={'ingress_url':'/api/hassio_ingress/mock/'}
+   vals['supervisor/ingress/session']={'session':'mock-session'}
+   if typ=='supervisor/api':
+    endpoint=m['endpoint']
+    vals[typ]={
+     '/addons':{'addons':[{'name':'Terminal','slug':'test_terminal','state':'started','ingress':True}]},
+     '/store':{'addons':[]},
+     '/addons/test_terminal/info':{'name':'Terminal','options':{'port':22}},
+     '/addons/test_terminal/options/validate':{'valid':m.get('data')=={'port':2222}},
+    }.get(endpoint,{})
    sock.send(json.dumps(dict(id=m['id'],type='result',success=True,result=vals.get(typ,[]))))
   sock.on_message(msg)
  page.route_web_socket('**/api/websocket',ws)
@@ -61,7 +74,15 @@ with sync_playwright() as pw:
  assert any(m['type']=='config/core/update' and m['location_name']=='New home' for m in events)
  assert any(m['type']=='analytics/preferences' and m['preferences']=={'base':False} for m in events)
  assert 'test-only-one' not in page.evaluate('JSON.stringify(sessionStorage)')
- page.evaluate('sessionStorage.clear()');page.reload()
+ page.locator('[data-view="apps"]').click()
+ page.locator('[data-addon-action="options"]').click()
+ page.get_by_label('port',exact=True).fill('2222')
+ page.get_by_role('button',name='Save',exact=True).click()
+ expect(page.get_by_role('dialog')).to_have_count(0)
+ assert any(m.get('endpoint')=='/addons/test_terminal/options' and m.get('data')=={'options':{'port':2222}} for m in events)
+ page.locator('[data-addon-action="open"]').click()
+ expect(page.get_by_role('heading',name='Test app')).to_be_visible()
+ page.evaluate('sessionStorage.clear()');page.goto('https://stevora.test/')
  expect(page.get_by_role('button',name='Sign in to STEVORA')).to_be_visible()
  # A completed Home Assistant onboarding responds 404, while modern
  # /auth/providers returns an object, not a top-level array. This must not
