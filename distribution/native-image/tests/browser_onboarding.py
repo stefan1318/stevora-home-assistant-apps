@@ -63,6 +63,21 @@ with sync_playwright() as pw:
  assert 'test-only-one' not in page.evaluate('JSON.stringify(sessionStorage)')
  page.evaluate('sessionStorage.clear()');page.reload()
  expect(page.get_by_role('button',name='Sign in to STEVORA')).to_be_visible()
+ # A completed Home Assistant onboarding responds 404, while modern
+ # /auth/providers returns an object, not a top-level array. This must not
+ # leave STEVORA indefinitely waiting for Core after a VM restart.
+ def completed_route(route):
+  path=route.request.url.split('stevora.test')[1].split('?')[0]
+  if path=='/api/onboarding':
+   return route.fulfill(status=404,json={'message':'Not Found'})
+  if path=='/auth/providers':
+   return route.fulfill(json={'providers':[{'name':'Home Assistant Local','type':'homeassistant'}],
+                              'preselect_remember_me':False})
+  return route.continue_()
+ page.route('https://stevora.test/api/onboarding',completed_route)
+ page.route('https://stevora.test/auth/providers',completed_route)
+ page.reload()
+ expect(page.get_by_role('button',name='Sign in to STEVORA')).to_be_visible(timeout=12000)
  page.get_by_role('button',name='Change language').click()
  expect(page.get_by_role('button',name='Вход в STEVORA')).to_be_visible()
  print('PASS: Core unavailable, owner validation and creation, token exchange, authenticated resume, home configuration, privacy choice, manifest, home, existing-home login BG/EN')
