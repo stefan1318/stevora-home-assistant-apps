@@ -516,12 +516,18 @@
     const allowed=["install","start","stop","restart","update","uninstall","logs","options","open"];
     if(!allowed.includes(action))throw new Error("Unknown action");
     if(action==="open"){
-      const data=await call({type:"supervisor/ingress/info",slug:slugId});
+      const data=await call({type:"supervisor/ingress/info",slug:slugId}).catch(error=>{
+        if(error?.code!=="unknown_command")throw error;
+        return supervisor("/addons/"+slugId+"/info");
+      });
       if(!data.ingress_url)throw new Error(tr("Добавката няма уеб интерфейс през Ingress.","This app has no Ingress interface."));
       const url=new URL(data.ingress_url,location.origin);
       if(url.origin!==location.origin || !url.pathname.startsWith("/api/hassio_ingress/"))throw new Error("Invalid ingress URL");
-      const result=await call({type:"supervisor/ingress/session",slug:slugId});
-      if(typeof result.session!=="string" || !/^[a-zA-Z0-9_.=-]+$/.test(result.session))throw new Error("Invalid ingress session");
+      const result=await call({type:"supervisor/ingress/session",slug:slugId}).catch(error=>{
+        if(error?.code!=="unknown_command")throw error;
+        return supervisor("/ingress/session","POST",{});
+      });
+      if(typeof result.session!=="string" || !/^[a-zA-Z0-9_+.=/\-]+$/.test(result.session))throw new Error("Invalid ingress session");
       document.cookie="ingress_session="+result.session+";Path=/api/hassio_ingress/;SameSite=Strict;Secure";
       location.assign(url.href);return;
     }

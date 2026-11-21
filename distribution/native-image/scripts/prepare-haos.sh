@@ -49,6 +49,10 @@ grep -q 'sudo umount "' "$DATA_SCRIPT"
 # Keep the native Supervisor OS identity for now (HAOS_ID/RAUC and machine).
 # Branding and authenticated STEVORA root UI are provided by our own layers.
 sed -i 's/^# CONFIG_HTTPD is not set$/CONFIG_HTTPD=y/' "$BUSYBOX_CONFIG"
+# The physical-console publisher enrollment command verifies a public X.509 certificate.
+if ! grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' "$HAOS_DIR/buildroot-external/configs/ova_defconfig"; then
+  printf '\nBR2_PACKAGE_LIBOPENSSL_BIN=y\n' >> "$HAOS_DIR/buildroot-external/configs/ova_defconfig"
+fi
 sed -i 's/^HAOS_NAME="Home Assistant OS"$/HAOS_NAME="STEVORA OS Integrated Developer Preview"/' "$META"
 
 install -m 0644 "$SELF_DIR/systemd/stevora-native-web.service" "$SERVICE_TARGET"
