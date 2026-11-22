@@ -1,15 +1,15 @@
-name: STEVORA OS Native Integrated Dev3 - Real OVA and UEFI Boot
+name: STEVORA OS Native Integrated Dev4 - Real OVA and UEFI Boot
 
 on:
   push:
     branches:
-      - feature/stevora-os-native-dev3-admin-updates
+      - feature/stevora-os-native-dev4-control-sync
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
   pull_request:
     branches:
-      - feature/stevora-os-native-dev3-admin-updates
+      - feature/stevora-os-native-dev4-control-sync
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
@@ -37,9 +37,15 @@ jobs:
           bash -n distribution/native-image/scripts/qemu-smoke.sh
           test -s custom_components/stevora_os/frontend/icons/stevora-192.png
           node --check distribution/native-image/web/setup.js
-          node --check distribution/native-image/web/app.js
+          for file in distribution/native-image/web/*.js; do node --check "$file"; done
           (cd distribution/native-image/gateway && go test -v ./...)
           echo "Source contracts PASS. This is not an image boot test."
+
+      - name: Run STEVORA integration and manifest regressions
+        run: |
+          python3 -m venv "$RUNNER_TEMP/stevora-unit"
+          "$RUNNER_TEMP/stevora-unit/bin/pip" install voluptuous==0.15.2
+          "$RUNNER_TEMP/stevora-unit/bin/python" -m unittest discover -s tests/stevora -v
 
       - name: Test first boot and interrupted setup in Chrome with simulated Core
         run: |
@@ -148,17 +154,17 @@ jobs:
           cp "$BUNDLE" release/stevora-native-integrated-ova.publisher-input.raucb
           (cd release && sha256sum stevora-native-integrated-ova.* > SHA256SUMS.txt)
           cat > release/BUILD-IDENTITY.txt <<EOF
-          STEVORA OS Native Integrated Developer Preview 3
+          STEVORA OS Native Integrated Developer Preview 4
           Git commit: ${GITHUB_SHA}
           Pinned Home Assistant OS source: ${UPSTREAM_HAOS_SHA}
-          Native boot & HTTPS TCP/443 QEMU test: PASS
+          Native boot & HTTP TCP/80 QEMU test: PASS
           WARNING: OAuth/MFA, Apps, Integrations and backups require real VM acceptance. Local OS updates require a publisher-signed RAUC bundle. Restore is disabled.
           EOF
           ls -lh release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-Native-Integrated-Dev3-OVA-QEMU-PASS
+          name: STEVORA-OS-Native-Integrated-Dev4-OVA-QEMU-PASS
           path: release/*
           if-no-files-found: error
           retention-days: 7

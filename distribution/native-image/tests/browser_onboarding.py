@@ -10,6 +10,8 @@ with sync_playwright() as pw:
  page=ctx.new_page()
  done=set()
  events=[]
+ transport={}
+ device={"entity_id":"light.test","name":"Desk lamp","area_id":"desk","available_controls":["brightness","toggle"],"controls":["brightness"]}
  failed=[True]
  def route(r):
   req=r.request; path=req.url.split('stevora.test')[1].split('?')[0]
@@ -32,14 +34,19 @@ with sync_playwright() as pw:
   f=root/(path.lstrip('/') or 'index.html')
   if f.is_file():return r.fulfill(path=str(f.resolve()))
   reply({},404)
- page.route('https://stevora.test/**',route)
+ page.route('http://stevora.test/**',route)
  def ws(sock):
+  transport['socket']=sock
   sock.send(json.dumps({'type':'auth_required'}))
   def msg(raw):
    m=json.loads(raw); typ=m['type']
    if typ=='auth':return sock.send(json.dumps({'type':'auth_ok','ha_version':'test'}))
    events.append(m)
-   vals={'get_config':dict(location_name='Home',latitude=42,longitude=25,time_zone='Europe/Sofia'),'stevora/os/v1/manifest':dict(installation_id='test',entities=[],rooms=[]),'conversation/agent/list':{'agents':[]}}
+   vals={'auth/current_user':{'id':'owner','name':'Owner','is_admin':True},'get_config':dict(location_name='Home',latitude=42,longitude=25,time_zone='Europe/Sofia'),'stevora/os/v1/manifest':dict(installation_id='test',entities=[],rooms=[]),'conversation/agent/list':{'agents':[]}}
+   if typ=='stevora/os/v1/manifest/subscribe': transport['subscription']=m['id']
+   vals['stevora/os/v1/manifest']={'installation_id':'test','entities':[device],'rooms':[{'id':'desk','name':'Desk'}],'controllable_entities':['light.test']}
+   vals['get_states']=[{'entity_id':'light.test','state':'on','attributes':{'brightness':128}}]
+   vals['auth/long_lived_access_token']='mock-scoped-token'
    vals['supervisor/ingress/info']={'ingress_url':'/api/hassio_ingress/mock/'}
    vals['supervisor/ingress/session']={'session':'mock-session'}
    if typ=='supervisor/api':
@@ -53,7 +60,7 @@ with sync_playwright() as pw:
    sock.send(json.dumps(dict(id=m['id'],type='result',success=True,result=vals.get(typ,[]))))
   sock.on_message(msg)
  page.route_web_socket('**/api/websocket',ws)
- page.goto('https://stevora.test/')
+ page.goto('http://stevora.test/')
  expect(page.get_by_role('heading',name='Preparing STEVORA OS')).to_be_visible()
  page.get_by_label('Display name').fill('Owner',timeout=15000)
  page.get_by_label('Username').fill('owner')
@@ -74,6 +81,25 @@ with sync_playwright() as pw:
  assert any(m['type']=='config/core/update' and m['location_name']=='New home' for m in events)
  assert any(m['type']=='analytics/preferences' and m['preferences']=={'base':False} for m in events)
  assert 'test-only-one' not in page.evaluate('JSON.stringify(sessionStorage)')
+ page.locator('[data-view="devices"]').click()
+ page.get_by_role('button',name='Details',exact=True).click()
+ dialog=page.get_by_role('dialog')
+ expect(dialog.get_by_role('heading',name='Desk lamp')).to_be_visible()
+ dialog.get_by_label('Brightness (%)').fill('25')
+ dialog.get_by_role('button',name='Apply').click()
+ expect(dialog.get_by_role('button',name='Toggle')).to_have_count(0)
+ dialog.get_by_role('button',name='Close').click()
+ assert any(e.get('service_data')=={'brightness_pct':25} and e['target']=={'entity_id':'light.test'} for e in events)
+ device['name']='Renamed from mobile'
+ transport['socket'].send(json.dumps({'type':'event','id':transport['subscription'],'event':{'manifest_changed':True}}))
+ expect(page.get_by_text('Renamed from mobile',exact=True)).to_be_visible()
+ page.locator('[data-view="users"]').click()
+ page.get_by_role('button',name='Generate long-lived access token').click()
+ page.get_by_label('Application name').fill('Device test')
+ page.get_by_role('button',name='Generate',exact=True).click()
+ expect(page.get_by_label('Access token')).to_have_value('mock-scoped-token')
+ page.get_by_role('button',name='Done',exact=True).click()
+ assert 'mock-scoped-token' not in page.evaluate('JSON.stringify(sessionStorage)+JSON.stringify(localStorage)')
  page.locator('[data-view="apps"]').click()
  page.locator('[data-addon-action="options"]').click()
  page.get_by_label('port',exact=True).fill('2222')
@@ -82,7 +108,7 @@ with sync_playwright() as pw:
  assert any(m.get('endpoint')=='/addons/test_terminal/options' and m.get('data')=={'options':{'port':2222}} for m in events)
  page.locator('[data-addon-action="open"]').click()
  expect(page.get_by_role('heading',name='Test app')).to_be_visible()
- page.evaluate('sessionStorage.clear()');page.goto('https://stevora.test/')
+ page.evaluate('sessionStorage.clear()');page.goto('http://stevora.test/')
  expect(page.get_by_role('button',name='Sign in to STEVORA')).to_be_visible()
  # A completed Home Assistant onboarding responds 404, while modern
  # /auth/providers returns an object, not a top-level array. This must not
@@ -95,8 +121,8 @@ with sync_playwright() as pw:
    return route.fulfill(json={'providers':[{'name':'Home Assistant Local','type':'homeassistant'}],
                               'preselect_remember_me':False})
   return route.continue_()
- page.route('https://stevora.test/api/onboarding',completed_route)
- page.route('https://stevora.test/auth/providers',completed_route)
+ page.route('http://stevora.test/api/onboarding',completed_route)
+ page.route('http://stevora.test/auth/providers',completed_route)
  page.reload()
  expect(page.get_by_role('button',name='Sign in to STEVORA')).to_be_visible(timeout=12000)
  page.get_by_role('button',name='Change language').click()

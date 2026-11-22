@@ -74,7 +74,7 @@ install -Dm0755 "$SELF_DIR/scripts/enroll-publisher.sh" "$ROOTFS/usr/bin/stevora
 mkdir -p "$ROOTFS/usr/share/stevora-components"
 cp -a "$COMPONENTS_DIR/stevora" "$ROOTFS/usr/share/stevora-components/"
 printf '%s\n' 'enable stevora-builtin.service' >> "$PRESET"
-for asset in qrcode.js qrcode-LICENSE.txt flows.js; do
+for asset in qrcode.js qrcode-LICENSE.txt flows.js controls.js management.js; do
   install -m0644 "$SELF_DIR/web/$asset" "$PUBLIC_DIR/$asset"
 done
 
@@ -89,8 +89,8 @@ python3 "$SELF_DIR/scripts/patch-data-partition.py" "$DATA_SCRIPT"
 cat > "$PUBLIC_DIR/build.json" <<'STEVORA_NATIVE_META'
 {
   "product": "STEVORA OS",
-  "release": "native-integrated-dev.3",
-  "capabilities": ["native-host-boot", "https-root-frontend", "ha-core-oauth", "supervisor-api-through-core"],
+  "release": "native-integrated-dev.4",
+  "capabilities": ["native-host-boot", "http-root-frontend", "optional-tls", "manifest-subscription", "native-device-controls", "ha-core-oauth", "supervisor-api-through-core"],
   "real_device_control": false,
   "system_bridge_enabled": true,
   "apps_management_enabled": true,
@@ -114,5 +114,5 @@ test -s "$COMPONENTS_DIR/stevora/manifest.json"
 test -x "$GATEWAY_TARGET"
 
 echo "STEVORA native overlay applied to the pinned upstream build checkout."
-echo "Boot-test target: https://<VM-IP>/ (self-signed TLS, port 443)."
+echo "Boot-test target: http://<VM-IP>/ (port 80)."
 echo "WARNING: dev image only; no signed OTA or backup restore."

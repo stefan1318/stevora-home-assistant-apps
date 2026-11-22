@@ -48,7 +48,7 @@ func newUpdateHandler(core *url.URL) http.Handler {
    json.NewEncoder(w).Encode(map[string]any{"publisher_configured":cert!="","status":status});return
   }
   if r.Method!="POST"{http.Error(w,"Method not allowed",405);return}
-  if r.Header.Get("Content-Type")!="application/octet-stream" || r.Header.Get("Origin")!="https://"+r.Host{http.Error(w,"Invalid upload",400);return}
+  if r.Header.Get("Content-Type")!="application/octet-stream" || r.Header.Get("Origin")!=requestOrigin(r){http.Error(w,"Invalid upload",400);return}
   if cert==""{http.Error(w,"Enroll the release publisher certificate on the host first",409);return}
   if !install.TryLock(){http.Error(w,"Update already in progress",409);return}
   defer install.Unlock()
@@ -71,4 +71,9 @@ func newUpdateHandler(core *url.URL) http.Handler {
   record("reboot_required")
   w.WriteHeader(http.StatusNoContent)
  })
+}
+
+func requestOrigin(r *http.Request) string {
+ if r.TLS != nil {return "https://"+r.Host}
+ return "http://"+r.Host
 }

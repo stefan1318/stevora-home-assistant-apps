@@ -1,6 +1,6 @@
 """STEVORA integration: capability discovery, premium panel and local Home Hub."""
 import logging
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
 from homeassistant.components import websocket_api
 from homeassistant.components.http import StaticPathConfig
@@ -55,10 +55,35 @@ async def websocket_panel_generate(hass, connection, msg):
     connection.send_result(msg["id"], generate_panel(localized_manifest(manifest, msg.get("language") or manifest.get("preferred_language", "en"))))
 
 
+@websocket_api.websocket_command({"type": "stevora/os/v1/manifest/subscribe"})
+@callback
+def subscribe_manifest(hass, connection, msg):
+    """An invalidation contains no registry data. Each client refetches its projection."""
+    @callback
+    def changed(_event):
+        connection.send_event(msg["id"], {"manifest_changed": True})
+
+    subscriptions = [
+        hass.bus.async_listen(event, changed)
+        for event in ("stevora_manifest_changed", "area_registry_updated",
+                      "device_registry_updated", "entity_registry_updated",
+                      "core_config_updated")
+    ]
+
+    @callback
+    def unsubscribe():
+        for remove in subscriptions:
+            remove()
+
+    connection.subscriptions[msg["id"]] = unsubscribe
+    connection.send_result(msg["id"])
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
     websocket_api.async_register_command(hass, websocket_panel_generate)
     websocket_api.async_register_command(hass, websocket_os_manifest)
+    websocket_api.async_register_command(hass, subscribe_manifest)
     register_admin_commands(hass)
     register_hub_commands(hass)
     manager = AdminManagers(hass)
@@ -111,6 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
+    hass.bus.async_fire("stevora_manifest_changed")
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     state = hass.data.get(DOMAIN, {}).pop(entry.entry_id, {})

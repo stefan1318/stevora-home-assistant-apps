@@ -47,14 +47,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Starting UEFI/QEMU boot check (host 18443 to VM 443 HTTPS)."
+echo "Starting UEFI/QEMU boot check (host 18080 to VM 80 HTTP)."
 GOOD=0
 for attempt in $(seq 1 120); do
   if ! kill -0 "${QEMU_PID}" 2>/dev/null; then
     echo "QEMU exited before STEVORA could serve its root UI." >&2
     break
   fi
-  if curl -ksS --fail --max-time 5 https://127.0.0.1:18443/ > "${WORKDIR}/page.html"; then
+  if curl -sS --fail --max-time 5 http://127.0.0.1:18080/ > "${WORKDIR}/page.html"; then
     if grep -q '<title>STEVORA OS — Native Integrated Preview</title>' "${WORKDIR}/page.html"; then
       GOOD=1
       break
@@ -70,22 +70,21 @@ if [[ "${GOOD}" != 1 ]]; then
   exit 1
 fi
 
-curl -ksS --fail --max-time 5 https://127.0.0.1:18443/build.json > "${WORKDIR}/build.json"
-for asset in flows.js qrcode.js stevora-local-ca.cer setup.js stevora-login.css stevora-login.png; do
-  curl -ksS --fail --max-time 5 "https://127.0.0.1:18443/$asset" > "${WORKDIR}/$asset"
+curl -sS --fail --max-time 5 http://127.0.0.1:18080/build.json > "${WORKDIR}/build.json"
+for asset in flows.js qrcode.js controls.js management.js setup.js stevora-login.css stevora-login.png; do
+  curl -sS --fail --max-time 5 "http://127.0.0.1:18080/$asset" > "${WORKDIR}/$asset"
   test -s "${WORKDIR}/$asset"
 done
-openssl x509 -inform DER -in "${WORKDIR}/stevora-local-ca.cer" -out "${WORKDIR}/ca.pem"
-curl -sS --cacert "${WORKDIR}/ca.pem" --fail https://127.0.0.1:18443/healthz >/dev/null
+curl -sS --fail http://127.0.0.1:18080/healthz >/dev/null
 grep -q 'createStevoraSetup' "${WORKDIR}/setup.js"
 python3 - "${WORKDIR}/build.json" <<'PY'
 import json, pathlib, sys
 data = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert data["product"] == "STEVORA OS"
-assert data["release"] == "native-integrated-dev.3"
+assert data["release"] == "native-integrated-dev.4"
 assert data["test_only"] is True
 assert data["signed_stevora_ota"] is False
-print("Native boot+HTTPS service PASS; unsigned update remains disabled.")
+print("Native boot+HTTP service PASS; unsigned update remains disabled.")
 PY
 
-echo "Native x86_64 image boot verified: STEVORA root / reachable on HTTPS TCP/443."
+echo "Native x86_64 image boot verified: STEVORA root / reachable on HTTP TCP/80."

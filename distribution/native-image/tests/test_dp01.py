@@ -33,7 +33,8 @@ class NativeIntegratedContract(unittest.TestCase):
         self.assertIn("Content-Security-Policy",src)
         unit=(ROOT/"systemd"/"stevora-native-web.service").read_text()
         self.assertIn("stevora-native-gateway",unit)
-        self.assertIn("-https :443",unit)
+        self.assertIn("-http :80",unit)
+        self.assertNotIn("-https :443",unit)
         self.assertIn("NoNewPrivileges=yes",unit)
         self.assertIn("RequiresMountsFor=/mnt/data",unit)
 
@@ -76,8 +77,8 @@ class NativeIntegratedContract(unittest.TestCase):
         qemu=(SCRIPTS/"qemu-smoke.sh").read_text()
         self.assertIn("qemu-system-x86_64",qemu)
         self.assertIn("hostfwd=tcp:127.0.0.1:18443-:443",qemu)
-        self.assertIn("https://127.0.0.1:18443/",qemu)
-        self.assertIn('native-integrated-dev.3',qemu)
+        self.assertIn("http://127.0.0.1:18080/",qemu)
+        self.assertIn('native-integrated-dev.4',qemu)
 
     def test_no_hardcoded_personal_identifiers(self):
         text="\n".join(p.read_text() for p in [WEB/"app.js",WEB/"index.html",SCRIPTS/"prepare-haos.sh"]).lower()

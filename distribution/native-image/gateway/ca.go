@@ -4,15 +4,12 @@ import (
  "crypto/ecdsa"
  "crypto/elliptic"
  "crypto/rand"
- "crypto/sha256"
  "crypto/tls"
  "crypto/x509"
  "crypto/x509/pkix"
  "encoding/pem"
  "errors"
- "fmt"
  "math/big"
- "net/http"
  "os"
  "path/filepath"
  "time"
@@ -43,15 +40,4 @@ func installationCA(dir string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
  if err=writeAtomic(file,identity,0600);err!=nil{return nil,nil,err}
  parsed,err:=x509.ParseCertificate(cert)
  return parsed,key,err
-}
-
-func publicCA(cert *x509.Certificate) http.HandlerFunc {
- return func(w http.ResponseWriter,r *http.Request){
-  if r.Method!="GET" && r.Method!="HEAD"{http.Error(w,"Method not allowed",405);return}
-  w.Header().Set("Content-Disposition",`attachment; filename="stevora-local-ca.cer"`)
-  w.Header().Set("Content-Type","application/x-x509-ca-cert")
-  w.Header().Set("Cache-Control","no-store")
-  w.Header().Set("X-STEVORA-SHA256",fmt.Sprintf("%X",sha256.Sum256(cert.Raw)))
-  if r.Method=="GET"{w.Write(cert.Raw)}
- }
 }

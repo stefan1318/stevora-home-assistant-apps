@@ -101,6 +101,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
         components.assist_pipeline = assist_pipeline
 
         core = types.ModuleType("homeassistant.core")
+        core.callback = lambda fn: fn
         core.HomeAssistant = object
         entries = types.ModuleType("homeassistant.config_entries")
         entries.ConfigEntry = _Entry
@@ -178,7 +179,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
 
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
-        self.assertEqual(len(self.commands), 16)
+        self.assertIn(self.integration.subscribe_manifest, self.commands)
         response = {}
         connection = types.SimpleNamespace(
             user=types.SimpleNamespace(is_admin=False),
@@ -189,6 +190,24 @@ class IntegrationLifecycleTests(unittest.TestCase):
         self.assertEqual(response["payload"]["installation_id"], "test-entry")
         self.assertEqual(response["payload"]["role"], "regular")
         self.assertEqual(response["payload"]["preferred_language"], "en")
+
+    def test_changes_request_fresh_projection_and_unsubscribe(self):
+        handlers = {}
+        events = []
+        def listen(key, callback):
+            handlers[key] = callback
+            return lambda: handlers.pop(key)
+        self.hass.bus = types.SimpleNamespace(async_listen=listen)
+        connection = types.SimpleNamespace(subscriptions={}, send_result=lambda _: None,
+                                           send_event=lambda *args: events.append(args))
+        self.integration.subscribe_manifest(self.hass, connection, {"id": 9})
+        for handler in handlers.values():
+            handler({"internal_entity": "private"})
+        self.assertTrue(events)
+        self.assertEqual(set(i for i, _ in events), {9})
+        self.assertTrue(all(value == {"manifest_changed": True} for _, value in events))
+        connection.subscriptions[9]()
+        self.assertFalse(handlers)
 
     def test_missing_config_entry_rejected(self):
         self.hass.config_entries.async_entries = lambda domain: []

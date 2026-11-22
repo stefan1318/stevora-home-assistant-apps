@@ -5,16 +5,13 @@
 package main
 
 import (
- "context"
  "crypto/ecdsa"
- "crypto/sha256"
  "crypto/elliptic"
  "crypto/rand"
  "crypto/tls"
  "crypto/x509"
  "crypto/x509/pkix"
  "encoding/pem"
- "errors"
  "flag"
  "io"
  "log"
@@ -30,13 +27,13 @@ import (
  "time"
 )
 
-const version = "native-integrated-dev.3"
+const version = "native-integrated-dev.4"
 
 func main() {
  root := flag.String("root", "/usr/share/stevora-os", "read-only static frontend root")
  certDir := flag.String("cert-dir", "/mnt/data/stevora/https", "private persistent TLS key directory")
- httpsAddr := flag.String("https", ":443", "TLS listen address")
- httpAddr := flag.String("http", ":80", "HTTP redirect listen address")
+ httpsAddr := flag.String("https", os.Getenv("STEVORA_HTTPS_ADDR"), "optional TLS listen address")
+ httpAddr := flag.String("http", ":80", "HTTP listen address")
  upstream := flag.String("upstream", "http://127.0.0.1:8123", "local HA Core address")
  flag.Parse()
 
@@ -44,42 +41,32 @@ func main() {
  if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() != "8123" {
   log.Fatal("HA upstream must be strictly http://127.0.0.1:8123")
  }
- if err = os.MkdirAll(*certDir,0700);err != nil {log.Fatal(err)}
- cert, key, err := ensureCertificate(*certDir)
- if err != nil {log.Fatal(err)}
- tlsKeyPair, err := tls.LoadX509KeyPair(cert,key)
- if err != nil {log.Fatal(err)}
- ca,_,err:=installationCA(*certDir)
- if err!=nil{log.Fatal(err)}
- log.Printf("STEVORA mobile trust anchor SHA-256: %X",sha256.Sum256(ca.Raw))
  router:=http.NewServeMux()
- router.HandleFunc("/stevora-local-ca.cer",publicCA(ca))
  router.Handle("/stevora-update",newUpdateHandler(u))
  router.Handle("/",newRouter(*root,u))
- server := &http.Server{
-  Addr:*httpsAddr,Handler:router,ReadHeaderTimeout:10*time.Second,
-  IdleTimeout:75*time.Second,MaxHeaderBytes:1<<20,
-  TLSConfig:&tls.Config{MinVersion:tls.VersionTLS12,Certificates:[]tls.Certificate{tlsKeyPair}},
+ server:=&http.Server{Addr:*httpAddr, Handler:router, ReadHeaderTimeout:10*time.Second, IdleTimeout:75*time.Second, MaxHeaderBytes:1<<20}
+ if *httpsAddr == "" {
+  log.Printf("STEVORA %s HTTP on %s",version,*httpAddr)
+  log.Fatal(server.ListenAndServe())
  }
- redirect := &http.Server{Addr:*httpAddr,ReadHeaderTimeout:5*time.Second,
-  Handler:http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-   if r.URL.Path=="/healthz" {
-    w.Header().Set("Content-Type","text/plain; charset=utf-8")
-    _,_ = io.WriteString(w,"STEVORA native gateway online\n")
-    return
-   }
-   hostname,_,err:=net.SplitHostPort(r.Host)
-   if err!=nil {hostname=r.Host}
-   if strings.ContainsAny(hostname,"/\\@") || hostname=="" {http.Error(w,"Invalid host",400);return}
-   if strings.Contains(hostname,":") && !strings.HasPrefix(hostname,"[") {hostname="["+hostname+"]"}
-   dest:="https://"+hostname+r.URL.RequestURI()
-   http.Redirect(w,r,dest,http.StatusPermanentRedirect)
-  }),
+ cert,key:=os.Getenv("STEVORA_TLS_CERT"),os.Getenv("STEVORA_TLS_KEY")
+ if (cert=="") != (key=="") {log.Fatal("Configure both STEVORA_TLS_CERT and STEVORA_TLS_KEY")}
+ if cert=="" {
+  if err=os.MkdirAll(*certDir,0700);err!=nil{log.Fatal(err)}
+  cert,key,err=ensureCertificate(*certDir)
+  if err!=nil{log.Fatal(err)}
  }
- go func(){log.Printf("STEVORA HTTP redirect on %s",*httpAddr);if err:=redirect.ListenAndServe();err!=nil&&!errors.Is(err,http.ErrServerClosed){log.Printf("http: %v",err)}}()
- log.Printf("STEVORA Native %s HTTPS %s, HA authentication forwarded to Core",version,*httpsAddr)
- if err=server.ListenAndServeTLS("","");err != nil && !errors.Is(err,http.ErrServerClosed){log.Fatal(err)}
- _ = server.Shutdown(context.Background())
+ _,port,err:=net.SplitHostPort(*httpsAddr)
+ if err!=nil {log.Fatal(err)}
+ redirect:=&http.Server{Addr:*httpAddr,ReadHeaderTimeout:5*time.Second,Handler:http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  host:=(&url.URL{Host:r.Host}).Hostname()
+  dest:=url.URL{Scheme:"https",Host:net.JoinHostPort(host,port),Path:r.URL.Path,RawPath:r.URL.RawPath,RawQuery:r.URL.RawQuery}
+  http.Redirect(w,r,dest.String(),http.StatusTemporaryRedirect)
+ })}
+ go func(){log.Fatal(redirect.ListenAndServe())}()
+ server.Addr=*httpsAddr
+ server.TLSConfig=&tls.Config{MinVersion:tls.VersionTLS12}
+ log.Fatal(server.ListenAndServeTLS(cert,key))
 }
 
 func newRouter(staticRoot string,core *url.URL) http.Handler {
@@ -117,12 +104,15 @@ func newRouter(staticRoot string,core *url.URL) http.Handler {
    return
   }
   if isCorePath(r.URL.Path){
+   if strings.HasPrefix(r.URL.Path,"/config/") || strings.HasPrefix(r.URL.Path,"/profile/") || strings.HasPrefix(r.URL.Path,"/auth/"){
+    w.Header().Set("X-Frame-Options","SAMEORIGIN")
+   }
    proxy.ServeHTTP(w,r)
    return
   }
   if r.Method!=http.MethodGet && r.Method!=http.MethodHead {http.Error(w,"Method not allowed",405);return}
   if r.URL.Path=="/recovery" {
-    http.Redirect(w,r,"https://"+r.Host+"/auth/authorize",http.StatusTemporaryRedirect)
+    http.Redirect(w,r,"/auth/authorize",http.StatusTemporaryRedirect)
     return
   }
   file:=path.Clean("/"+r.URL.Path)
@@ -135,7 +125,7 @@ func newRouter(staticRoot string,core *url.URL) http.Handler {
    } else {http.NotFound(w,r);return}
   }
   if file=="/index.html" {
-   w.Header().Set("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' wss:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+   w.Header().Set("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'")
    w.Header().Set("Content-Type","text/html; charset=utf-8")
    entry,err:=os.Open(filepath.Join(staticRoot,"index.html"))
    if err!=nil {http.NotFound(w,r);return}
@@ -155,9 +145,9 @@ func newRouter(staticRoot string,core *url.URL) http.Handler {
 func isCorePath(p string) bool {
  // Narrow allowlist for official Core login, OAuth exchange, WebSockets and
  // frontend assets used by the official login screen. No arbitrary proxy.
- prefixes:=[]string{"/auth/","/api/","/frontend_latest/","/frontend_es5/","/stevora_static/","/onboarding/","/static/","/local/","/hacsfiles/"}
+ prefixes:=[]string{"/config/","/profile/","/brands/","/auth/","/api/","/frontend_latest/","/frontend_es5/","/stevora_static/","/onboarding/","/static/","/local/","/hacsfiles/"}
  for _,v:=range prefixes {if strings.HasPrefix(p,v){return true}}
- return p=="/onboarding.html" || p=="/stevora" || p=="/stevora/" || p=="/auth" || p=="/manifest.json" || p=="/service_worker.js"
+ return p=="/config" || p=="/profile" || p=="/onboarding.html" || p=="/stevora" || p=="/stevora/" || p=="/auth" || p=="/manifest.json" || p=="/service_worker.js"
 }
 
 func ensureCertificate(dir string)(string,string,error){

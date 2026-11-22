@@ -138,6 +138,7 @@ async def rooms_update(hass, connection, msg):
     vol.Required("expected_revision"): vol.Coerce(int),
     vol.Required("room_aliases"): {str: str},
     vol.Optional("room_order"): [str],
+    vol.Optional("room_labels"): {str: {vol.Required("bg"): str, vol.Required("en"): str}},
     vol.Required("entity_aliases"): {str: str},
 })
 @websocket_api.async_response
@@ -152,6 +153,10 @@ async def room_aliases_update(hass, connection, msg):
         return
     area_ids = {area.id for area in area_registry.async_get(hass).async_list_areas()}
     entity_ids = set(entity_registry.async_get(hass).entities)
+    labels = msg.get("room_labels", {})
+    if len(labels) > 200 or any(key not in area_ids or any(len(v.strip()) > 80 for v in pair.values()) for key, pair in labels.items()):
+        connection.send_error(msg["id"], "invalid_translation", "Unknown room or invalid label")
+        return
     if room_order is not None and (len(room_order) != len(set(room_order)) or any(key not in area_ids for key in room_order)):
         connection.send_error(msg["id"], "invalid_order", "Unknown or duplicate room in ordering")
         return
@@ -166,6 +171,12 @@ async def room_aliases_update(hass, connection, msg):
             connection.send_error(msg["id"], "conflict", "Configuration revision changed")
             return
         new_state = dict(manager.data)
+        if labels:
+            translations = dict(manager.data.get("translations", {}))
+            rooms = dict(translations.get("rooms", {}))
+            for key, pair in labels.items():
+                rooms[key] = {lang: label.strip() for lang, label in pair.items() if label.strip()}
+            new_state["translations"] = {**translations, "rooms": rooms}
         if room_order is not None:
             new_state["room_order"] = list(room_order)
         new_state["room_aliases"] = {key: value.strip() for key, value in room_aliases.items() if value.strip()}

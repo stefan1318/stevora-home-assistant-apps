@@ -11,7 +11,7 @@
     bg: {
       home:"Начало",rooms:"Помещения",devices:"Устройства",lighting:"Осветление",climate:"Климат",
       scenes:"Сцени",automations:"Автоматизации",integrations:"Интеграции",apps:"Приложения",
-      system:"Система",backups:"Архиви",users:"Потребители",assist:"Hey Stevora",
+      system:"Система",backups:"Архиви",users:"Потребители",assist:"STEVORA Assist",
       login:"Вход в STEVORA OS",loginDesc:"Влез с акаунта за този дом.",
       loginButton:"Вход в STEVORA",noData:"Няма достъпни данни",unknown:"Недостъпно",reload:"Обнови",
       roomAll:"Всички помещения",total:"Общо",online:"Достъпни",unavailable:"Недостъпни",
@@ -30,7 +30,7 @@
       send:"Изпрати",prompt:"Команда или въпрос",automationNote:"Показват се действителните автоматизации. Изпълнението и редактирането зависят от HA права.",
       integrationsNote:"Реални HA config entries. Добавянето използва поддържания HA config-flow API.",
       badOptions:"Промяна на опции: невалиден JSON.",noPermission:"Нямаш необходимите права за това действие.",
-      authError:"Неуспешна автентикация. Проверете HA Core и HTTPS сертификата.",
+      authError:"Неуспешна автентикация. Проверете връзката към Core.",
       dangerous:"Операцията може да промени или изтрие системни данни. Потвърди изрично.",
       noActions:"Няма разрешени действия",notSupported:"Тази операция не е внедрена или проверена.",
       stillStarting:"Home Assistant Core още стартира",search:"Търси…",
@@ -38,7 +38,7 @@
     en: {
       home:"Home",rooms:"Rooms",devices:"Devices",lighting:"Lighting",climate:"Climate",
       scenes:"Scenes",automations:"Automations",integrations:"Integrations",apps:"Apps",
-      system:"System",backups:"Backups",users:"Users",assist:"Hey Stevora",
+      system:"System",backups:"Backups",users:"Users",assist:"STEVORA Assist",
       login:"Sign in to STEVORA OS",loginDesc:"Use your account for this home.",
       loginButton:"Sign in to STEVORA",noData:"No accessible data",unknown:"Unavailable",reload:"Refresh",
       roomAll:"All rooms",total:"Total",online:"Available",unavailable:"Unavailable",
@@ -57,7 +57,7 @@
       send:"Send",prompt:"Command or question",automationNote:"Real automations are listed. Execution and editing are subject to HA permissions.",
       integrationsNote:"Real HA config entries. Adding integrations uses the supported HA config-flow API.",
       badOptions:"Options must be valid JSON.",noPermission:"You do not have sufficient permissions.",
-      authError:"Authentication failed. Check HA Core and the HTTPS certificate.",
+      authError:"Authentication failed. Check the connection to Core.",
       dangerous:"This operation can change or delete system data. Confirm explicitly.",
       noActions:"No permitted actions",notSupported:"This action has not been implemented or validated.",
       stillStarting:"Home Assistant Core is still booting",search:"Search…",
@@ -90,8 +90,12 @@
     el.className=bad?"error":"success";el.textContent=String(message||"");
   }
   function formatError(error){return (error?.message || error?.code || String(error)).slice(0,300)}
+  const uniqueID = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,"0")).join("");
+  let retryTimer, syncTimer, syncSerial=0, connectDelay=1000;
   function resetSession() {
-    document.cookie="ingress_session=;Path=/api/hassio_ingress/;Max-Age=0;SameSite=Strict;Secure";
+    clearTimeout(retryTimer);clearTimeout(syncTimer);syncTimer=null;syncSerial++;state.voice?.end();
+    management.closeAll(); for(const d of document.querySelectorAll("dialog[open]"))d.close();
+    document.cookie="ingress_session=;Path=/api/hassio_ingress/;Max-Age=0;SameSite=Strict"+(location.protocol==="https:"?";Secure":"");
     try {sessionStorage.removeItem(authKey);sessionStorage.removeItem("stevora.oauth.state")}catch{}
     state.token=null;state.refresh=null;state.expires=0;state.connected=false;
     if(state.ws){try{state.ws.close()}catch{}}
@@ -100,7 +104,7 @@
     state.pending.clear();
     state.people=[];state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
     state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
-    state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
+    state.currentUser=null;state.pipeline=null;state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
   }
   function saveAuth(record) {
     const expiry=Date.now()+Math.max(30,Number(record.expires_in||1800)-40)*1000;
@@ -168,7 +172,7 @@
     void setup.run();
   }
   function startAuth(){
-    const nonce=crypto.randomUUID();
+    const nonce=uniqueID();
     sessionStorage.setItem("stevora.oauth.state",nonce);
     const target=new URL("/auth/authorize",location.origin);
     target.searchParams.set("client_id",location.origin+"/");
@@ -194,11 +198,18 @@
       if(msg.type==="auth_required"){ws.send(JSON.stringify({type:"auth",access_token:state.token}));return}
       if(msg.type==="auth_invalid"){showLogin(t("authError"));return}
       if(msg.type==="auth_ok"){
-        loginMessage="";notice("");
+        loginMessage="";notice("");connectDelay=1000;
         state.connected=true;state.login=false;
         q("#conn-indicator").textContent="ONLINE";
         q("#conn-indicator").className="status online";
         q("#connection-label").textContent="Home Assistant Core "+esc(msg.ha_version||"");
+        await Promise.all([
+          tryCall({type:"subscribe_events",event_type:"state_changed"},null),
+          tryCall({type:"stevora/os/v1/manifest/subscribe"},null)
+        ]);
+        const saved=await tryCall({type:"frontend/get_user_data",key:"stevora_profile"},null);
+        if(ws!==state.ws)return;
+        if(["en","bg"].includes(saved?.value?.language))locale=saved.value.language;
         await setup.run();
         return;
       }
@@ -207,6 +218,10 @@
         if(task){clearTimeout(task.timer);state.pending.delete(msg.id);msg.success?task.resolve(msg.result):task.reject(msg.error||new Error("HA WS command failed"))}
         return;
       }
+      if(msg.type==="event" && msg.event?.manifest_changed){
+        scheduleSync();return;
+      }
+      if(msg.type==="event" && state.voice?.id===msg.id){state.voice.event(msg.event);return;}
       if(msg.type==="event" && msg.event?.event_type==="state_changed"){
         const e=msg.event.data?.new_state;
         if(msg.event.data?.entity_id?.startsWith("person.")){
@@ -214,14 +229,46 @@
           if(e)state.people.push(e);
           if(state.view==="people")renderContent();
         }
+        if(!e && msg.event.data?.entity_id){
+          state.entities=state.entities.filter(item=>item.entity_id!==msg.event.data.entity_id);
+          document.dispatchEvent(new Event("stevora-device-update"));
+        }
         if(e?.entity_id && state.stevoraManifest?.entities?.some(item=>item.entity_id===e.entity_id)){
           const i=state.entities.findIndex(v=>v.entity_id===e.entity_id);
           if(i>=0)state.entities[i]=e;else state.entities.push(e);
+          document.dispatchEvent(new Event("stevora-device-update"));
           if(["home","rooms","devices","lighting","climate","scenes","automations"].includes(state.view))renderContent();
         }
       }
     });
-    ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);});
+    ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;state.voice?.end();q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);scheduleReconnect(ws);});
+  }
+  function scheduleReconnect(ws){
+    if(!state.token||state.ws!==ws)return;
+    clearTimeout(retryTimer);
+    retryTimer=setTimeout(()=>{if(state.ws===ws&&state.token)connect().catch(e=>{notice(formatError(e),true);scheduleReconnect(state.ws);});},connectDelay);
+    connectDelay=Math.min(connectDelay*2,30000);
+  }
+  function scheduleSync(){
+    if(!state.connected||state.login||document.body.classList.contains("setup-mode")||syncTimer)return;
+    syncTimer=setTimeout(()=>{syncTimer=null;void loadData();},150);
+  }
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)scheduleSync();});
+  function deviceProfile(id){
+    return state.stevoraManifest?.entities?.find(x=>x.entity_id===id);
+  }
+  function allows(e,key){
+    const p=deviceProfile(e?.entity_id);
+    return controllable(e) && (p?.controls??p?.available_controls??[]).includes(key);
+  }
+  function latestEntity(id){
+    return state.entities.find(x=>x.entity_id===id);
+  }
+  function deviceDetails(id){
+    openStevoraDevice({id,entity:()=>latestEntity(id),profile:()=>deviceProfile(id),canControl:()=>controllable(latestEntity(id)),call,tr});
+  }
+  function managementButton(key,bg,en){
+    return '<button data-management="'+key+'">'+esc(tr(bg,en))+'</button>';
   }
   function rejectPending() {
     for(const task of state.pending.values()){clearTimeout(task.timer);task.reject(new Error("Connection closed"))}
@@ -260,6 +307,7 @@
     return response?.result==="ok"?response.data:response;
   }
   async function loadData() {
+    const socket=state.ws,request=++syncSerial;
     try {
       // Get_states is projected by Core to the current user's permissions.
       const [entities,areas,registry,devices]=await Promise.all([
@@ -268,15 +316,17 @@
         tryCall({type:"config/entity_registry/list"},[]),
         tryCall({type:"config/device_registry/list"},[]),
       ]);
-      state.people=(entities||[]).filter(e=>e.entity_id.startsWith("person."));
+      const people=(entities||[]).filter(e=>e.entity_id.startsWith("person."));
       const assistants=await tryCall({type:"conversation/agent/list"}, {agents:[]});
       const agents=assistants.agents || [];
       const preferred=await tryCall({type:"stevora/assistants/resolve"}, {});
       const pipelines=await tryCall({type:"assist_pipeline/pipeline/list"}, {});
       const pipeline=pipelines.pipelines?.find(item=>item.id===(preferred.pipeline_id || pipelines.preferred_pipeline));
-      state.agent=agents.find(agent=>agent.id===pipeline?.conversation_engine)?.id ||
+      const agent=agents.find(agent=>agent.id===pipeline?.conversation_engine)?.id ||
         (!preferred.pipeline_id && agents.find(agent=>agent.id==="conversation.home_assistant")?.id) || null;
       const manifest=await tryCall({type:"stevora/os/v1/manifest",language:locale},null);
+      if(socket!==state.ws||request!==syncSerial)return;
+      state.agent=agent||pipeline?.conversation_engine;state.pipeline=pipeline;state.people=people;
       state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
       const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
       state.entities=(Array.isArray(entities)?entities:[])
@@ -286,11 +336,12 @@
       state.deviceRegistry=Array.isArray(devices)?devices:[];
       state.connected=true;
       // HA enforces admin server-side on this command. Never infer from a UI role.
-      try {await call({type:"config/auth/list"});state.admin=true}
-      catch {state.admin=false}
+      const user=await tryCall({type:"auth/current_user"},null);
+      if(socket!==state.ws||request!==syncSerial)return;
+      state.admin=user?.is_admin===true;state.currentUser=user;
       if(state.admin)await loadAdmin(state.view);
       renderContent();
-      void call({type:"subscribe_events",event_type:"state_changed"}).catch(()=>{});
+      document.dispatchEvent(new Event("stevora-device-update"));
     } catch(err){notice(formatError(err),true);renderContent()}
   }
   async function loadAdmin(view) {
@@ -318,7 +369,7 @@
     state.areas.find(a=>a.area_id===id)?.name||id||t("roomAll");
   function entityArea(e){
     const r=state.registry.find(x=>x.entity_id===e.entity_id);
-    let areaId=r?.area_id;
+    let areaId=deviceProfile(e.entity_id)?.area_id||r?.area_id;
     if(!areaId && r?.device_id)areaId=state.deviceRegistry.find(d=>d.id===r.device_id)?.area_id;
     return areaId||"";
   }
@@ -343,17 +394,17 @@
     return '<div class="filters"><select data-room>'+options.map(([id,name])=>'<option value="'+esc(id)+'" '+(state.room===id?"selected":"")+'>'+esc(name)+'</option>').join("")+'</select><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div>'
   }
   function matches(name){return !state.filter || String(name).toLocaleLowerCase().includes(state.filter.toLocaleLowerCase())}
-  function info(e){let n=state.registry.find(x=>x.entity_id===e.entity_id);return n?.name||e.attributes?.friendly_name||e.entity_id}
+  function info(e){let n=state.registry.find(x=>x.entity_id===e.entity_id);return deviceProfile(e.entity_id)?.name||n?.name||e.attributes?.friendly_name||e.entity_id}
   function card(e){
     const id=e.entity_id,domain=id.split(".")[0],name=info(e);
     if(!matches(name+" "+id))return "";
     const action=(s,label,disabled=false)=>'<button data-entity="'+esc(id)+'" data-service="'+s+'" '+(disabled?"disabled":"")+'>'+esc(label)+'</button>';
     let buttons="";
-    if(["light","switch","fan"].includes(domain) && controllable(e))buttons+=action("toggle",e.state==="off"?t("turnOn"):t("turnOff"));
+    if(["light","switch","fan"].includes(domain) && allows(e,"toggle"))buttons+=action("toggle",e.state==="off"?t("turnOn"):t("turnOff"));
     if(domain==="climate"){
       const v=Number(e.attributes?.temperature),lo=Number(e.attributes?.min_temp??5),hi=Number(e.attributes?.max_temp??35);
       buttons+='<span class="temp-readout">'+esc(t("target"))+': '+(Number.isFinite(v)?v+"°":"—")+'</span>';
-      if(controllable(e)&&Number.isFinite(v)&&v>=lo&&v<=hi){
+      if(allows(e,"temperature")&&Number.isFinite(v)&&v>=lo&&v<=hi){
         buttons+=action("climate-down","−1°",v-1<lo)+action("climate-up","+1°",v+1>hi);
       }
     }
@@ -363,7 +414,7 @@
       buttons+='<button data-automation-edit="'+esc(id)+'">'+esc(t("details"))+'</button>';
     const stateLabel=e.state==="off"?t("turnOff"):e.state;
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
-    return '<article class="device-card"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><strong>'+esc(name)+'</strong><small>'+esc(id)+'</small></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
+    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><strong>'+esc(name)+'</strong><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(t("details"))+'</button><small>'+esc(id)+'</small></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
   }
   function home(){
     const available=count();
@@ -378,14 +429,14 @@
     const domain={lighting:"light",climate:"climate",scenes:"scene",automations:"automation"}[view]||"all";
     const name=t(view)||t("devices");
     const list=visibleEntities(domain);
-    return hdr(name,list.length+" "+t("devices"))+
+    return hdr(name,list.length+" "+t("devices"))+(view==="devices"&&state.admin?'<div class="actions">'+managementButton("devices","Управление на устройства","Device Manager")+managementButton("visibility","Видимост","Visibility")+'</div>':"")+
       (view==="automations"&&state.admin?
         '<div class="actions"><button data-automation-new="1">'+esc(t("install"))+' automation</button></div>':"")+
       toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
   }
   function roomsView(){
-    const rooms=state.areas;
-    return hdr(t("rooms"))+'<div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div>';
+    const rooms=state.stevoraManifest?.rooms||[];
+    return hdr(t("rooms"))+(state.admin?managementButton("rooms","Управление на помещения","Rooms Manager"):"")+'<div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div>';
   }
   function integrationView(){
     if(!state.admin)return hdr(t("integrations"))+empty(t("notAdmin"));
@@ -434,7 +485,12 @@
     const cards=Object.entries(state.system).map(([k,data])=>
       '<article class="system-card"><h2>'+esc(k.replace("/","").replace("/"," · "))+'</h2><dl>'+
       Object.entries(data||{}).filter(([key,val])=>["version","version_latest","update_available","state","healthy","supported","operating_system","hostname","arch","disk_total","disk_used","memory_total","memory_usage","boot","channel","supervisor","status"].includes(key)).map(([key,val])=>'<div><dt>'+esc(key)+'</dt><dd>'+esc(typeof val==="object"?JSON.stringify(val):val)+'</dd></div>').join("")+'</dl></article>').join("");
-    return hdr(t("system"),t("systemReadOnly"))+
+    return hdr(t("system"))+'<section class="panel"><div class="actions">'+
+       managementButton("general","Дом и регион","Home & region")+managementButton("network","Мрежа","Network")+
+       managementButton("check","Провери конфигурацията","Check configuration")+managementButton("coreRestart","Рестартирай Core","Restart Core")+
+       managementButton("coreUpdate","Обнови Core","Update Core")+managementButton("supervisorUpdate","Обнови Supervisor","Update Supervisor")+
+       managementButton("reboot","Рестарт на хоста","Reboot host")+managementButton("shutdown","Изключи хоста","Shut down host")+
+       coreSettings("/config/dashboard","Всички настройки на Core","All Core settings")+'</div></section>'+
        '<div class="alert">'+esc(t("updateCaution"))+'</div><div class="system-grid">'+(cards||empty())+'</div>';
   }
   function backupView(){
@@ -445,15 +501,23 @@
     '<section class="panel"><div class="section-head"><h2>'+esc(t("backups"))+'</h2><button data-safe-action="backup-full">'+esc(t("backupCreate"))+'</button></div>'+
     '<div class="cards">'+(records.map(a=>'<article class="device-card"><strong>'+esc(a.name||a.slug)+'</strong><small>'+esc(a.date||"")+'</small><p>'+esc(a.type||"")+'</p><small>'+esc(a.slug||"")+'</small></article>').join("")||empty())+'</div></section>';
   }
+  function coreSettings(path,bg,en){
+    return '<button data-core-settings="'+esc(path)+'">'+esc(tr(bg,en))+'</button>';
+  }
   function usersView(){
-    if(!state.admin)return hdr(t("users"))+empty(t("notAdmin"));
+    const actions=managementButton("profile","Моят профил","My profile")+managementButton("password","Смяна на парола","Change password")+
+      managementButton("issueToken","Генерирай дълготраен токен","Generate long-lived access token")+managementButton("revokeToken","Отмени токен","Revoke token")+
+      coreSettings("/profile/security","Сигурност и MFA","Security & MFA");
+    const profile=hdr(t("users"),state.currentUser?.name||"")+'<section class="panel"><div class="actions">'+actions+'</div></section>';
+    if(!state.admin)return profile;
     const u=Array.isArray(state.userList)?state.userList:state.userList?.users||[];
-    return hdr(t("users"),t("systemReadOnly"))+
-    '<div class="cards">'+(u.map(x=>'<article class="device-card"><strong>'+esc(x.name||"")+'</strong><small>'+esc(x.id||"")+'</small><p>'+esc(x.is_admin?"Administrator":"User")+'</p></article>').join("")||empty())+'</div>';
+    return profile+managementButton("accounts","Управление на акаунти","Manage accounts")+
+    '<div class="cards">'+(u.map(x=>'<article class="device-card"><strong>'+esc(x.name||"")+'</strong><small>'+esc(x.id||"")+'</small><p>'+esc(x.is_owner||x.group_ids?.includes("system-admin")?"Administrator":"User")+'</p></article>').join("")||empty())+'</div>';
   }
   function assistView(){
-    if(!state.agent)return hdr(t("assist"))+empty(t("unknown"));
-    return hdr(t("assist"),t("noAudio"))+
+    const top=hdr("STEVORA Assist")+(state.admin?'<div class="actions">'+managementButton("assist","Настройки на асистентите","Assist Manager")+coreSettings("/config/voice-assistants/assistants","Гласови асистенти","Voice pipelines")+'</div>':"");
+    if(!state.agent)return top+empty(tr("Няма достъпен разговорен агент.","No available conversation agent."));
+    return top+voiceButton()+
     '<section class="panel"><div id="chat-messages" class="chat">'+(state.messages.map(m=>'<p class="'+(m.role==="user"?"mine":"theirs")+'">'+esc(m.text)+'</p>').join(""))+'</div>'+
     '<form data-form="assist"><input name="message" maxlength="500" required autocomplete="off" placeholder="'+esc(t("prompt"))+'"><button type="submit">'+esc(t("send"))+'</button></form></section>';
   }
@@ -485,6 +549,7 @@
   function setView(view){
     const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
     if(!allowed.includes(view))return;
+    if(state.view==="assist"&&view!=="assist")state.voice?.end();
     state.view=view;state.filter="";state.room="";
     q("#sidebar").classList.remove("mobile-open");
     renderContent();
@@ -498,6 +563,7 @@
     const e=state.entities.find(x=>x.entity_id===id);
     if(!controllable(e))throw new Error("Forbidden by STEVORA Manifest or unavailable entity");
     const domain=id.split(".")[0];
+    if(action==="toggle"&&!allows(e,"toggle") || action.startsWith("climate-")&&!allows(e,"temperature"))throw Error(t("noPermission"));
     const p={type:"call_service",domain,service:action,target:{entity_id:id}};
     if(action==="climate-up"||action==="climate-down"){
       if(domain!=="climate")throw new Error("Invalid climate action");
@@ -509,7 +575,7 @@
     else if(action==="trigger"&&domain!=="automation")throw new Error("Invalid trigger");
     else if(action==="turn_on"&&domain!=="scene")throw new Error("Invalid activation");
     await call(p);
-    const entities=await call({type:"get_states"});state.entities=(entities||[]).filter(x=>!backlight(x));renderContent();
+    const entities=await call({type:"get_states"});state.entities=(entities||[]).filter(x=>deviceProfile(x.entity_id)&&!backlight(x));renderContent();
   }
   async function addonAction(slugId,action){
     if(!state.admin||!slug(slugId))throw new Error(t("notAdmin"));
@@ -528,7 +594,7 @@
         return supervisor("/ingress/session","POST",{});
       });
       if(typeof result.session!=="string" || !/^[a-zA-Z0-9_+.=/\-]+$/.test(result.session))throw new Error("Invalid ingress session");
-      document.cookie="ingress_session="+result.session+";Path=/api/hassio_ingress/;SameSite=Strict;Secure";
+      document.cookie="ingress_session="+result.session+";Path=/api/hassio_ingress/;SameSite=Strict"+(location.protocol==="https:"?";Secure":"");
       location.assign(url.href);return;
     }
     if(action==="logs"){
@@ -612,6 +678,18 @@
     await openFlow(domain);
   }
   const tr=(bg,en)=>locale==="bg"?bg:en;
+  const management=createStevoraManagement({call,supervisor,rest:coreREST,tr,refresh:loadData,currentLanguage:()=>locale,
+    setLanguage:value=>{locale=value;sessionStorage.setItem("stevora.lang",value);}});
+  function openCoreSettings(path,label){
+    if(!["/config/dashboard","/config/voice-assistants/assistants","/profile/security"].includes(path))return;
+    const d=document.createElement("dialog");d.className="settings-frame details-dialog";
+    const header=document.createElement("header"),name=document.createElement("strong");
+    name.textContent="STEVORA · "+label;
+    const direct=document.createElement("a");direct.href=path;direct.target="_blank";direct.rel="noopener";direct.textContent=tr("Нов раздел","Open tab");
+    const close=document.createElement("button");close.textContent=tr("Затвори","Close");close.onclick=()=>d.close();
+    const frame=document.createElement("iframe");frame.title=label;frame.src=path;header.append(name,direct,close);d.append(header,frame);
+    d.onclose=()=>{d.remove();scheduleSync();};document.body.append(d);d.showModal();
+  }
   async function openFlow(handler,options=false){
     if(!state.admin)throw new Error(t("notAdmin"));
     const base="/api/config/config_entries/"+(options?"options/flow":"flow");
@@ -631,7 +709,7 @@
       uuid=String(conf?.id||"");
       if(!/^[a-zA-Z0-9_-]{1,100}$/.test(uuid))throw new Error("Automation has no editable YAML id");
     }else{
-      uuid=crypto.randomUUID().replaceAll("-","");
+      uuid=uniqueID().replaceAll("-","");
       conf={id:uuid,alias:"New STEVORA automation",description:"",
         triggers:[],conditions:[],actions:[],mode:"single"};
     }
@@ -666,6 +744,65 @@
     await supervisor("/backups/new/full","POST",{name:"STEVORA OS test backup"});
     await loadAdmin("backups");renderContent();
   }
+  function voiceButton(){
+    if(!state.pipeline?.stt_engine)return "";
+    if(!navigator.mediaDevices?.getUserMedia)return '<p>'+esc(tr("За микрофон използвай мобилното приложение или HTTPS.","Use the mobile app or HTTPS for microphone access."))+'</p>';
+    return '<button data-voice>'+esc(state.voice?tr("Спри записа","Stop recording"):tr("Говори със STEVORA","Speak to STEVORA"))+'</button>';
+  }
+  async function toggleVoice(){
+    if(state.voice){state.voice.stop();return;}
+    const ws=state.ws,pipeline=state.pipeline;
+    if(!pipeline?.stt_engine||!state.connected)return;
+    let stream,context,processor,source,handler,stopped=false,closed=false,timer;
+    const stop=()=>{
+      stopped=true;
+      if(handler!=null&&ws.readyState===WebSocket.OPEN){ws.send(Uint8Array.of(handler));handler=null;}
+      if(processor){processor.onaudioprocess=null;processor.disconnect();processor=null;}
+      source?.disconnect();source=null;stream?.getTracks().forEach(track=>track.stop());
+      if(context && context.state!=="closed")void context.close().catch(()=>{});context=null;
+    };
+    const end=()=>{closed=true;stop();clearTimeout(timer);if(state.voice===voice){state.voice=null;if(state.view==="assist")renderContent();}};
+    const voice={id:null,end,stop,event(ev){
+      if(!ev||closed)return;
+      const v=ev.data||{};
+      if(ev.type==="run-start"){
+        handler=v.runner_data?.stt_binary_handler_id;
+        if(stopped)stop();
+      }
+      if(ev.type==="stt-end"){stop();if(v.stt_output?.text)state.messages.push({role:"user",text:v.stt_output.text});}
+      if(ev.type==="intent-end"){
+        const answer=v.intent_output?.response?.speech?.plain?.speech;
+        if(answer)state.messages.push({role:"assistant",text:answer});
+      }
+      if(ev.type==="tts-end"&&v.tts_output?.url){
+        const url=new URL(v.tts_output.url,location.origin);
+        if(url.origin===location.origin)new Audio(url.href).play().catch(()=>{});
+      }
+      if(ev.type==="error"){notice(v.message||v.code||t("error"),true);end();}
+      if(ev.type==="run-end")end();
+      if(state.view==="assist")renderContent();
+    }};
+    state.voice=voice;renderContent();
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1}});
+      if(closed||stopped||ws!==state.ws||!state.connected){end();return;}
+      context=new AudioContext();await context.resume();
+      if(closed||stopped){end();return;}
+      source=context.createMediaStreamSource(stream);
+      processor=context.createScriptProcessor(2048,1,1);
+      processor.onaudioprocess=e=>{
+        if(handler==null||stopped||ws.readyState!==WebSocket.OPEN)return;
+        const samples=e.inputBuffer.getChannelData(0),buf=new ArrayBuffer(1+samples.length*2),view=new DataView(buf);
+        view.setUint8(0,handler);
+        for(let i=0;i<samples.length;i++)view.setInt16(1+2*i,Math.max(-1,Math.min(1,samples[i]))*(samples[i]<0?32768:32767),true);
+        ws.send(buf);
+      };
+      source.connect(processor);processor.connect(context.destination);
+      timer=setTimeout(end,90000);voice.id=state.id;
+      await call({type:"assist_pipeline/run",pipeline:pipeline.id,start_stage:"stt",end_stage:pipeline.tts_engine?"tts":"intent",
+        input:{sample_rate:context.sampleRate},timeout:60});
+    }catch(e){end();throw e;}
+  }
   async function chat(message){
     const s=String(message||"").trim().slice(0,500);if(!s)return;
     state.messages.push({role:"user",text:s});
@@ -679,12 +816,18 @@
     state.messages=state.messages.slice(-24);renderContent();
   }
   document.addEventListener("click",async ev=>{
-    const btn=ev.target.closest("button");if(!btn)return;
+    const btn=ev.target.closest("button");
+    const card=ev.target.closest("[data-detail]");
+    if(card&&(!btn||btn.hasAttribute("data-open-detail"))){try{deviceDetails(card.dataset.detail);}catch(e){notice(formatError(e),true);}return;}
+    if(!btn)return;
+    if(btn.dataset.management){try{await management.run(btn.dataset.management);}catch(e){notice(formatError(e),true);}return;}
+    if(btn.dataset.coreSettings){openCoreSettings(btn.dataset.coreSettings,btn.textContent);return;}
+    if(btn.hasAttribute("data-voice")){try{await toggleVoice();}catch(e){notice(formatError(e),true);}return;}
     if(btn.id==="begin-auth"){startAuth();return}
     if(btn.id==="logout"){resetSession();showLogin();return}
     if(btn.id==="lang-toggle"){
       locale=locale==="bg"?"en":"bg";sessionStorage.setItem("stevora.lang",locale);
-      if(document.body.classList.contains("setup-mode")){nav();await setup.run();}else renderContent();return;
+      if(document.body.classList.contains("setup-mode")){nav();await setup.run();}else if(state.connected)await loadData();else renderContent();return;
     }
     if(btn.id==="menu-toggle"){q("#sidebar").classList.toggle("mobile-open");return}
     if(btn.id==="refresh"){if(state.connected)await loadData();return}

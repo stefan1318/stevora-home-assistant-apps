@@ -1,5 +1,5 @@
 [Unit]
-Description=STEVORA OS Native HTTPS Gateway and Core API Reverse Proxy
+Description=STEVORA OS Native Web Gateway and Core API Reverse Proxy
 Documentation=https://github.com/stefan1318/stevora-home-assistant-apps
 After=network-online.target haos-data.service
 Wants=network-online.target
@@ -9,7 +9,8 @@ ConditionPathExists=/usr/bin/stevora-native-gateway
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/stevora-native-gateway -root /usr/share/stevora-os -cert-dir /mnt/data/stevora/https -upstream http://127.0.0.1:8123 -http :80 -https :443
+EnvironmentFile=-/mnt/data/stevora/gateway.env
+ExecStart=/usr/bin/stevora-native-gateway -root /usr/share/stevora-os -cert-dir /mnt/data/stevora/https -upstream http://127.0.0.1:8123 -http :80
 Restart=always
 RestartSec=8s
 NoNewPrivileges=yes
