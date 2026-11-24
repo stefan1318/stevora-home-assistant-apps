@@ -1,0 +1,139 @@
+name: STEVORA OS Dev4 - Raspberry Pi 4 ARM64 image (BUILD-ONLY)
+
+on:
+  push:
+    branches:
+      - feature/stevora-os-native-dev4-rpi4-image-20261125
+    paths:
+      - 'distribution/native-image/**'
+      - '.github/workflows/stevora-os-native-rpi4-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stevora-dev4-rpi4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-validation:
+    name: ARM64 source and regression contracts (not a boot test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+      - name: Validate native image and Pi 4 contracts
+        run: |
+          python3 -m unittest discover -s distribution/native-image/tests -p 'test_*.py' -v
+          python3 -m py_compile distribution/native-image/scripts/patch-data-partition.py
+          bash -n distribution/native-image/scripts/prepare-haos.sh
+          test -s custom_components/stevora/manifest.json
+          test -s custom_components/stevora_os/frontend/icons/stevora-192.png
+          for f in distribution/native-image/web/*.js; do node --check "$f"; done
+          (cd distribution/native-image/gateway && go test ./...)
+          echo "Source validation PASS; no Pi hardware boot has been tested."
+
+  build-rpi4:
+    name: Build actual rpi4_64 ARM64 .img.xz (hardware boot not verified)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    needs: source-validation
+    env:
+      UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+
+      - name: Inspect resources and free unused runner SDKs
+        run: |
+          df -h /
+          free -h
+          docker --version
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h /
+
+      - name: Fetch exact pinned upstream Home Assistant OS and Buildroot
+        run: |
+          git clone --filter=blob:none --depth 1 --branch dev \
+            https://github.com/home-assistant/operating-system.git haos
+          git -C haos fetch --no-tags --depth 1 origin "$UPSTREAM_HAOS_SHA"
+          git -C haos checkout --detach "$UPSTREAM_HAOS_SHA"
+          git -C haos submodule update --init --depth 1
+          test "$(git -C haos rev-parse HEAD)" = "$UPSTREAM_HAOS_SHA"
+          test -f haos/buildroot/Makefile
+          grep -qx 'BR2_aarch64=y' haos/buildroot-external/configs/rpi4_64_defconfig
+          grep -qx 'BR2_PACKAGE_HASSIO_MACHINE="raspberrypi4-64"' \
+            haos/buildroot-external/configs/rpi4_64_defconfig
+
+      - name: Cross-compile static STEVORA gateway for Linux ARM64
+        run: |
+          cd distribution/native-image/gateway
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" \
+            -o stevora-native-gateway .
+          test -x stevora-native-gateway
+          file stevora-native-gateway
+          file stevora-native-gateway | grep -qi 'ARM aarch64'
+
+      - name: Overlay STEVORA components onto the pinned Raspberry Pi 4 target
+        run: |
+          bash distribution/native-image/scripts/prepare-haos.sh haos rpi4_64
+          grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' haos/buildroot-external/configs/rpi4_64_defconfig
+          grep -qx 'CONFIG_HTTPD=y' haos/buildroot-external/busybox.config
+          grep -q 'native_bootstrap: true' haos/buildroot-external/package/hassio/create-data-partition.sh
+          test -s haos/buildroot-external/stevora-custom-components/stevora/manifest.json
+          file haos/buildroot-external/rootfs-overlay/usr/bin/stevora-native-gateway | grep -qi 'ARM aarch64'
+          grep -qx 'enable stevora-native-web.service' \
+            haos/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset
+          git -C haos diff --stat
+
+      - name: Build Raspberry Pi 4 image via upstream HAOS Buildroot container
+        working-directory: haos
+        env:
+          MAKEFLAGS: -j2
+        run: |
+          scripts/enter.sh make O=output_rpi4_64 rpi4_64
+          find output_rpi4_64/images -maxdepth 1 -type f -printf '%f %s bytes\n'
+          test -n "$(find output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -print -quit)"
+
+      - name: Validate compressed image integrity (not a hardware boot)
+        id: image
+        run: |
+          IMAGE="$(find haos/output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -print -quit)"
+          test -n "$IMAGE"
+          test -s "$IMAGE"
+          xz -t "$IMAGE"
+          xz -l "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Package reproducible build-only Raspberry Pi 4 image
+        run: |
+          mkdir -p release
+          cp "${{ steps.image.outputs.image }}" release/stevora-native-dev4-rpi4-64.img.xz
+          cat > release/BUILD-IDENTITY.txt <<EOF
+          STEVORA OS Native Integrated Dev4 — Raspberry Pi 4 64-bit
+          STEVORA source commit: $GITHUB_SHA
+          Pinned Home Assistant OS source: $UPSTREAM_HAOS_SHA
+          Target: rpi4_64 / linux arm64 / raspberrypi4-64
+          Status: BUILD-ONLY; physical Raspberry Pi 4 boot NOT VERIFIED
+          Security: test image only, HTTP 80 for trusted local networks.
+          OTA: STEVORA signed updates NOT VERIFIED; backup restore disabled.
+          Never overwrite a working Dunav installation or production media.
+          EOF
+          (cd release && sha256sum stevora-native-dev4-rpi4-64.img.xz > SHA256SUMS.txt)
+          ls -lh release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-OS-Dev4-RPi4-ARM64-BUILD-ONLY
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
