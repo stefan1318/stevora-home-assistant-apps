@@ -45,6 +45,7 @@ with sync_playwright() as pw:
    vals={'auth/current_user':{'id':'owner','name':'Owner','is_admin':True},'get_config':dict(location_name='Home',latitude=42,longitude=25,time_zone='Europe/Sofia'),'stevora/os/v1/manifest':dict(installation_id='test',entities=[],rooms=[]),'conversation/agent/list':{'agents':[]}}
    if typ=='stevora/os/v1/manifest/subscribe': transport['subscription']=m['id']
    vals['stevora/os/v1/manifest']={'installation_id':'test','entities':[device],'rooms':[{'id':'desk','name':'Desk'}],'controllable_entities':['light.test']}
+   vals['stevora/os/v1/people']=[dict(entity_id='person.test',state='home',attributes=dict(friendly_name='Test resident',latitude=42.2,longitude=24.4,gps_accuracy=9),last_updated='2026-11-23T12:00:00Z')]
    vals['get_states']=[{'entity_id':'light.test','state':'on','attributes':{'brightness':128}}]
    vals['auth/long_lived_access_token']='mock-scoped-token'
    vals['supervisor/ingress/info']={'ingress_url':'/api/hassio_ingress/mock/'}
@@ -81,6 +82,12 @@ with sync_playwright() as pw:
  assert any(m['type']=='config/core/update' and m['location_name']=='New home' for m in events)
  assert any(m['type']=='analytics/preferences' and m['preferences']=={'base':False} for m in events)
  assert 'test-only-one' not in page.evaluate('JSON.stringify(sessionStorage)')
+ page.locator('[data-view="people"]').click()
+ expect(page.get_by_text('Test resident',exact=True)).to_be_visible()
+ page.route('https://tile.openstreetmap.org/**',lambda route: route.abort())
+ page.get_by_role('button',name='Show map').click()
+ expect(page.locator('svg.presence-map circle')).to_have_count(1)
+ expect(page.get_by_text('± 9 m',exact=False)).to_be_visible()
  page.locator('[data-view="devices"]').click()
  expect(page.get_by_role('button',name='Details',exact=True)).to_have_count(0)
  page.get_by_role('button',name='Desk lamp',exact=True).click()

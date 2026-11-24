@@ -191,6 +191,30 @@ class IntegrationLifecycleTests(unittest.TestCase):
         self.assertEqual(response["payload"]["role"], "regular")
         self.assertEqual(response["payload"]["preferred_language"], "en")
 
+    def test_map_uses_latest_readable_mobile_fix_for_each_person(self):
+        from datetime import datetime, timezone
+        ns = types.SimpleNamespace
+        def record(entity_id, second, **attributes):
+            return ns(entity_id=entity_id, attributes=attributes, state="home", name=entity_id,
+                      last_updated=datetime.fromtimestamp(second, timezone.utc))
+        people = [record("person." + uid, 0, user_id=uid) for uid in ("alice", "bob", "carol", "hidden")]
+        phones = [record("device_tracker." + key, i, latitude=i, longitude=i, source_type="gps", gps_accuracy=8)
+                  for i, key in enumerate(("old", "recent", "private", "orphan"), 1)]
+        registry = {t.entity_id: ns(config_entry_id=key, platform="mobile_app")
+                    for t, key in zip(phones, ("alice", "alice", "bob", "other"))}
+        sys.modules["homeassistant.helpers.entity_registry"].async_get = lambda hass: ns(async_get=registry.get)
+        self.hass.config_entries.async_entries = lambda domain: [ns(entry_id=k, data={"user_id": k}) for k in ("alice", "bob", "other")]
+        self.hass.states = ns(async_all=lambda domain: people if domain == "person" else phones)
+        results = []
+        connection = ns(user=ns(permissions=ns(check_entity=lambda key, policy: key not in {"device_tracker.private", "person.hidden"})),
+                        send_result=lambda _, rows: results.extend(rows))
+        with patch.dict(sys.modules, {"homeassistant.auth.permissions.const": ns(POLICY_READ="read")}):
+            asyncio.run(self.integration.websocket_people(self.hass, connection, {"id": 3}))
+        self.assertEqual([r["entity_id"] for r in results], ["person.alice", "person.bob", "person.carol"])
+        self.assertEqual(results[0]["attributes"]["latitude"], 2)
+        self.assertEqual(results[0]["attributes"]["gps_accuracy"], 8)
+        self.assertTrue(all("latitude" not in r["attributes"] for r in results[1:]))
+
     def test_changes_request_fresh_projection_and_unsubscribe(self):
         handlers = {}
         events = []

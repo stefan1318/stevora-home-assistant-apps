@@ -202,7 +202,7 @@
         state.connected=true;state.login=false;
         q("#conn-indicator").textContent="ONLINE";
         q("#conn-indicator").className="status online";
-        q("#connection-label").textContent="Home Assistant Core "+esc(msg.ha_version||"");
+        q("#connection-label").textContent=tr("Свързано с дома","Connected to home");
         await Promise.all([
           tryCall({type:"subscribe_events",event_type:"state_changed"},null),
           tryCall({type:"stevora/os/v1/manifest/subscribe"},null)
