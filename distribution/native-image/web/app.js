@@ -102,7 +102,7 @@
     state.ws=null;
     for(const pending of state.pending.values())pending.reject(new Error("Session ended"));
     state.pending.clear();
-    state.people=[];state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
+    state.people=[];mapVisible=false;state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
     state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
     state.currentUser=null;state.pipeline=null;state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
   }
@@ -423,7 +423,7 @@
     const available=count();
     const climates=state.entities.filter(e=>e.entity_id.startsWith("climate.")&&isAllowed(e));
     const rooms=state.stevoraManifest?.rooms||state.areas;
-    return hdr("STEVORA "+t("home"),t("managed"))+
+    return hdr("STEVORA "+t("home"))+
     '<div class="metrics">'+stat(t("total"),state.entities.length)+stat(t("online"),available)+stat(t("rooms"),rooms.length)+stat(t("climate"),climates.length)+'</div>'+
     '<section class="panel"><h2>'+esc(t("rooms"))+'</h2><div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div></section>'+
     '<section class="panel"><h2>'+esc(t("climate"))+'</h2><div class="cards">'+(climates.slice(0,4).map(card).join("")||empty())+'</div></section>';
@@ -750,13 +750,21 @@
     };
     const name=field(tr("Име","Name"),document.createElement("input"));name.required=true;name.value=entityId?conf.alias||"":"";
     const devices=state.entities.filter(e=>isAllowed(e)&&!backlight(e));
-    const names=list=>list.map(e=>[e.entity_id,info(e)]).sort((a,b)=>a[1].localeCompare(b[1]));
+    const names=list=>list.map(e=>{const area=entityArea(e),room=(state.stevoraManifest?.rooms||state.areas).find(r=>(r.id||r.area_id)===area);return [e.entity_id,[info(e),room?.name].filter(Boolean).join(" · ")];}).sort((a,b)=>a[1].localeCompare(b[1]));
     let source,to,target,action;
-    if(!entityId){
+    const triggers=conf.triggers??conf.trigger,actions=conf.actions??conf.action;
+    const when=triggers?.[0],then=actions?.[0],command=then?.action??then?.service;
+    const simple=Array.isArray(triggers)&&triggers.length===1&&Array.isArray(actions)&&actions.length===1&&
+      Object.keys(when||{}).every(k=>["platform","trigger","entity_id","to"].includes(k))&&
+      (when?.platform??when?.trigger)==="state"&&["on","off"].includes(when.to)&&typeof when.entity_id==="string"&&
+      Object.keys(then||{}).every(k=>["action","service","target"].includes(k))&&Object.keys(then?.target||{}).length===1&&
+      typeof then.target.entity_id==="string"&&[then.target.entity_id.split(".")[0]+".turn_on",then.target.entity_id.split(".")[0]+".turn_off"].includes(command);
+    if(!entityId||simple){
       source=pick(tr("Когато устройството","When this device"),names(devices.filter(e=>["binary_sensor","switch","light","fan","input_boolean"].includes(e.entity_id.split(".")[0]))));
       to=pick(tr("Премине в състояние","Changes to"),[["on",tr("Включено","On")],["off",tr("Изключено","Off")]]);
       target=pick(tr("Управлявай устройство","Control device"),names(devices.filter(e=>allows(e,"toggle"))));
       action=pick(tr("Действие","Action"),[["turn_on",t("turnOn")],["turn_off",t("turnOff")]]);
+      if(simple){source.value=when.entity_id;to.value=when.to;target.value=then.target.entity_id;action.value=command.split(".")[1];}
     }
     const save=document.createElement("button");save.textContent=t("save");form.append(save);
     const err=document.createElement("p");err.setAttribute("role","alert");form.append(err);
@@ -765,7 +773,9 @@
       try{
         let cfg={...conf,alias:name.value.trim()}; delete cfg.id;
         if(!cfg.alias)throw Error();
-        if(!entityId){
+        if(entityId){const latest=await call({type:"automation/config",entity_id:entityId});if(JSON.stringify(latest.config??latest)!==JSON.stringify(conf))throw Error();}
+        if(source){
+          delete cfg.trigger;delete cfg.action;
           if(!source.value||!allows(latestEntity(target.value),"toggle"))throw Error();
           cfg.triggers=[{trigger:"state",entity_id:source.value,to:to.value}];
           cfg.actions=[{action:target.value.split(".")[0]+"."+action.value,target:{entity_id:target.value}}];

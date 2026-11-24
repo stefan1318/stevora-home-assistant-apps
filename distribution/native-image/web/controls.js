@@ -68,15 +68,23 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
         input.type = spec.type;
         for (const prop of ["min","max","step"]) if (spec[prop]!=null) input[prop]=spec[prop];
       }
+      if(spec.type==="number" && key!=="temperature" && spec.min!=null && spec.max!=null){
+        input.type="range";
+        const output=document.createElement("output");
+        input.addEventListener("input",()=>{output.textContent=input.value;});
+        output.textContent=String(spec.value??Math.round((spec.min+spec.max)/2));
+        caption.append(output);
+      }
       input.required=true;
       if(spec.value!=null) input.value=spec.value;
       caption.append(input); form.append(caption);
     }
     const button = document.createElement("button");
     button.textContent = field?tr("Задай","Apply"):label;
-    form.append(button); fields.append(form);
+    if(field){input.addEventListener("change",()=>form.requestSubmit());}else form.append(button);
+    fields.append(form);
     form.onsubmit = async event => {
-      event.preventDefault(); button.disabled=true; error.textContent="";
+      event.preventDefault(); if(button.disabled)return;button.disabled=true;if(input)input.disabled=true; error.textContent="";
       try {
         let value=input?.value;
         if (spec?.type==="number") value=input.valueAsNumber;
@@ -85,7 +93,7 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
         if (key==="oscillate") value=value==="on";
         await apply(key,service,field?{[field]:value}:{});
       } catch(e) { error.textContent=e.message||String(e); }
-      finally {button.disabled=false;}
+      finally {button.disabled=false;if(input)input.disabled=false;}
     };
   }
   dismissOnBackdrop(dialog);
