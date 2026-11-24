@@ -205,11 +205,20 @@ class IntegrationLifecycleTests(unittest.TestCase):
         sys.modules["homeassistant.helpers.entity_registry"].async_get = lambda hass: ns(async_get=registry.get)
         self.hass.config_entries.async_entries = lambda domain: [ns(entry_id=k, data={"user_id": k}) for k in ("alice", "bob", "other")]
         self.hass.states = ns(async_all=lambda domain: people if domain == "person" else phones)
+        async def users():
+            return [ns(id=k, name=k, system_generated=False, is_active=True) for k in ("other", "hidden")]
+        self.hass.auth = ns(async_get_users=users)
         results = []
-        connection = ns(user=ns(permissions=ns(check_entity=lambda key, policy: key not in {"device_tracker.private", "person.hidden"})),
+        connection = ns(user=ns(id="alice", is_admin=False, permissions=ns(check_entity=lambda key, policy: key not in {"device_tracker.private", "person.hidden"})),
                         send_result=lambda _, rows: results.extend(rows))
         with patch.dict(sys.modules, {"homeassistant.auth.permissions.const": ns(POLICY_READ="read")}):
             asyncio.run(self.integration.websocket_people(self.hass, connection, {"id": 3}))
+            connection.user.is_admin = True
+            admin_rows = []
+            connection.send_result = lambda _, rows: admin_rows.extend(rows)
+            asyncio.run(self.integration.websocket_people(self.hass, connection, {"id": 4}))
+            self.assertEqual(admin_rows[-1]["attributes"]["friendly_name"], "other")
+            self.assertEqual(len(admin_rows), 4)
         self.assertEqual([r["entity_id"] for r in results], ["person.alice", "person.bob", "person.carol"])
         self.assertEqual(results[0]["attributes"]["latitude"], 2)
         self.assertEqual(results[0]["attributes"]["gps_accuracy"], 8)

@@ -540,6 +540,9 @@
     if(points.length && !mapVisible)html+='<button id="show-presence-map">'+esc(tr("Покажи карта","Show map"))+'</button><p>© OpenStreetMap · '+esc(tr("Зарежда картни плочки за споделените позиции.","Loads map tiles for shared locations."))+'</p>';
     if(points.length && mapVisible){
       const xs=points.map(p=>(p.attributes.longitude+180)/360),ys=points.map(p=>(1-Math.asinh(Math.tan(p.attributes.latitude*Math.PI/180))/Math.PI)/2);
+      const sorted=[...xs].sort((a,b)=>a-b);let cut=sorted[0],gap=1-sorted.at(-1)+cut;
+      for(let i=1;i<sorted.length;i++){const delta=sorted[i]-sorted[i-1];if(delta>gap){cut=sorted[i];gap=delta;}}
+      xs.forEach((x,i)=>{if(x<cut)xs[i]+=1;});
       const span=Math.max((Math.max(...xs)-Math.min(...xs))/650,(Math.max(...ys)-Math.min(...ys))/290,1/(256*65536));
       const zoom=Math.max(1,Math.min(16,Math.floor(Math.log2(1/(256*span))))),count=2**zoom,scale=count*256;
       const left=(Math.min(...xs)+Math.max(...xs))*scale/2-400,top=(Math.min(...ys)+Math.max(...ys))*scale/2-190;

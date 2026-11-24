@@ -64,7 +64,9 @@ async def websocket_people(hass, connection, msg):
             continue
         phones.append((registrations.get(entry.config_entry_id), tracker))
     people = []
+    linked_users = set()
     for person in hass.states.async_all("person"):
+        linked_users.add(person.attributes.get("user_id"))
         if not allowed(person.entity_id):
             continue
         attrs = person.attributes
@@ -78,6 +80,19 @@ async def websocket_people(hass, connection, msg):
             data.update({key: fix.attributes[key] for key in ("latitude", "longitude", "gps_accuracy") if key in fix.attributes})
             stamp = fix.last_updated
         people.append({"entity_id": person.entity_id, "state": person.state, "attributes": data, "last_updated": stamp.isoformat()})
+    # Some installations have registered phones before creating person records.
+    # Never reconstruct a hidden person's location through this fallback.
+    for user in await hass.auth.async_get_users():
+        if (user.id in linked_users or not user.is_active or user.system_generated
+                or (not connection.user.is_admin and user.id != connection.user.id)):
+            continue
+        fixes = [t for owner, t in phones if owner == user.id]
+        if not fixes:
+            continue
+        fix = max(fixes, key=lambda t: t.last_updated)
+        data = {key: fix.attributes[key] for key in ("latitude", "longitude", "gps_accuracy") if key in fix.attributes}
+        data["friendly_name"] = user.name or fix.name
+        people.append({"entity_id": fix.entity_id, "state": fix.state, "attributes": data, "last_updated": fix.last_updated.isoformat()})
     connection.send_result(msg["id"], people)
 
 
