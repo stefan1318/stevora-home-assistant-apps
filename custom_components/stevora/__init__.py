@@ -43,6 +43,44 @@ async def websocket_os_manifest(hass, connection, msg):
     await send_manifest(hass, connection, msg)
 
 
+@websocket_api.websocket_command({"type": "stevora/os/v1/people"})
+@websocket_api.async_response
+async def websocket_people(hass, connection, msg):
+    """Resolve mobile fixes through authenticated registrations or explicit person links."""
+    from homeassistant.auth.permissions.const import POLICY_READ
+    from homeassistant.helpers import entity_registry as er
+
+    allowed = lambda entity_id: connection.user.permissions.check_entity(entity_id, POLICY_READ)
+    registry = er.async_get(hass)
+    registrations = {entry.entry_id: entry.data.get("user_id") for entry in hass.config_entries.async_entries("mobile_app")}
+    phones = []
+    for tracker in hass.states.async_all("device_tracker"):
+        entry = registry.async_get(tracker.entity_id)
+        attrs = tracker.attributes
+        if (not entry or entry.platform != "mobile_app" or not allowed(tracker.entity_id)
+                or tracker.state in ("unknown", "unavailable")
+                or attrs.get("source_type") != "gps"
+                or not all(isinstance(attrs.get(key), (float, int)) for key in ("latitude", "longitude"))):
+            continue
+        phones.append((registrations.get(entry.config_entry_id), tracker))
+    people = []
+    for person in hass.states.async_all("person"):
+        if not allowed(person.entity_id):
+            continue
+        attrs = person.attributes
+        linked = set(attrs.get("device_trackers") or ())
+        linked.add(attrs.get("source"))
+        fixes = [t for owner, t in phones if t.entity_id in linked or (owner and owner == attrs.get("user_id"))]
+        data = {"friendly_name": attrs.get("friendly_name") or person.name}
+        stamp = person.last_updated
+        if fixes:
+            fix = max(fixes, key=lambda t: t.last_updated)
+            data.update({key: fix.attributes[key] for key in ("latitude", "longitude", "gps_accuracy") if key in fix.attributes})
+            stamp = fix.last_updated
+        people.append({"entity_id": person.entity_id, "state": person.state, "attributes": data, "last_updated": stamp.isoformat()})
+    connection.send_result(msg["id"], people)
+
+
 @websocket_api.websocket_command({"type": "stevora/panel/generate", vol.Optional("language"): vol.In(("bg", "en"))})
 @websocket_api.async_response
 async def websocket_panel_generate(hass, connection, msg):
@@ -83,6 +121,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_manifest)
     websocket_api.async_register_command(hass, websocket_panel_generate)
     websocket_api.async_register_command(hass, websocket_os_manifest)
+    websocket_api.async_register_command(hass, websocket_people)
     websocket_api.async_register_command(hass, subscribe_manifest)
     register_admin_commands(hass)
     register_hub_commands(hass)

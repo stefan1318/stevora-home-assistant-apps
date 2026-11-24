@@ -224,11 +224,7 @@
       if(msg.type==="event" && state.voice?.id===msg.id){state.voice.event(msg.event);return;}
       if(msg.type==="event" && msg.event?.event_type==="state_changed"){
         const e=msg.event.data?.new_state;
-        if(msg.event.data?.entity_id?.startsWith("person.")){
-          state.people=state.people.filter(person=>person.entity_id!==msg.event.data.entity_id);
-          if(e)state.people.push(e);
-          if(state.view==="people")renderContent();
-        }
+        if(state.view==="people" && /^(person|device_tracker)\./.test(msg.event.data?.entity_id||""))refreshPeople();
         if(!e && msg.event.data?.entity_id){
           state.entities=state.entities.filter(item=>item.entity_id!==msg.event.data.entity_id);
           document.dispatchEvent(new Event("stevora-device-update"));
@@ -316,7 +312,7 @@
         tryCall({type:"config/entity_registry/list"},[]),
         tryCall({type:"config/device_registry/list"},[]),
       ]);
-      const people=(entities||[]).filter(e=>e.entity_id.startsWith("person."));
+      const people=await tryCall({type:"stevora/os/v1/people"},[]);
       const assistants=await tryCall({type:"conversation/agent/list"}, {agents:[]});
       const agents=assistants.agents || [];
       const preferred=await tryCall({type:"stevora/assistants/resolve"}, {});
@@ -326,7 +322,7 @@
         (!preferred.pipeline_id && agents.find(agent=>agent.id==="conversation.home_assistant")?.id) || null;
       const manifest=await tryCall({type:"stevora/os/v1/manifest",language:locale},null);
       if(socket!==state.ws||request!==syncSerial)return;
-      state.agent=agent||pipeline?.conversation_engine;state.pipeline=pipeline;state.people=people;
+      state.agent=agent||pipeline?.conversation_engine;state.pipeline=pipeline;state.people=Array.isArray(people)?people:[];
       state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
       const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
       state.entities=(Array.isArray(entities)?entities:[])
@@ -524,10 +520,21 @@
     '<section class="panel"><div id="chat-messages" class="chat">'+(state.messages.map(m=>'<p class="'+(m.role==="user"?"mine":"theirs")+'">'+esc(m.text)+'</p>').join(""))+'</div>'+
     '<form data-form="assist"><input name="message" maxlength="500" required autocomplete="off" placeholder="'+esc(t("prompt"))+'"><button type="submit">'+esc(t("send"))+'</button></form></section>';
   }
+  let presenceTimer=0, presenceSerial=0;
+  function refreshPeople(){
+    const socket=state.ws, serial=++presenceSerial;
+    clearTimeout(presenceTimer);
+    presenceTimer=setTimeout(async()=>{
+      const people=await tryCall({type:"stevora/os/v1/people"},null);
+      if(socket===state.ws && serial===presenceSerial && state.view==="people" && Array.isArray(people)){
+        state.people=people;renderContent();
+      }
+    },150);
+  }
   let mapVisible=false;
   function presenceView(){
     const people=state.people||[];
-    const points=people.filter(p=>!["unavailable","unknown"].includes(p.state)&&Number.isFinite(p.attributes?.latitude)&&Math.abs(p.attributes.latitude)<=85.05&&Number.isFinite(p.attributes?.longitude)&&Math.abs(p.attributes.longitude)<=180);
+    const points=people.filter(p=>Number.isFinite(p.attributes?.latitude)&&Math.abs(p.attributes.latitude)<=85.05&&Number.isFinite(p.attributes?.longitude)&&Math.abs(p.attributes.longitude)<=180);
     const name=p=>p.attributes.friendly_name||p.entity_id.slice(7).replaceAll("_"," ");
     let html=hdr(tr("Хора и присъствие","People & Presence"));
     if(points.length && !mapVisible)html+='<button id="show-presence-map">'+esc(tr("Покажи карта","Show map"))+'</button><p>© OpenStreetMap · '+esc(tr("Зарежда картни плочки за споделените позиции.","Loads map tiles for shared locations."))+'</p>';
@@ -575,7 +582,7 @@
     const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
     if(!allowed.includes(view))return;
     if(state.view==="assist"&&view!=="assist")state.voice?.end();
-    state.view=view;state.filter="";state.room="";
+    state.view=view;if(view==="people")refreshPeople();state.filter="";state.room="";
     q("#sidebar").classList.remove("mobile-open");
     renderContent();
     if(["integrations","apps","system","updates","backups","users"].includes(view)&&state.admin){
@@ -915,7 +922,7 @@
     const entry=btn.getAttribute("data-entry");
     if(entry){
       const value=state.configEntries.find(x=>x.entry_id===entry);
-      if(value)showTextModal(value.title,JSON.stringify(value,null,2));
+      if(value)showTextModal(value.title,[tr("Интеграция","Integration")+": "+(value.title||""),tr("Състояние","Status")+": "+consumerState(value.state,tr)].join("\n"));
       return;
     }
     if(btn.getAttribute("data-safe-action")==="backup-full"){
