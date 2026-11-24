@@ -65,6 +65,22 @@ class NativeIntegratedContract(unittest.TestCase):
         self.assertIn("backlight",script)
         self.assertIn("sessionStorage",script)
 
+    def test_presence_map_osm_policy_and_ui(self):
+        page=(WEB/"index.html").read_text()
+        script=(WEB/"app.js").read_text()
+        css=(WEB/"app.css").read_text()
+        gateway=(ROOT/"gateway"/"main.go").read_text()
+        self.assertIn('name="referrer" content="origin"',page)
+        self.assertIn('referrerpolicy=\\"origin\\"',script)
+        self.assertIn('https://tile.openstreetmap.org/',script)
+        self.assertIn('w.Header().Set("Referrer-Policy","same-origin")',gateway)
+        self.assertIn('w.Header().Set("Referrer-Policy","origin")',gateway)
+        for marker in ('data-presence-map="in"','data-presence-map="out"',
+                       'data-presence-map="reset"','presence-cluster',
+                       'pointerdown','pointerup','presence-person-head'):
+            self.assertIn(marker,script)
+        self.assertIn("presence-map-toolbar",css)
+
     def test_backup_restore_and_signed_ota_gated(self):
         script=(WEB/"app.js").read_text()
         self.assertNotIn('"/os/update","POST"',script)
