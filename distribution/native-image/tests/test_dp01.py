@@ -71,7 +71,7 @@ class NativeIntegratedContract(unittest.TestCase):
         css=(WEB/"app.css").read_text()
         gateway=(ROOT/"gateway"/"main.go").read_text()
         self.assertIn('name="referrer" content="origin"',page)
-        self.assertIn('referrerpolicy=\\"origin\\"',script)
+        self.assertIn('referrerpolicy="origin"',script)
         self.assertIn('https://tile.openstreetmap.org/',script)
         self.assertIn('w.Header().Set("Referrer-Policy","same-origin")',gateway)
         self.assertIn('w.Header().Set("Referrer-Policy","origin")',gateway)
