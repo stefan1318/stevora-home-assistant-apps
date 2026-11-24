@@ -3,10 +3,15 @@
 # Applies a controlled overlay to a clean, pinned *build* checkout only.
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-  echo "Usage: prepare-haos.sh path-to-HAOS-checkout" >&2
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo "Usage: prepare-haos.sh path-to-HAOS-checkout [ova|rpi4_64]" >&2
   exit 2
 fi
+TARGET="${2:-ova}"
+case "$TARGET" in
+  ova|rpi4_64) ;;
+  *) echo "Unsupported STEVORA native build target: $TARGET" >&2; exit 2 ;;
+esac
 HAOS_DIR="$(cd -- "$1" && pwd)"
 SELF_DIR="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 PROJECT_ROOT="$(cd -- "$SELF_DIR/../.." && pwd)"
@@ -23,6 +28,7 @@ if ! git -C "$HAOS_DIR" diff --quiet || ! git -C "$HAOS_DIR" diff --cached --qui
 fi
 
 BUSYBOX_CONFIG="$HAOS_DIR/buildroot-external/busybox.config"
+TARGET_CONFIG="$HAOS_DIR/buildroot-external/configs/${TARGET}_defconfig"
 META="$HAOS_DIR/buildroot-external/meta"
 PRESET="$HAOS_DIR/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset"
 SERVICE_TARGET="$HAOS_DIR/buildroot-external/rootfs-overlay/usr/lib/systemd/system/stevora-native-web.service"
@@ -43,15 +49,25 @@ test -s "$PROJECT_ROOT/custom_components/stevora_os/frontend/icons/stevora-192.p
 grep -qx '# CONFIG_HTTPD is not set' "$BUSYBOX_CONFIG"
 grep -qx 'HAOS_NAME="Home Assistant OS"' "$META"
 grep -qx 'HAOS_ID="haos"' "$META"
-grep -qx 'BR2_PACKAGE_BUSYBOX_INDIVIDUAL_BINARIES=y' "$HAOS_DIR/buildroot-external/configs/ova_defconfig"
+grep -qx 'BR2_PACKAGE_BUSYBOX_INDIVIDUAL_BINARIES=y' "$TARGET_CONFIG"
+case "$TARGET" in
+  ova)
+    grep -qx 'BR2_x86_64=y' "$TARGET_CONFIG"
+    grep -qx 'BR2_PACKAGE_HASSIO_MACHINE="qemux86-64"' "$TARGET_CONFIG"
+    ;;
+  rpi4_64)
+    grep -qx 'BR2_aarch64=y' "$TARGET_CONFIG"
+    grep -qx 'BR2_PACKAGE_HASSIO_MACHINE="raspberrypi4-64"' "$TARGET_CONFIG"
+    ;;
+esac
 grep -q 'sudo umount "' "$DATA_SCRIPT"
 
 # Keep the native Supervisor OS identity for now (HAOS_ID/RAUC and machine).
 # Branding and authenticated STEVORA root UI are provided by our own layers.
 sed -i 's/^# CONFIG_HTTPD is not set$/CONFIG_HTTPD=y/' "$BUSYBOX_CONFIG"
 # The physical-console publisher enrollment command verifies a public X.509 certificate.
-if ! grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' "$HAOS_DIR/buildroot-external/configs/ova_defconfig"; then
-  printf '\nBR2_PACKAGE_LIBOPENSSL_BIN=y\n' >> "$HAOS_DIR/buildroot-external/configs/ova_defconfig"
+if ! grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' "$TARGET_CONFIG"; then
+  printf '\nBR2_PACKAGE_LIBOPENSSL_BIN=y\n' >> "$TARGET_CONFIG"
 fi
 sed -i 's/^HAOS_NAME="Home Assistant OS"$/HAOS_NAME="STEVORA OS Integrated Developer Preview"/' "$META"
 
@@ -113,6 +129,10 @@ test -s "$PUBLIC_DIR/stevora-192.png"
 test -s "$COMPONENTS_DIR/stevora/manifest.json"
 test -x "$GATEWAY_TARGET"
 
-echo "STEVORA native overlay applied to the pinned upstream build checkout."
-echo "Boot-test target: http://<VM-IP>/ (port 80)."
+echo "STEVORA native overlay applied to pinned upstream build checkout for target: $TARGET"
+if [ "$TARGET" = "ova" ]; then
+  echo "QEMU boot-test target: http://<VM-IP>/ (port 80)."
+else
+  echo "RPi4 is build-only until a separate physical Raspberry Pi 4 boot test succeeds."
+fi
 echo "WARNING: dev image only; no signed OTA or backup restore."
