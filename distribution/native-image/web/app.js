@@ -527,7 +527,8 @@
     presenceTimer=setTimeout(async()=>{
       const people=await tryCall({type:"stevora/os/v1/people"},null);
       if(socket===state.ws && serial===presenceSerial && state.view==="people" && Array.isArray(people)){
-        state.people=people;renderContent();
+        const changed=JSON.stringify(state.people||[])!==JSON.stringify(people);
+        if(changed){state.people=people;renderContent();}
       }
     },150);
   }
@@ -548,7 +549,7 @@
       const left=(Math.min(...xs)+Math.max(...xs))*scale/2-400,top=(Math.min(...ys)+Math.max(...ys))*scale/2-190;
       html+='<svg class="presence-map" viewBox="0 0 800 380" role="img" aria-label="'+esc(tr("Споделени позиции","Shared locations"))+'">';
       for(let x=Math.floor(left/256);x<=(left+800)/256;x++)for(let y=Math.max(0,Math.floor(top/256));y<count&&y<=(top+380)/256;y++){
-        html+='<image x="'+(x*256-left)+'" y="'+(y*256-top)+'" width="256" height="256" href="https://tile.openstreetmap.org/'+zoom+'/'+((x%count+count)%count)+'/'+y+'.png"/>';
+        html+='<image x="'+(x*256-left)+'" y="'+(y*256-top)+'" width="256" height="256" referrerpolicy="origin" href="https://tile.openstreetmap.org/'+zoom+'/'+((x%count+count)%count)+'/'+y+'.png"/>';
       }
       points.forEach((p,i)=>{const x=xs[i]*scale-left,y=ys[i]*scale-top;html+='<circle cx="'+x+'" cy="'+y+'" r="7" fill="#006ca3" stroke="white" stroke-width="3"/><text x="'+(x+10)+'" y="'+(y-8)+'">'+esc(name(p))+'</text>';});
       html+='</svg><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>';
