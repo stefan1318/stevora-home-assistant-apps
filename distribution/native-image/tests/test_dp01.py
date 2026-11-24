@@ -17,7 +17,7 @@ class NativeIntegratedContract(unittest.TestCase):
     def test_root_shell_not_panel(self):
         html=(WEB/"index.html").read_text()
         self.assertIn("<!doctype html>",html)
-        self.assertIn("<title>STEVORA OS — Native Integrated Preview</title>",html)
+        self.assertIn("<title>STEVORA OS</title>",html)
         self.assertIn('src="/app.js"',html)
         self.assertNotIn("/stevora-os",html)
         self.assertNotIn("panel_custom",html)

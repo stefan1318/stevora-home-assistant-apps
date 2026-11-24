@@ -55,7 +55,7 @@ for attempt in $(seq 1 120); do
     break
   fi
   if curl -sS --fail --max-time 5 http://127.0.0.1:18080/ > "${WORKDIR}/page.html"; then
-    if grep -q '<title>STEVORA OS — Native Integrated Preview</title>' "${WORKDIR}/page.html"; then
+    if grep -q '<title>STEVORA OS</title>' "${WORKDIR}/page.html"; then
       GOOD=1
       break
     fi
