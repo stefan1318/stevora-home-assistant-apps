@@ -125,6 +125,9 @@ func newRouter(staticRoot string,core *url.URL) http.Handler {
    } else {http.NotFound(w,r);return}
   }
   if file=="/index.html" {
+   // Only the STEVORA SPA sends its origin to OSM after the user opens the map.
+   // Preserve same-origin referrer isolation on API and administrative routes.
+   w.Header().Set("Referrer-Policy","origin")
    w.Header().Set("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'none'")
    w.Header().Set("Content-Type","text/html; charset=utf-8")
    entry,err:=os.Open(filepath.Join(staticRoot,"index.html"))
