@@ -265,7 +265,7 @@
     return state.entities.find(x=>x.entity_id===id);
   }
   function deviceDetails(id){
-    openStevoraDevice({id,entity:()=>latestEntity(id),profile:()=>deviceProfile(id),canControl:()=>controllable(latestEntity(id)),call,tr});
+    openStevoraDevice({id,entity:()=>latestEntity(id),profile:()=>deviceProfile(id),canControl:()=>controllable(latestEntity(id)),call,tr,name:info(latestEntity(id))});
   }
   function managementButton(key,bg,en){
     return '<button data-management="'+key+'">'+esc(tr(bg,en))+'</button>';
@@ -394,7 +394,10 @@
     return '<div class="filters"><select data-room>'+options.map(([id,name])=>'<option value="'+esc(id)+'" '+(state.room===id?"selected":"")+'>'+esc(name)+'</option>').join("")+'</select><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div>'
   }
   function matches(name){return !state.filter || String(name).toLocaleLowerCase().includes(state.filter.toLocaleLowerCase())}
-  function info(e){let n=state.registry.find(x=>x.entity_id===e.entity_id);return deviceProfile(e.entity_id)?.name||n?.name||e.attributes?.friendly_name||e.entity_id}
+  function info(e){
+    const id=e.entity_id,reg=state.registry.find(x=>x.entity_id===id);
+    return [deviceProfile(id)?.name,reg?.name,e.attributes?.friendly_name].find(n=>n && n!==id)||id.split(".").pop().replaceAll("_"," ");
+  }
   function card(e){
     const id=e.entity_id,domain=id.split(".")[0],name=info(e);
     if(!matches(name+" "+id))return "";
@@ -411,10 +414,10 @@
     if(domain==="scene" && controllable(e))buttons+=action("turn_on",t("activate"));
     if(domain==="automation" && controllable(e))buttons+=action("trigger",t("trigger"));
     if(domain==="automation" && state.admin)
-      buttons+='<button data-automation-edit="'+esc(id)+'">'+esc(t("details"))+'</button>';
-    const stateLabel=e.state==="off"?t("turnOff"):e.state;
+      buttons+='<button data-automation-edit="'+esc(id)+'">'+esc(tr("Редактирай","Edit"))+'</button>';
+    const stateLabel=consumerState(e.state,tr);
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
-    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><strong>'+esc(name)+'</strong><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(t("details"))+'</button><small>'+esc(id)+'</small></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
+    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(name)+'</button></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
   }
   function home(){
     const available=count();
@@ -431,7 +434,7 @@
     const list=visibleEntities(domain);
     return hdr(name,list.length+" "+t("devices"))+(view==="devices"&&state.admin?'<div class="actions">'+managementButton("devices","Управление на устройства","Device Manager")+managementButton("visibility","Видимост","Visibility")+'</div>':"")+
       (view==="automations"&&state.admin?
-        '<div class="actions"><button data-automation-new="1">'+esc(t("install"))+' automation</button></div>':"")+
+        '<div class="actions"><button data-automation-new="1">'+esc(tr("Нова автоматизация","New automation"))+'</button></div>':"")+
       toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
   }
   function roomsView(){
@@ -521,14 +524,35 @@
     '<section class="panel"><div id="chat-messages" class="chat">'+(state.messages.map(m=>'<p class="'+(m.role==="user"?"mine":"theirs")+'">'+esc(m.text)+'</p>').join(""))+'</div>'+
     '<form data-form="assist"><input name="message" maxlength="500" required autocomplete="off" placeholder="'+esc(t("prompt"))+'"><button type="submit">'+esc(t("send"))+'</button></form></section>';
   }
+  let mapVisible=false;
+  function presenceView(){
+    const people=state.people||[];
+    const points=people.filter(p=>!["unavailable","unknown"].includes(p.state)&&Number.isFinite(p.attributes?.latitude)&&Math.abs(p.attributes.latitude)<=85.05&&Number.isFinite(p.attributes?.longitude)&&Math.abs(p.attributes.longitude)<=180);
+    const name=p=>p.attributes.friendly_name||p.entity_id.slice(7).replaceAll("_"," ");
+    let html=hdr(tr("Хора и присъствие","People & Presence"));
+    if(points.length && !mapVisible)html+='<button id="show-presence-map">'+esc(tr("Покажи карта","Show map"))+'</button><p>© OpenStreetMap · '+esc(tr("Зарежда картни плочки за споделените позиции.","Loads map tiles for shared locations."))+'</p>';
+    if(points.length && mapVisible){
+      const xs=points.map(p=>(p.attributes.longitude+180)/360),ys=points.map(p=>(1-Math.asinh(Math.tan(p.attributes.latitude*Math.PI/180))/Math.PI)/2);
+      const span=Math.max((Math.max(...xs)-Math.min(...xs))/650,(Math.max(...ys)-Math.min(...ys))/290,1/(256*65536));
+      const zoom=Math.max(1,Math.min(16,Math.floor(Math.log2(1/(256*span))))),count=2**zoom,scale=count*256;
+      const left=(Math.min(...xs)+Math.max(...xs))*scale/2-400,top=(Math.min(...ys)+Math.max(...ys))*scale/2-190;
+      html+='<svg class="presence-map" viewBox="0 0 800 380" role="img" aria-label="'+esc(tr("Споделени позиции","Shared locations"))+'">';
+      for(let x=Math.floor(left/256);x<=(left+800)/256;x++)for(let y=Math.max(0,Math.floor(top/256));y<count&&y<=(top+380)/256;y++){
+        html+='<image x="'+(x*256-left)+'" y="'+(y*256-top)+'" width="256" height="256" href="https://tile.openstreetmap.org/'+zoom+'/'+((x%count+count)%count)+'/'+y+'.png"/>';
+      }
+      points.forEach((p,i)=>{const x=xs[i]*scale-left,y=ys[i]*scale-top;html+='<circle cx="'+x+'" cy="'+y+'" r="7" fill="#006ca3" stroke="white" stroke-width="3"/><text x="'+(x+10)+'" y="'+(y-8)+'">'+esc(name(p))+'</text>';});
+      html+='</svg><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>';
+    }
+    return html+'<div class="cards">'+(people.map(p=>{const a=p.attributes,stamp=p.last_updated?new Date(p.last_updated).toLocaleString(locale):"";
+      return '<article class="device-card"><strong>'+esc(name(p))+'</strong><p>'+esc(consumerState(p.state,tr))+'</p><small>'+esc(points.includes(p)?[stamp,Number.isFinite(a.gps_accuracy)?"± "+a.gps_accuracy+" m":""].filter(Boolean).join(" · "):tr("Няма споделена позиция","No shared location"))+'</small></article>';}).join("")||empty())+'</div>';
+  }
   function renderContent(){
     if(state.login || document.body.classList.contains("setup-mode"))return;
     nav();
     let result;
     switch(state.view){
       case "home":result=home();break;
-      case "people":result=hdr(locale==="bg"?"Хора и присъствие":"People & Presence")+
-        '<div class="cards">'+((state.people||[]).map(person=>stat(person.attributes?.friendly_name||person.entity_id,person.state)).join("")||empty())+'</div>';break;
+      case "people":result=presenceView();break;
       case "rooms":result=roomsView();break;
       case "devices":case "lighting":case "climate":case "scenes":case "automations":result=entityScreen(state.view);break;
       case "integrations":result=integrationView();break;
@@ -545,6 +569,7 @@
       default:result=empty();
     }
     q("#screen").innerHTML=result;
+    const showMap=q("#show-presence-map");if(showMap)showMap.onclick=()=>{mapVisible=true;renderContent();};
   }
   function setView(view){
     const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
@@ -705,7 +730,8 @@
     let conf,uuid;
     if(entityId){
       if(!validId(entityId)||!entityId.startsWith("automation."))throw new Error("Bad automation");
-      conf=await call({type:"automation/config",entity_id:entityId});
+      const response=await call({type:"automation/config",entity_id:entityId});
+      conf=response.config??response;
       uuid=String(conf?.id||"");
       if(!/^[a-zA-Z0-9_-]{1,100}$/.test(uuid))throw new Error("Automation has no editable YAML id");
     }else{
@@ -713,29 +739,44 @@
       conf={id:uuid,alias:"New STEVORA automation",description:"",
         triggers:[],conditions:[],actions:[],mode:"single"};
     }
-    const dialog=document.createElement("dialog");dialog.className="details-dialog";
-    const title=document.createElement("h2");title.textContent="STEVORA Automation Editor";
-    const text=document.createElement("textarea");text.rows=20;text.value=JSON.stringify(conf,null,2);
-    const hint=document.createElement("p");
-    hint.textContent="Advanced JSON editor using Home Assistant's validated automation config endpoint.";
-    const save=document.createElement("button");save.textContent=t("save");
-    save.addEventListener("click",async()=>{
+    const dialog=document.createElement("dialog"); dialog.className="details-dialog flow-dialog";
+    const form=document.createElement("form");
+    const field=(caption,input)=>{const label=document.createElement("label");label.textContent=caption; label.append(input); form.append(label);return input;};
+    const pick=(caption,options,initial)=>{
+      const input=document.createElement("select");
+      input.add(new Option(tr("Избери…","Choose…"),""));
+      for(const [value,label] of options)input.add(new Option(label,value));
+      input.required=true;input.value=initial||"";return field(caption,input);
+    };
+    const name=field(tr("Име","Name"),document.createElement("input"));name.required=true;name.value=entityId?conf.alias||"":"";
+    const devices=state.entities.filter(e=>isAllowed(e)&&!backlight(e));
+    const names=list=>list.map(e=>[e.entity_id,info(e)]).sort((a,b)=>a[1].localeCompare(b[1]));
+    let source,to,target,action;
+    if(!entityId){
+      source=pick(tr("Когато устройството","When this device"),names(devices.filter(e=>["binary_sensor","switch","light","fan","input_boolean"].includes(e.entity_id.split(".")[0]))));
+      to=pick(tr("Премине в състояние","Changes to"),[["on",tr("Включено","On")],["off",tr("Изключено","Off")]]);
+      target=pick(tr("Управлявай устройство","Control device"),names(devices.filter(e=>allows(e,"toggle"))));
+      action=pick(tr("Действие","Action"),[["turn_on",t("turnOn")],["turn_off",t("turnOff")]]);
+    }
+    const save=document.createElement("button");save.textContent=t("save");form.append(save);
+    const err=document.createElement("p");err.setAttribute("role","alert");form.append(err);
+    form.onsubmit=async event=>{
+      event.preventDefault();if(save.disabled)return;save.disabled=true;
       try{
-        const cfg=JSON.parse(text.value);
-        if(!cfg||typeof cfg!=="object"||Array.isArray(cfg))throw new Error("Invalid JSON");
-        if(!confirm(t("confirm")+" automation "+uuid+"?"))return;
+        let cfg={...conf,alias:name.value.trim()}; delete cfg.id;
+        if(!cfg.alias)throw Error();
+        if(!entityId){
+          if(!source.value||!allows(latestEntity(target.value),"toggle"))throw Error();
+          cfg.triggers=[{trigger:"state",entity_id:source.value,to:to.value}];
+          cfg.actions=[{action:target.value.split(".")[0]+"."+action.value,target:{entity_id:target.value}}];
+        }
         await coreREST("/api/config/automation/config/"+encodeURIComponent(uuid),"POST",cfg);
-        dialog.close();
-        const entities=await call({type:"get_states"});
-        const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
-        state.entities=(entities||[]).filter(e=>readable.has(e.entity_id)&&!backlight(e));
-        renderContent();
-        notice("Automation saved");
-      }catch(e){notice(formatError(e),true)}
-    });
-    const close=document.createElement("button");close.textContent="Close";close.onclick=()=>dialog.close();
-    dialog.append(title,hint,text,save,close);
-    dialog.addEventListener("close",()=>dialog.remove());document.body.append(dialog);dialog.showModal();
+        dialog.close();notice(tr("Автоматизацията е записана","Automation saved"));
+      }catch{err.textContent=tr("Записът е неуспешен. Провери избора и връзката.","Could not save. Check your choices and connection.");}
+      finally{save.disabled=false;}
+    };
+    const cancel=document.createElement("button");cancel.textContent=tr("Отказ","Cancel");cancel.onclick=()=>dialog.close();
+    dialog.append(form,cancel);dismissOnBackdrop(dialog);dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
   }
   async function createBackup(){
     if(!state.admin)throw new Error(t("notAdmin"));

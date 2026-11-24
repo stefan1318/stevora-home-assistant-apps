@@ -1,13 +1,23 @@
+function consumerState(value,tr) {
+  const labels={on:["Включено","On"],off:["Изключено","Off"],home:["Вкъщи","Home"],not_home:["Навън","Away"],unavailable:["Недостъпно","Unavailable"],unknown:["Няма данни","Unknown"],cool:["Охлаждане","Cooling"],heat:["Отопление","Heating"],heat_cool:["Автоматично","Auto"],dry:["Изсушаване","Dry"],fan_only:["Вентилация","Fan only"],standby:["Готовност","Standby"]};
+  return labels[value]?tr(...labels[value]):String(value??"").replaceAll("_"," ");
+}
+function dismissOnBackdrop(dialog) {
+  const outside=e=>{const b=dialog.getBoundingClientRect();return e.target===dialog&&(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom);};
+  let started=false;
+  dialog.addEventListener("pointerdown",e=>{started=outside(e);});
+  dialog.addEventListener("click",e=>{if(started&&outside(e))dialog.close();started=false;});
+}
 "use strict";
 
-function openStevoraDevice({id, entity, profile, canControl, call, tr}) {
+function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
   const current = entity();
   if (!current || !profile()) throw new Error(tr("Устройството вече не е достъпно", "Device no longer available"));
   const domain = id.split(".")[0];
   const dialog = document.createElement("dialog");
   dialog.className = "details-dialog flow-dialog";
   const heading = document.createElement("h2");
-  heading.textContent = profile().name || current.attributes.friendly_name || id;
+  heading.textContent = name;
   const status = document.createElement("p");
   const fields = document.createElement("section");
   const error = document.createElement("p");
@@ -34,7 +44,7 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr}) {
     oscillate: [tr("Осцилация","Oscillation"),"oscillate","oscillating",choice(["on","off"],attrs.oscillating?"on":"off")],
     direction: [tr("Посока","Direction"),"set_direction","direction",choice(["forward","reverse"],attrs.direction)],
     temperature: [tr("Задание (°)","Target (°)"),"set_temperature","temperature",number(attrs.min_temp,attrs.max_temp,attrs.temperature)],
-    hvac_mode: [tr("Режим","HVAC mode"),"set_hvac_mode","hvac_mode",choice(attrs.hvac_modes,current.state)],
+    hvac_mode: [tr("Режим","Mode"),"set_hvac_mode","hvac_mode",choice(attrs.hvac_modes,current.state)],
     fan_mode: [tr("Вентилатор","Fan mode"),"set_fan_mode","fan_mode",choice(attrs.fan_modes,attrs.fan_mode)],
     swing_mode: [tr("Жалузи","Swing"),"set_swing_mode","swing_mode",choice(attrs.swing_modes,attrs.swing_mode)],
     open: [tr("Отвори","Open"),"open_cover"], close:[tr("Затвори щората","Close cover"),"close_cover"], stop:[tr("Стоп","Stop"),"stop_cover"],
@@ -53,7 +63,7 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr}) {
       caption.textContent = label;
       input = document.createElement(spec.options?"select":"input");
       if (spec.options) {
-        for (const v of spec.options) input.add(new Option(v,v));
+        for (const v of spec.options) input.add(new Option(consumerState(v,tr),v));
       } else {
         input.type = spec.type;
         for (const prop of ["min","max","step"]) if (spec[prop]!=null) input[prop]=spec[prop];
@@ -78,20 +88,14 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr}) {
       finally {button.disabled=false;}
     };
   }
-  const details = document.createElement("dl");
-  for (const [key,value] of Object.entries(attrs)) {
-    if (["entity_picture","access_token","friendly_name"].includes(key) || value==null) continue;
-    const term=document.createElement("dt"), item=document.createElement("dd");
-    term.textContent=key;item.textContent=typeof value==="object"?JSON.stringify(value):value;
-    details.append(term,item);
-  }
+  dismissOnBackdrop(dialog);
   const close=document.createElement("button");
   close.textContent=tr("Затвори","Close"); close.onclick=()=>dialog.close();
-  dialog.append(heading,status,fields,details,error,close);
+  dialog.append(heading,status,fields,error,close);
   const refresh = () => {
     const next=entity();
     if (!next || !profile()) {dialog.close();return;}
-    status.textContent=[id,next.state,next.attributes?.unit_of_measurement].filter(Boolean).join(" · ");
+    status.textContent=[consumerState(next.state,tr),next.attributes?.unit_of_measurement].filter(Boolean).join(" · ");
   };
   document.addEventListener("stevora-device-update",refresh);
   dialog.onclose=()=>{document.removeEventListener("stevora-device-update",refresh);dialog.remove();};
