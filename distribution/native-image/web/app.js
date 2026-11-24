@@ -527,34 +527,54 @@
     presenceTimer=setTimeout(async()=>{
       const people=await tryCall({type:"stevora/os/v1/people"},null);
       if(socket===state.ws && serial===presenceSerial && state.view==="people" && Array.isArray(people)){
-        state.people=people;renderContent();
+        const changed=JSON.stringify(state.people||[])!==JSON.stringify(people);
+        if(changed){state.people=people;renderContent();}
       }
     },150);
   }
-  let mapVisible=false;
+  let mapVisible=false, presenceZoomDelta=0, presencePanX=0, presencePanY=0;
   function presenceView(){
     const people=state.people||[];
     const points=people.filter(p=>Number.isFinite(p.attributes?.latitude)&&Math.abs(p.attributes.latitude)<=85.05&&Number.isFinite(p.attributes?.longitude)&&Math.abs(p.attributes.longitude)<=180);
-    const name=p=>p.attributes.friendly_name||p.entity_id.slice(7).replaceAll("_"," ");
-    let html=hdr(tr("Хора и присъствие","People & Presence"));
-    if(points.length && !mapVisible)html+='<button id="show-presence-map">'+esc(tr("Покажи карта","Show map"))+'</button><p>© OpenStreetMap · '+esc(tr("Зарежда картни плочки за споделените позиции.","Loads map tiles for shared locations."))+'</p>';
+    const name=p=>p.attributes?.friendly_name||p.entity_id.slice(7).replaceAll("_"," ");
+    let html=hdr(tr("Хора и присъствие","People & Presence"),tr("Споделени позиции и актуални статуси","Shared locations and current statuses"));
+    if(points.length && !mapVisible)html+='<div class="presence-intro"><p>'+esc(tr("Картата зарежда външни OpenStreetMap плочки само след твое действие.","Map tiles are requested from OpenStreetMap only after you choose to view the map."))+'</p><button class="primary" id="show-presence-map">'+esc(tr("Покажи карта","Show map"))+'</button></div>';
     if(points.length && mapVisible){
       const xs=points.map(p=>(p.attributes.longitude+180)/360),ys=points.map(p=>(1-Math.asinh(Math.tan(p.attributes.latitude*Math.PI/180))/Math.PI)/2);
       const sorted=[...xs].sort((a,b)=>a-b);let cut=sorted[0],gap=1-sorted.at(-1)+cut;
       for(let i=1;i<sorted.length;i++){const delta=sorted[i]-sorted[i-1];if(delta>gap){cut=sorted[i];gap=delta;}}
       xs.forEach((x,i)=>{if(x<cut)xs[i]+=1;});
       const span=Math.max((Math.max(...xs)-Math.min(...xs))/650,(Math.max(...ys)-Math.min(...ys))/290,1/(256*65536));
-      const zoom=Math.max(1,Math.min(16,Math.floor(Math.log2(1/(256*span))))),count=2**zoom,scale=count*256;
-      const left=(Math.min(...xs)+Math.max(...xs))*scale/2-400,top=(Math.min(...ys)+Math.max(...ys))*scale/2-190;
-      html+='<svg class="presence-map" viewBox="0 0 800 380" role="img" aria-label="'+esc(tr("Споделени позиции","Shared locations"))+'">';
+      const baseZoom=Math.max(1,Math.min(16,Math.floor(Math.log2(1/(256*span)))));
+      const zoom=Math.max(1,Math.min(18,baseZoom+presenceZoomDelta)),count=2**zoom,scale=count*256;
+      const left=(Math.min(...xs)+Math.max(...xs))*scale/2-400+presencePanX,top=(Math.min(...ys)+Math.max(...ys))*scale/2-190+presencePanY;
+      html+='<div class="presence-map-shell"><div class="presence-map-toolbar"><span>'+esc(tr("Карта на присъствието","Presence map"))+'</span><div class="presence-map-actions"><button type="button" data-presence-map="out" aria-label="'+esc(tr("Намали мащаба","Zoom out"))+'">−</button><span class="presence-zoom">z'+zoom+'</span><button type="button" data-presence-map="in" aria-label="'+esc(tr("Увеличи мащаба","Zoom in"))+'">+</button><button type="button" data-presence-map="reset">'+esc(tr("Центрирай","Recenter"))+'</button><button type="button" data-presence-map="hide">'+esc(tr("Скрий","Hide"))+'</button></div></div>';
+      html+='<svg class="presence-map" id="presence-map-canvas" viewBox="0 0 800 380" role="img" aria-label="'+esc(tr("Споделени позиции","Shared locations"))+'">';
       for(let x=Math.floor(left/256);x<=(left+800)/256;x++)for(let y=Math.max(0,Math.floor(top/256));y<count&&y<=(top+380)/256;y++){
-        html+='<image x="'+(x*256-left)+'" y="'+(y*256-top)+'" width="256" height="256" href="https://tile.openstreetmap.org/'+zoom+'/'+((x%count+count)%count)+'/'+y+'.png"/>';
+        html+='<image x="'+(x*256-left)+'" y="'+(y*256-top)+'" width="256" height="256" referrerpolicy="origin" href="https://tile.openstreetmap.org/'+zoom+'/'+((x%count+count)%count)+'/'+y+'.png"/>';
       }
-      points.forEach((p,i)=>{const x=xs[i]*scale-left,y=ys[i]*scale-top;html+='<circle cx="'+x+'" cy="'+y+'" r="7" fill="#006ca3" stroke="white" stroke-width="3"/><text x="'+(x+10)+'" y="'+(y-8)+'">'+esc(name(p))+'</text>';});
-      html+='</svg><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>';
+      const clusters=[];
+      points.forEach((p,i)=>{
+        const x=xs[i]*scale-left,y=ys[i]*scale-top;
+        const target=clusters.find(c=>Math.hypot(c.x-x,c.y-y)<27);
+        if(target){target.members.push(p);}else{clusters.push({x,y,members:[p]});}
+      });
+      clusters.forEach(c=>{
+        const names=c.members.map(name),title=esc(names.join(", "));
+        const multi=c.members.length>1;
+        html+='<g class="presence-marker"><title>'+title+'</title><circle cx="'+c.x+'" cy="'+c.y+'" r="'+(multi?16:10)+'" class="'+(multi?'presence-cluster':'presence-dot')+'"/>';
+        if(multi)html+='<text class="presence-count" x="'+c.x+'" y="'+(c.y+5)+'" text-anchor="middle">'+c.members.length+'</text>';
+        else html+='<text class="presence-label" x="'+(c.x+17)+'" y="'+(c.y-11)+'">'+esc(names[0])+'</text>';
+        html+='</g>';
+      });
+      html+='</svg><div class="presence-map-footer"><span>'+esc(tr("Плъзни картата за преместване · +/− за мащаб","Drag to move · +/− to zoom"))+'</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></div></div>';
     }
-    return html+'<div class="cards">'+(people.map(p=>{const a=p.attributes,stamp=p.last_updated?new Date(p.last_updated).toLocaleString(locale):"";
-      return '<article class="device-card"><strong>'+esc(name(p))+'</strong><p>'+esc(consumerState(p.state,tr))+'</p><small>'+esc(points.includes(p)?[stamp,Number.isFinite(a.gps_accuracy)?"± "+a.gps_accuracy+" m":""].filter(Boolean).join(" · "):tr("Няма споделена позиция","No shared location"))+'</small></article>';}).join("")||empty())+'</div>';
+    html+='<div class="presence-summary">'+esc(tr("Хора","People"))+': <strong>'+people.length+'</strong> · '+esc(tr("Със споделена позиция","Sharing location"))+': <strong>'+points.length+'</strong></div>';
+    return html+'<div class="cards presence-people-cards">'+(people.map(p=>{
+      const a=p.attributes||{},stamp=p.last_updated?new Date(p.last_updated).toLocaleString(locale):"";
+      const label=name(p),initial=label.trim().slice(0,1).toUpperCase(),located=points.includes(p);
+      return '<article class="device-card presence-person"><div class="presence-person-head"><span class="presence-avatar" aria-hidden="true">'+esc(initial)+'</span><div><strong>'+esc(label)+'</strong><span class="presence-state">'+esc(consumerState(p.state,tr))+'</span></div></div><small>'+esc(located?[stamp,Number.isFinite(a.gps_accuracy)?"± "+a.gps_accuracy+" m":""].filter(Boolean).join(" · "):tr("Няма споделена позиция","No shared location"))+'</small></article>';
+    }).join("")||empty())+'</div>';
   }
   function renderContent(){
     if(state.login || document.body.classList.contains("setup-mode"))return;
@@ -580,6 +600,33 @@
     }
     q("#screen").innerHTML=result;
     const showMap=q("#show-presence-map");if(showMap)showMap.onclick=()=>{mapVisible=true;renderContent();};
+    q("#screen").querySelectorAll("[data-presence-map]").forEach(btn=>btn.onclick=()=>{
+      const action=btn.dataset.presenceMap;
+      if(action==="in")presenceZoomDelta=Math.min(12,presenceZoomDelta+1);
+      if(action==="out")presenceZoomDelta=Math.max(-16,presenceZoomDelta-1);
+      if(action==="reset"){presenceZoomDelta=0;presencePanX=0;presencePanY=0;}
+      if(action==="hide")mapVisible=false;
+      renderContent();
+    });
+    const mapCanvas=q("#presence-map-canvas");
+    if(mapCanvas){
+      let drag=null;
+      mapCanvas.addEventListener("pointerdown",ev=>{
+        if(ev.button!==0)return;
+        drag={x:ev.clientX,y:ev.clientY};
+        mapCanvas.setPointerCapture(ev.pointerId);
+      });
+      mapCanvas.addEventListener("pointerup",ev=>{
+        if(!drag)return;
+        const rect=mapCanvas.getBoundingClientRect();
+        if(rect.width && rect.height){
+          presencePanX-=(ev.clientX-drag.x)*800/rect.width;
+          presencePanY-=(ev.clientY-drag.y)*380/rect.height;
+        }
+        drag=null;renderContent();
+      });
+      mapCanvas.addEventListener("pointercancel",()=>{drag=null;});
+    }
   }
   function setView(view){
     const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
