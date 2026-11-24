@@ -27,3 +27,33 @@
 .flow-dialog dd{overflow-wrap:anywhere;margin-bottom:.5rem}
 
 .device-card[data-detail]{cursor:pointer}.device-card .device-open{background:transparent;color:inherit;border:0;padding:.3rem 0;font:inherit;font-weight:700;text-align:start;cursor:pointer}.device-open:focus-visible{outline:2px solid #54ceff}.details-dialog form label{display:grid;gap:.35rem;margin-block:.7rem}.presence-map{width:100%;max-height:440px;background:#162b3e}.presence-map text{fill:white;stroke:#10202e;stroke-width:3;paint-order:stroke;font:14px sans-serif}
+
+
+/* STEVORA OS Presence: responsive map and compact people cards */
+.presence-intro{border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-bottom:18px;background:#102e49}
+.presence-intro p{font-size:12px;color:#abcbe3;line-height:1.6;margin:0 0 12px}
+.presence-map-shell{overflow:hidden;border:1px solid var(--border);background:#112b43;border-radius:18px;margin:0 0 15px}
+.presence-map-toolbar,.presence-map-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:11px 14px}
+.presence-map-toolbar>span{font-size:12px;font-weight:750;letter-spacing:.025em}
+.presence-map-actions{display:flex;gap:6px;align-items:center}
+.presence-map-actions button{background:#1b4466;border:1px solid #6098bd85;color:#e8f5ff;border-radius:9px;min-width:33px;min-height:33px;padding:6px 10px;font-size:12px}
+.presence-map-actions button:hover{background:#2a648a}
+.presence-zoom{font-size:11px;color:#9fbed5;padding:0 4px}
+.presence-map{display:block;width:100%;aspect-ratio:800/380;height:auto;max-height:none;background:#1a374c;cursor:grab;touch-action:none;user-select:none}
+.presence-map:active{cursor:grabbing}
+.presence-map text{fill:#f0f9ff;stroke:#10202e;stroke-width:3;paint-order:stroke;font:600 13px ui-sans-serif,sans-serif;pointer-events:none}
+.presence-map .presence-dot{fill:#1184bc;stroke:white;stroke-width:3}
+.presence-map .presence-cluster{fill:#176a9b;stroke:#eefaff;stroke-width:3}
+.presence-map .presence-count{stroke:none;fill:#fff;font-size:14px;font-weight:800}
+.presence-map-footer{font-size:10px;color:#9cbed6}
+.presence-map-footer a{color:#b3def8}
+.presence-summary{font-size:11px;color:#9dbfd9;margin:13px 0}
+.presence-summary strong{color:#f2faff}
+.presence-people-cards{grid-template-columns:repeat(auto-fill,minmax(215px,1fr))}
+.presence-person{padding:15px;gap:10px}
+.presence-person-head{display:flex;align-items:center;gap:11px;min-width:0}
+.presence-person-head>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.presence-person-head strong{font-size:13px;overflow-wrap:anywhere}
+.presence-avatar{display:grid;place-items:center;flex:0 0 37px;height:37px;border-radius:12px;background:#235b83;border:1px solid #66b0d979;color:#e6f7ff;font-size:16px;font-weight:800}
+.presence-state{font-size:11px;color:#a9cfe6}
+@media(max-width:600px){.presence-map-toolbar{align-items:flex-start}.presence-map-actions{flex-wrap:wrap}.presence-map-footer{padding:10px}.presence-map{aspect-ratio:4/3}.presence-person{padding:13px}}
