@@ -41,6 +41,10 @@ cp "$VARS_TEMPLATE" "$VARSVARS"
 
 ACCEL=()
 if [[ "$ARCH" = x86_64 && -r /dev/kvm ]]; then ACCEL=(-enable-kvm); fi
+# ARM64 UEFI firmware includes the VirtIO driver; the PCI option ROM is not
+# required and is missing from some Ubuntu QEMU packages (efi-virtio.rom).
+NET_DEVICE="virtio-net-pci,netdev=n0"
+if [[ "$ARCH" = aarch64 ]]; then NET_DEVICE+=",romfile="; fi
 "$QEMU" \
   "${ACCEL[@]}" \
   -machine "$MACHINE" -cpu "$CPU" -m 3072 -smp 2 \
@@ -48,7 +52,7 @@ if [[ "$ARCH" = x86_64 && -r /dev/kvm ]]; then ACCEL=(-enable-kvm); fi
   -drive "if=pflash,format=raw,file=${VARSVARS}" \
   -drive "if=virtio,format=qcow2,snapshot=on,file=${IMAGE}" \
   -netdev user,id=n0,hostfwd=tcp:127.0.0.1:18080-:80,hostfwd=tcp:127.0.0.1:18443-:443 \
-  -device virtio-net-pci,netdev=n0 \
+  -device "$NET_DEVICE" \
   -display none -monitor none -serial "file:${SERIAL}" -no-reboot \
   > "${LOGDIR}/qemu.log" 2>&1 &
 QEMU_PID=$!
