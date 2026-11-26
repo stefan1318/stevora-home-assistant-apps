@@ -15,7 +15,11 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 15
     steps:
-      - name: Verify self-hosted macOS ARM64 runner and build prerequisites
+      - name: Set up Node.js for STEVORA source tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify self-hosted macOS ARM64 runner and source test tools
         shell: bash
         run: |
           set -euo pipefail
@@ -23,7 +27,7 @@ jobs:
           test "$RUNNER_OS" = macOS
           test "$RUNNER_ARCH" = ARM64
           printf 'Runner: %s (%s, %s)\n' "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH"
-          for tool in python3 node git bash docker; do
+          for tool in python3 node git bash; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               echo "::error::Missing required tool: $tool"
               exit 1
@@ -33,17 +37,7 @@ jobs:
           node --version
           git --version
           bash --version | head -n 1
-          docker --version
           if command -v xz >/dev/null 2>&1; then xz --version | head -n 1; else echo "::notice::xz is not installed on the macOS host; install before native image packaging if needed"; fi
-          if ! docker info >/dev/null 2>&1; then
-            echo "::error::Docker daemon is unavailable. Start Docker Desktop or Colima on this Mac."
-            exit 1
-          fi
-      - name: Start a disposable Linux ARM64 Docker container
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm --platform linux/arm64 --network none docker.io/library/alpine:3.21 uname -m
       - name: Check out the Dev4 source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -57,3 +51,21 @@ jobs:
           for script in distribution/native-image/web/*.js; do
             node --check "$script"
           done
+      - name: Check Docker runtime for future native image builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "::error::Docker CLI unavailable to the runner. Install Docker Desktop or Colima and expose its CLI on PATH."
+            exit 1
+          fi
+          docker --version
+          if ! docker info >/dev/null 2>&1; then
+            echo "::error::Docker daemon unavailable to the runner. Start Docker Desktop or Colima."
+            exit 1
+          fi
+      - name: Start a disposable Linux ARM64 Docker container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --platform linux/arm64 --network none docker.io/library/alpine:3.21 uname -m
