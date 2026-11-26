@@ -1,9 +1,9 @@
-name: STEVORA OS Dev4 - UTM ARM64 UEFI image
+name: STEVORA OS Dev4 - UTM ARM64 UEFI bootfix test
 
 on:
   push:
     branches:
-      - feature/stevora-os-native-dev4-utm-arm64
+      - ci/stevora-os-dev4-utm-arm64-bootfix-20261126
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-utm-build.yml'
@@ -112,9 +112,9 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: UTM-ARM64-BUILD-ONLY
+          name: UTM-ARM64-DEV4-BOOTFIX-BUILD-ONLY
           path: staging/
-          retention-days: 1
+          retention-days: 7
           compression-level: 0
           if-no-files-found: error
 
@@ -149,7 +149,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: UTM-ARM64-QEMU-LOGS
+          name: UTM-ARM64-BOOTFIX-QEMU-LOGS
           path: boot-logs/
           retention-days: 7
 
@@ -169,7 +169,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-Dev4-UTM-ARM64-QEMU-PASS
+          name: STEVORA-OS-Dev4-UTM-ARM64-BOOTFIX-QEMU-PASS
           path: release/
           retention-days: 7
           compression-level: 0
