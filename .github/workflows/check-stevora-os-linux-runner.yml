@@ -11,7 +11,7 @@ permissions:
 jobs:
   check-runner:
     if: github.repository == 'stefan1318/stevora-home-assistant-apps' && github.event.repository.private
-    runs-on: [self-hosted, linux, stevora-os-linux]
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 8
     steps:
       - name: Check Linux runner and build tools
