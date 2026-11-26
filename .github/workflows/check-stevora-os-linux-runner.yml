@@ -1,0 +1,46 @@
+name: Check STEVORA OS Linux runner
+
+'on':
+  push:
+    branches: [ci/check-stevora-os-linux-runner]
+    paths: [.github/workflows/check-stevora-os-linux-runner.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  check-runner:
+    if: github.repository == 'stefan1318/stevora-home-assistant-apps' && github.event.repository.private
+    runs-on: [self-hosted, linux, stevora-os-linux]
+    timeout-minutes: 8
+    steps:
+      - name: Check Linux runner and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = self-hosted
+          test "$RUNNER_OS" = Linux
+          printf 'Runner: %s (%s)\n' "$RUNNER_NAME" "$RUNNER_ARCH"
+          python3 --version
+          node --version
+          git --version
+          xz --version
+          docker version
+      - name: Start a disposable Docker container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none docker.io/library/hello-world:latest
+      - name: Check out the Dev4 source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Run native image source tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s distribution/native-image/tests -p 'test_*.py' -v
+          bash -n distribution/native-image/scripts/prepare-haos.sh
+          for script in distribution/native-image/web/*.js; do
+            node --check "$script"
+          done
