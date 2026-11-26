@@ -1,9 +1,10 @@
-name: Check STEVORA OS Linux runner
+name: Check STEVORA OS macOS ARM64 runner
 
 'on':
   push:
     branches: [ci/check-stevora-os-linux-runner]
     paths: [.github/workflows/check-stevora-os-linux-runner.yml]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,25 +13,37 @@ jobs:
   check-runner:
     if: github.repository == 'stefan1318/stevora-home-assistant-apps' && github.event.repository.private
     runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
-      - name: Check Linux runner and build tools
+      - name: Verify self-hosted macOS ARM64 runner and build prerequisites
         shell: bash
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = self-hosted
-          test "$RUNNER_OS" = Linux
-          printf 'Runner: %s (%s)\n' "$RUNNER_NAME" "$RUNNER_ARCH"
+          test "$RUNNER_OS" = macOS
+          test "$RUNNER_ARCH" = ARM64
+          printf 'Runner: %s (%s, %s)\n' "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH"
+          for tool in python3 node git bash docker; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::Missing required tool: $tool"
+              exit 1
+            fi
+          done
           python3 --version
           node --version
           git --version
-          xz --version
-          docker version
-      - name: Start a disposable Docker container
+          bash --version | head -n 1
+          docker --version
+          if command -v xz >/dev/null 2>&1; then xz --version | head -n 1; else echo "::notice::xz is not installed on the macOS host; install before native image packaging if needed"; fi
+          if ! docker info >/dev/null 2>&1; then
+            echo "::error::Docker daemon is unavailable. Start Docker Desktop or Colima on this Mac."
+            exit 1
+          fi
+      - name: Start a disposable Linux ARM64 Docker container
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --network none docker.io/library/hello-world:latest
+          docker run --rm --platform linux/arm64 --network none docker.io/library/alpine:3.21 uname -m
       - name: Check out the Dev4 source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
