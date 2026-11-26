@@ -17,7 +17,7 @@ class RaspberryPi4BuildContract(unittest.TestCase):
         source = PREPARE.read_text(encoding="utf-8")
         for marker in (
             'TARGET="${2:-ova}"',
-            'ova|rpi4_64)',
+            '  rpi4_64)',
             'TARGET_CONFIG="$HAOS_DIR/buildroot-external/configs/${TARGET}_defconfig"',
             'BR2_PACKAGE_HASSIO_MACHINE="raspberrypi4-64"',
             'BR2_PACKAGE_LIBOPENSSL_BIN=y',

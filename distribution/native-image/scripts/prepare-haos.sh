@@ -4,12 +4,12 @@
 set -euo pipefail
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-  echo "Usage: prepare-haos.sh path-to-HAOS-checkout [ova|rpi4_64]" >&2
+  echo "Usage: prepare-haos.sh path-to-HAOS-checkout [ova|rpi4_64|generic_aarch64]" >&2
   exit 2
 fi
 TARGET="${2:-ova}"
 case "$TARGET" in
-  ova|rpi4_64) ;;
+  ova|rpi4_64|generic_aarch64) ;;
   *) echo "Unsupported STEVORA native build target: $TARGET" >&2; exit 2 ;;
 esac
 HAOS_DIR="$(cd -- "$1" && pwd)"
@@ -58,6 +58,10 @@ case "$TARGET" in
   rpi4_64)
     grep -qx 'BR2_aarch64=y' "$TARGET_CONFIG"
     grep -qx 'BR2_PACKAGE_HASSIO_MACHINE="raspberrypi4-64"' "$TARGET_CONFIG"
+    ;;
+  generic_aarch64)
+    grep -qx 'BR2_aarch64=y' "$TARGET_CONFIG"
+    grep -qx 'BR2_PACKAGE_HASSIO_MACHINE="qemuarm-64"' "$TARGET_CONFIG"
     ;;
 esac
 grep -q 'sudo umount "' "$DATA_SCRIPT"
@@ -130,7 +134,7 @@ test -s "$COMPONENTS_DIR/stevora/manifest.json"
 test -x "$GATEWAY_TARGET"
 
 echo "STEVORA native overlay applied to pinned upstream build checkout for target: $TARGET"
-if [ "$TARGET" = "ova" ]; then
+if [ "$TARGET" != "rpi4_64" ]; then
   echo "QEMU boot-test target: http://<VM-IP>/ (port 80)."
 else
   echo "RPi4 is build-only until a separate physical Raspberry Pi 4 boot test succeeds."

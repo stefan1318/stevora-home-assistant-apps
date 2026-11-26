@@ -1,0 +1,176 @@
+name: STEVORA OS Dev4 - UTM ARM64 UEFI image
+
+on:
+  push:
+    branches:
+      - feature/stevora-os-native-dev4-utm-arm64
+    paths:
+      - 'distribution/native-image/**'
+      - '.github/workflows/stevora-os-native-utm-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stevora-dev4-utm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-validation:
+    name: ARM64 source and regression contracts (not a boot test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+      - name: Validate native image and Dev4 contracts
+        run: |
+          python3 -m unittest discover -s distribution/native-image/tests -p 'test_*.py' -v
+          python3 -m py_compile distribution/native-image/scripts/patch-data-partition.py
+          bash -n distribution/native-image/scripts/prepare-haos.sh
+          test -s custom_components/stevora/manifest.json
+          test -s custom_components/stevora_os/frontend/icons/stevora-192.png
+          for f in distribution/native-image/web/*.js; do node --check "$f"; done
+          (cd distribution/native-image/gateway && go test ./...)
+          echo "Source validation PASS; guest boot is checked separately."
+
+  build-utm:
+    name: Build generic ARM64 UEFI QCOW2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    needs: source-validation
+    env:
+      UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+
+      - name: Inspect resources and free unused runner SDKs
+        run: |
+          df -h /
+          free -h
+          docker --version
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h /
+
+      - name: Fetch exact pinned upstream Home Assistant OS and Buildroot
+        run: |
+          git clone --filter=blob:none --depth 1 --branch dev \
+            https://github.com/home-assistant/operating-system.git haos
+          git -C haos fetch --no-tags --depth 1 origin "$UPSTREAM_HAOS_SHA"
+          git -C haos checkout --detach "$UPSTREAM_HAOS_SHA"
+          git -C haos submodule update --init --depth 1
+          test "$(git -C haos rev-parse HEAD)" = "$UPSTREAM_HAOS_SHA"
+          test -f haos/buildroot/Makefile
+          grep -qx 'BR2_aarch64=y' haos/buildroot-external/configs/generic_aarch64_defconfig
+          grep -qx 'BR2_PACKAGE_HASSIO_MACHINE="qemuarm-64"' \
+            haos/buildroot-external/configs/generic_aarch64_defconfig
+
+      - name: Cross-compile static STEVORA gateway for Linux ARM64
+        run: |
+          cd distribution/native-image/gateway
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" \
+            -o stevora-native-gateway .
+          test -x stevora-native-gateway
+          file stevora-native-gateway
+          file stevora-native-gateway | grep -qi 'ARM aarch64'
+
+      - name: Overlay STEVORA components onto the pinned ARM64 UEFI target
+        run: |
+          bash distribution/native-image/scripts/prepare-haos.sh haos generic_aarch64
+          grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' haos/buildroot-external/configs/generic_aarch64_defconfig
+          grep -qx 'CONFIG_HTTPD=y' haos/buildroot-external/busybox.config
+          grep -q 'native_bootstrap: true' haos/buildroot-external/package/hassio/create-data-partition.sh
+          test -s haos/buildroot-external/stevora-custom-components/stevora/manifest.json
+          file haos/buildroot-external/rootfs-overlay/usr/bin/stevora-native-gateway | grep -qi 'ARM aarch64'
+          grep -qx 'enable stevora-native-web.service' \
+            haos/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset
+          git -C haos diff --stat
+
+      - name: Build ARM64 UEFI image via upstream HAOS Buildroot container
+        working-directory: haos
+        env:
+          MAKEFLAGS: -j2
+        run: |
+          scripts/enter.sh make O=output_generic_aarch64 generic_aarch64
+          find output_generic_aarch64/images -maxdepth 1 -type f -printf '%f %s bytes\n'
+          test -n "$(find output_generic_aarch64/images -maxdepth 1 -name 'haos_generic-aarch64-*.qcow2.xz' -print -quit)"
+
+      - name: Verify and stage compressed disk
+        run: |
+          image="$(find haos/output_generic_aarch64/images -maxdepth 1 -name 'haos_generic-aarch64-*.qcow2.xz' -print -quit)"
+          xz -t "$image"
+          mkdir -p staging
+          cp "$image" staging/stevora-native-dev4-utm-arm64.qcow2.xz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UTM-ARM64-BUILD-ONLY
+          path: staging/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  boot-utm:
+    name: ARM64 UEFI boot and STEVORA HTTP smoke
+    runs-on: ubuntu-24.04
+    needs: build-utm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: UTM-ARM64-BUILD-ONLY
+          path: release/
+
+      - name: Install AArch64 QEMU and UEFI firmware
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-efi-aarch64 qemu-utils
+
+      - name: Boot actual disk with ARM64 UEFI and test the gateway
+        env:
+          QEMU_BOOT_ATTEMPTS: 300
+        run: |
+          disk=release/stevora-native-dev4-utm-arm64.qcow2
+          xz -dk "$disk.xz"
+          qemu-img check -f qcow2 "$disk"
+          bash distribution/native-image/scripts/qemu-smoke.sh "$disk" aarch64 boot-logs
+          rm "$disk"
+
+      - name: Upload boot diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: UTM-ARM64-QEMU-LOGS
+          path: boot-logs/
+          retention-days: 7
+
+      - name: Record build identity and checksums
+        run: |
+          cp distribution/native-image/UTM-BG.md release/
+          cat > release/BUILD-IDENTITY.txt <<META
+          STEVORA OS Native Integrated Developer Preview 4
+          STEVORA build commit: $GITHUB_SHA
+          Raspberry Pi 4 baseline: 74456c70dc821d70822b60309b6e33a50e24e39a
+          Pinned Home Assistant OS: 495bedb8d70a92ad189efb64829ece34b165d3bd
+          Target: generic_aarch64 / qemuarm-64 / ARM64 UEFI
+          QEMU ARM64 UEFI boot, gateway HTTP and assets: PASS
+          UTM/HVF, Core onboarding, production integrations and signed OTA: unverified
+          META
+          (cd release && sha256sum *.qcow2.xz > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-OS-Dev4-UTM-ARM64-QEMU-PASS
+          path: release/
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
