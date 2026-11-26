@@ -3,7 +3,9 @@ name: STEVORA OS Dev4 RPi4 - Mac self-hosted experimental build
 'on':
   push:
     branches: [ci/stevora-os-dev4-mac-rpi4-build-20261126]
-    paths: [.github/workflows/stevora-os-dev4-mac-rpi4-build.yml]
+    paths:
+      - .github/workflows/stevora-os-dev4-mac-rpi4-build.yml
+      - distribution/native-image/scripts/prepare-haos.sh
   workflow_dispatch:
 
 permissions:
