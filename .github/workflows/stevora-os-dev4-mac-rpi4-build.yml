@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 330
     env:
       UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
-      DOCKER_DEFAULT_PLATFORM: linux/amd64
+      DOCKER_DEFAULT_PLATFORM: linux/arm64
     steps:
       - name: Checkout isolated Dev4 test branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -49,18 +49,17 @@ jobs:
           test -s custom_components/stevora_os/frontend/icons/stevora-192.png
           for script in distribution/native-image/web/*.js; do node --check "$script"; done
           (cd distribution/native-image/gateway && go test ./...)
-      - name: Check Docker x86-64 compatibility and free disk space
+      - name: Check native Linux ARM64 Docker and free disk space
         shell: bash
         run: |
           set -euo pipefail
           test "$RUNNER_OS" = macOS
           test "$RUNNER_ARCH" = ARM64
           docker info >/dev/null
-          docker run --rm --platform linux/amd64 --network none alpine:3.21 sh -c 'test "$(uname -m)" = x86_64'
           docker run --rm --platform linux/arm64 --network none alpine:3.21 sh -c 'test "$(uname -m)" = aarch64'
           df -h .
           docker system df
-          echo "NOTICE: Buildroot cross-build on an emulated x86-64 container is experimental."
+          echo "NOTICE: Trying native Linux ARM64 Docker host for Buildroot (experimental)."
           echo "NOTICE: Requires substantial Docker VM disk capacity; does not touch production devices."
       - name: Checkout pinned Home Assistant OS Buildroot source
         shell: bash
@@ -95,6 +94,7 @@ jobs:
           MAKEFLAGS: -j2
         run: |
           set -euo pipefail
+          echo 'Docker build platform:' "$DOCKER_DEFAULT_PLATFORM"
           scripts/enter.sh make O=output_rpi4_64 rpi4_64
           find output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -exec ls -lh {} \;
           test -n "$(find output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -print -quit)"
