@@ -1,0 +1,119 @@
+name: STEVORA OS Dev4 RPi4 - Mac self-hosted experimental build
+
+'on':
+  push:
+    branches: [ci/stevora-os-dev4-mac-rpi4-build-20261126]
+    paths: [.github/workflows/stevora-os-dev4-mac-rpi4-build.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stevora-rpi4-mac-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mac-rpi4-image:
+    name: Dev4 RPi4 image on Stefans-MacBook-Pro (experimental)
+    if: github.repository == 'stefan1318/stevora-home-assistant-apps' && github.event.repository.private
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 330
+    env:
+      UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
+      DOCKER_DEFAULT_PLATFORM: linux/amd64
+    steps:
+      - name: Checkout isolated Dev4 test branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+      - name: Validate source and CI contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s distribution/native-image/tests -p 'test_*.py' -v
+          python3 -m py_compile distribution/native-image/scripts/patch-data-partition.py
+          bash -n distribution/native-image/scripts/prepare-haos.sh
+          test -s custom_components/stevora/manifest.json
+          test -s custom_components/stevora_os/frontend/icons/stevora-192.png
+          for script in distribution/native-image/web/*.js; do node --check "$script"; done
+          (cd distribution/native-image/gateway && go test ./...)
+      - name: Check Docker x86-64 compatibility and free disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = macOS
+          test "$RUNNER_ARCH" = ARM64
+          docker info >/dev/null
+          docker run --rm --platform linux/amd64 --network none alpine:3.21 sh -c 'test "$(uname -m)" = x86_64'
+          docker run --rm --platform linux/arm64 --network none alpine:3.21 sh -c 'test "$(uname -m)" = aarch64'
+          df -h .
+          docker system df
+          echo "NOTICE: Buildroot cross-build on an emulated x86-64 container is experimental."
+          echo "NOTICE: Requires substantial Docker VM disk capacity; does not touch production devices."
+      - name: Checkout pinned Home Assistant OS Buildroot source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --depth 1 --branch dev https://github.com/home-assistant/operating-system.git haos
+          git -C haos fetch --no-tags --depth 1 origin "$UPSTREAM_HAOS_SHA"
+          git -C haos checkout --detach "$UPSTREAM_HAOS_SHA"
+          git -C haos submodule update --init --depth 1
+          test "$(git -C haos rev-parse HEAD)" = "$UPSTREAM_HAOS_SHA"
+          test -f haos/buildroot/Makefile
+          grep -qx 'BR2_aarch64=y' haos/buildroot-external/configs/rpi4_64_defconfig
+      - name: Cross-compile STEVORA Linux ARM64 gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd distribution/native-image/gateway && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o stevora-native-gateway .)
+          test -s distribution/native-image/gateway/stevora-native-gateway
+          file distribution/native-image/gateway/stevora-native-gateway
+      - name: Apply Dev4 native OS overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash distribution/native-image/scripts/prepare-haos.sh haos rpi4_64
+          test -s haos/buildroot-external/stevora-custom-components/stevora/manifest.json
+          test -s haos/buildroot-external/rootfs-overlay/usr/bin/stevora-native-gateway
+          git -C haos diff --stat
+      - name: Compile real Raspberry Pi 4 image with upstream HAOS container
+        shell: bash
+        working-directory: haos
+        env:
+          MAKEFLAGS: -j2
+        run: |
+          set -euo pipefail
+          scripts/enter.sh make O=output_rpi4_64 rpi4_64
+          find output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -exec ls -lh {} \;
+          test -n "$(find output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -print -quit)"
+      - name: Validate compressed image and package BUILD-ONLY artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="$(find haos/output_rpi4_64/images -maxdepth 1 -name 'haos_rpi4-64-*.img.xz' -print -quit)"
+          test -n "$IMAGE"
+          test -s "$IMAGE"
+          xz -t "$IMAGE"
+          mkdir -p release
+          cp "$IMAGE" release/stevora-native-dev4-rpi4-64.img.xz
+          printf 'STEVORA OS Dev4 Raspberry Pi 4 64-bit BUILD-ONLY\nSource: %s\nUpstream HAOS: %s\nHardware boot: NOT VERIFIED\nOTA and rollback: NOT VERIFIED\nDo not overwrite Dunav.\n' "$GITHUB_SHA" "$UPSTREAM_HAOS_SHA" > release/BUILD-IDENTITY.txt
+          (cd release && shasum -a 256 stevora-native-dev4-rpi4-64.img.xz > SHA256SUMS.txt)
+          ls -lh release
+      - name: Upload experimental RPi4 image
+        uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-OS-Dev4-RPi4-Mac-Experimental-BUILD-ONLY
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
