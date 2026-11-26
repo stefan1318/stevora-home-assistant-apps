@@ -64,12 +64,25 @@ grep -q 'sudo umount "' "$DATA_SCRIPT"
 
 # Keep the native Supervisor OS identity for now (HAOS_ID/RAUC and machine).
 # Branding and authenticated STEVORA root UI are provided by our own layers.
-sed -i 's/^# CONFIG_HTTPD is not set$/CONFIG_HTTPD=y/' "$BUSYBOX_CONFIG"
+# Use Python's exact replacement to avoid incompatible GNU/BSD sed -i syntax.
+replace_exact() {
+  python3 - "$1" "$2" "$3" <<'PY'
+from pathlib import Path
+import sys
+path, old, new = sys.argv[1:]
+file = Path(path)
+contents = file.read_text()
+if contents.count(old) != 1:
+    raise SystemExit(f"Refusing unexpected upstream content in {file}")
+file.write_text(contents.replace(old, new, 1))
+PY
+}
+replace_exact "$BUSYBOX_CONFIG" '# CONFIG_HTTPD is not set' 'CONFIG_HTTPD=y'
 # The physical-console publisher enrollment command verifies a public X.509 certificate.
 if ! grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' "$TARGET_CONFIG"; then
   printf '\nBR2_PACKAGE_LIBOPENSSL_BIN=y\n' >> "$TARGET_CONFIG"
 fi
-sed -i 's/^HAOS_NAME="Home Assistant OS"$/HAOS_NAME="STEVORA OS Integrated Developer Preview"/' "$META"
+replace_exact "$META" 'HAOS_NAME="Home Assistant OS"' 'HAOS_NAME="STEVORA OS Integrated Developer Preview"'
 
 install -m 0644 "$SELF_DIR/systemd/stevora-native-web.service" "$SERVICE_TARGET"
 install -m 0755 "$GATEWAY" "$GATEWAY_TARGET"
@@ -84,9 +97,11 @@ install -m 0644 "$PROJECT_ROOT/custom_components/stevora_os/frontend/icons/stevo
 cp -a "$PROJECT_ROOT/custom_components/stevora" "$COMPONENTS_DIR/stevora"
 
 ROOTFS="$HAOS_DIR/buildroot-external/rootfs-overlay"
-install -Dm0644 "$SELF_DIR/systemd/stevora-builtin.service" "$ROOTFS/usr/lib/systemd/system/stevora-builtin.service"
-install -Dm0644 "$SELF_DIR/systemd/rauc-publisher.conf" "$ROOTFS/usr/lib/systemd/system/rauc.service.d/stevora.conf"
-install -Dm0755 "$SELF_DIR/scripts/enroll-publisher.sh" "$ROOTFS/usr/bin/stevoractl-enroll-publisher"
+# macOS/BSD install does not support GNU install -D; create directories explicitly.
+mkdir -p "$ROOTFS/usr/lib/systemd/system" "$ROOTFS/usr/lib/systemd/system/rauc.service.d" "$ROOTFS/usr/bin"
+install -m 0644 "$SELF_DIR/systemd/stevora-builtin.service" "$ROOTFS/usr/lib/systemd/system/stevora-builtin.service"
+install -m 0644 "$SELF_DIR/systemd/rauc-publisher.conf" "$ROOTFS/usr/lib/systemd/system/rauc.service.d/stevora.conf"
+install -m 0755 "$SELF_DIR/scripts/enroll-publisher.sh" "$ROOTFS/usr/bin/stevoractl-enroll-publisher"
 mkdir -p "$ROOTFS/usr/share/stevora-components"
 cp -a "$COMPONENTS_DIR/stevora" "$ROOTFS/usr/share/stevora-components/"
 printf '%s\n' 'enable stevora-builtin.service' >> "$PRESET"
