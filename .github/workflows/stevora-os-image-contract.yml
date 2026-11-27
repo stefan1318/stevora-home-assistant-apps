@@ -9,6 +9,7 @@ on:
       - '.github/workflows/stevora-os-image-contract.yml'
   pull_request:
     paths:
+      - 'contracts/adaptive/**'
       - 'distribution/**'
       - '.github/workflows/stevora-os-image-contract.yml'
   workflow_dispatch:

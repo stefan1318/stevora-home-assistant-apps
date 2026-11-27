@@ -10,6 +10,7 @@ on:
       - '.github/workflows/stevora-integration-check.yml'
   pull_request:
     paths:
+      - 'contracts/adaptive/**'
       - 'custom_components/stevora/**'
       - 'tests/stevora/**'
       - '.github/workflows/stevora-integration-check.yml'
