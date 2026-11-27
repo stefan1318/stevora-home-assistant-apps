@@ -20,7 +20,7 @@ jobs:
   distribution-contract:
     name: Native image requirements (no image build yet)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,6 +35,10 @@ jobs:
         run: |
           node --check distribution/native-image/web/app.js
           node --test distribution/native-image/tests/adaptive_renderer.test.cjs
+      - name: Exercise adaptive controls at mobile viewport width
+        run: |
+          python -m pip install playwright==1.56.0
+          python distribution/native-image/tests/browser_adaptive_renderer.py
       - name: Explicitly prevent fake release artifact
         run: |
           python - <<'PY'
