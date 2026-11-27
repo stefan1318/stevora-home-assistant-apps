@@ -20,3 +20,23 @@ Download STEVORA CA (.cer) on the trusted local network. Compare its SHA-256 fin
 ## Integration and app access
 
 The native wizard uses Core config and options flows. It handles Tuya's local QR selector, menu choices, common scalar and select fields, external provider links and progress. Complex selectors accept their Core JSON value. Optional integrations and apps must be available to the connected Core/Supervisor. Open uses the app's authenticated Ingress session. Apps without an Ingress web UI require their own supported client.
+
+## GitHub releases on feed-enabled images
+
+Configure the protected GitHub environment `stevora-os-release` once. Set
+`STEVORA_RAUC_CERT_PEM` and `STEVORA_RAUC_KEY_PEM` to the matching publisher
+certificate and private key as multiline secrets. Restrict publishing to trusted
+release tags and protect tag creation. Enroll the matching public certificate
+once on each hub using the console procedure above.
+
+Push a tag such as `stevora-os-v1.2.3` at the intended release commit. The
+release workflow builds the Pi 4, UTM and OVA targets, re-signs their RAUC
+bundles on a separate runner, verifies all three and creates a GitHub Release.
+Use a fresh, increasing version for each release. The release job creates
+the release itself.
+
+The gateway checks public GitHub Releases at startup and every 30 minutes.
+It caches a newer stable bundle for its own board after checking its signature.
+An administrator opens Update Center, approves installation and restarts to
+activate the new slot. The manual upload remains available. Existing Dev4
+systems need one initial upgrade to a build containing the release client.

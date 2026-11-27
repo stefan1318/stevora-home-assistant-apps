@@ -78,6 +78,12 @@ sed -i 's/^HAOS_NAME="Home Assistant OS"$/HAOS_NAME="STEVORA OS Integrated Devel
 install -m 0644 "$SELF_DIR/systemd/stevora-native-web.service" "$SERVICE_TARGET"
 install -m 0755 "$GATEWAY" "$GATEWAY_TARGET"
 mkdir -p "$PUBLIC_DIR" "$COMPONENTS_DIR"
+feed_tag=stevora-os-v0.0.0
+if [[ "${GITHUB_REF:-}" == refs/tags/stevora-os-v* ]]; then
+  feed_tag="${GITHUB_REF_NAME:?missing release tag}"
+  [[ "$feed_tag" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]] || exit 1
+fi
+printf '%s %s\n' "$TARGET" "$feed_tag" > "$PUBLIC_DIR/release-feed"
 install -m 0644 "$SELF_DIR/web/index.html" "$PUBLIC_DIR/index.html"
 install -m 0644 "$SELF_DIR/web/app.css" "$PUBLIC_DIR/app.css"
 install -m 0644 "$SELF_DIR/web/stevora-login.css" "$PUBLIC_DIR/stevora-login.css"
@@ -117,7 +123,7 @@ cat > "$PUBLIC_DIR/build.json" <<'STEVORA_NATIVE_META'
   "local_rauc_upload": true,
   "publisher_enrollment_required": true,
   "backup_restore_enabled": false,
-  "signed_stevora_ota": false,
+  "signed_stevora_ota": true,
   "test_only": true
 }
 STEVORA_NATIVE_META

@@ -261,7 +261,7 @@
     return state.entities.find(x=>x.entity_id===id);
   }
   function deviceDetails(id){
-    openStevoraDevice({id,entity:()=>latestEntity(id),profile:()=>deviceProfile(id),canControl:()=>controllable(latestEntity(id)),call,tr,name:info(latestEntity(id))});
+    openStevoraDevice({id,entity:()=>latestEntity(id),profile:()=>deviceProfile(id),canControl:()=>controllable(latestEntity(id)),call,tr,name:[info(latestEntity(id)),entityArea(latestEntity(id)) && areaName(entityArea(latestEntity(id)))].filter(Boolean).join(" · ")});
   }
   function managementButton(key,bg,en){
     return '<button data-management="'+key+'">'+esc(tr(bg,en))+'</button>';
@@ -413,7 +413,7 @@
       buttons+='<button data-automation-edit="'+esc(id)+'">'+esc(tr("Редактирай","Edit"))+'</button>';
     const stateLabel=consumerState(e.state,tr);
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
-    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+({light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(name)+'</button></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
+    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+(profileGlyph(deviceProfile(id)?.icon)||{light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(name)+'</button></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
   }
   function home(){
     const available=count();
@@ -468,8 +468,8 @@
       '<section class="panel"><h2>'+esc(t("installed"))+'</h2><div class="filters"><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div><div class="cards">'+(installed.map(a=>appCard(a)).join("")||empty())+'</div></section>'+
       '<section class="panel"><h2>'+esc(t("available"))+'</h2><div class="cards">'+(catalog.filter(a=>!installedIds.has(a.slug)).map(a=>appCard(a,true)).join("")||empty())+'</div></section>';
   }
-  async function updateRequest(file){
-    const response=await fetch("/stevora-update",{method:file?"POST":"GET",
+  async function updateRequest(file,release){
+    const response=await fetch("/stevora-update"+(release?"?release="+encodeURIComponent(release):""),{method:file||release?"POST":"GET",
       headers:{Authorization:"Bearer "+state.token,...(file?{"Content-Type":"application/octet-stream"}:{})},
       body:file||undefined,cache:"no-store"});
     if(!response.ok)throw new Error((await response.text()).slice(0,160));return response;
@@ -477,7 +477,7 @@
   function osUpload(){
     const info=state.updateInfo;
     const status=info?.publisher_configured?(info.status||"idle"):tr("Необходим е доверен сертификат на издателя.","A trusted publisher certificate is required.");
-    return '<section class="panel"><h2>STEVORA OS Update</h2><p>'+esc(status)+'</p><form class="update-upload" data-form="os-update"><input type="file" name="bundle" accept=".raucb" required><button '+(!info?.publisher_configured?'disabled':'')+'>'+esc(tr("Инсталирай подписан пакет","Install signed bundle"))+'</button></form></section>';
+    return '<section class="panel"><h2>STEVORA OS Update</h2><p>'+esc(status)+'</p>'+(info?.downloaded_release?'<form data-form="os-release"><button>'+esc(tr("Инсталирай ","Install ")+info.downloaded_release)+'</button></form>':'')+'<form class="update-upload" data-form="os-update"><input type="file" name="bundle" accept=".raucb" required><button '+(!info?.publisher_configured?'disabled':'')+'>'+esc(tr("Инсталирай подписан пакет","Install signed bundle"))+'</button></form></section>';
   }
   function systemView(){
     if(!state.admin)return hdr(t("system"))+empty(t("notAdmin"));
@@ -996,10 +996,11 @@
     const form=ev.target.closest("form[data-form]");if(!form)return;
     ev.preventDefault();
     try{
-      if(form.dataset.form==="os-update"){
-        const file=form.elements.bundle.files[0];if(!state.admin||!file||!confirm(tr("Инсталиране в неактивния системен дял?","Install to the inactive OS slot?")))return;
+      if(["os-update","os-release"].includes(form.dataset.form)){
+        const release=form.dataset.form==="os-release" && state.updateInfo?.downloaded_release;
+        const file=form.elements.bundle?.files[0];if(!state.admin||(!file&&!release)||!confirm(tr("Инсталиране в неактивния системен дял?","Install to the inactive OS slot?")))return;
         const submit=form.querySelector("button");submit.disabled=true;
-        try{await updateRequest(file);await loadAdmin("updates");renderContent();notice(tr("Пакетът е инсталиран. Рестартирай за активиране.","Package installed. Restart to activate."));}finally{submit.disabled=false;}
+        try{await updateRequest(file,release);await loadAdmin("updates");renderContent();notice(tr("Пакетът е инсталиран. Рестартирай за активиране.","Package installed. Restart to activate."));}finally{submit.disabled=false;}
       }
       if(form.dataset.form==="assist"){const message=form.querySelector('input[name="message"]').value;await chat(message)}
       if(form.dataset.form==="add-integration")await addIntegration(form);

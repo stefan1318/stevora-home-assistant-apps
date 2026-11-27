@@ -7,6 +7,12 @@ on:
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-utm-build.yml'
+  pull_request:
+    branches: [feature/stevora-os-native-dev4-utm-arm64]
+    paths:
+      - 'distribution/native-image/**'
+      - '.github/workflows/stevora-os-*.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -38,7 +44,14 @@ jobs:
           (cd distribution/native-image/gateway && go test ./...)
           echo "Source validation PASS; guest boot is checked separately."
 
+      - name: Exercise thermostat and visual icon editor
+        run: |
+          python3 -m venv "$RUNNER_TEMP/stevora-browser"
+          "$RUNNER_TEMP/stevora-browser/bin/pip" install playwright==1.56.0
+          "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_device_controls.py
+
   build-utm:
+    if: github.event_name != 'pull_request'
     name: Build generic ARM64 UEFI QCOW2
     runs-on: ubuntu-24.04
     timeout-minutes: 330
@@ -109,6 +122,23 @@ jobs:
           xz -t "$image"
           mkdir -p staging
           cp "$image" staging/stevora-native-dev4-utm-arm64.qcow2.xz
+
+      - name: Collect release input from this build
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        run: |
+          shopt -s nullglob
+          bundles=(haos/output_generic_aarch64/images/*.raucb)
+          test "${#bundles[@]}" -eq 1
+          cp "${bundles[0]}" publisher-input.raucb
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        with:
+          name: publisher-input-generic_aarch64
+          path: publisher-input.raucb
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:

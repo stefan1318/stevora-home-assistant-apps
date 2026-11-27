@@ -1,0 +1,56 @@
+name: Publish signed STEVORA OS releases
+on:
+  push:
+    tags: ['stevora-os-v*']
+permissions:
+  contents: read
+concurrency:
+  group: publish-stevora-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: '[[ "$GITHUB_REF_NAME" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]'
+  pi:
+    needs: version
+    uses: ./.github/workflows/stevora-os-native-rpi4-build.yml
+  utm:
+    needs: version
+    uses: ./.github/workflows/stevora-os-native-utm-build.yml
+  ova:
+    needs: version
+    uses: ./.github/workflows/stevora-os-native-integrated-build.yml
+  publish:
+    needs: [pi, utm, ova]
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: publisher-input-*
+          path: inputs
+      - run: sudo apt-get update -qq && sudo apt-get install -y rauc
+      - name: Sign and verify the three bundles
+        env:
+          PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
+          PUBLISHER_KEY: ${{ secrets.STEVORA_RAUC_KEY_PEM }}
+        run: |
+          set -eu
+          umask 077
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          printf '%s\n' "${PUBLISHER_CERT:?missing release certificate}" > "$tmp/cert.pem"
+          printf '%s\n' "${PUBLISHER_KEY:?missing release key}" > "$tmp/key.pem"
+          mkdir signed
+          for board in rpi4_64 generic_aarch64 ova; do
+            target=signed/stevora-os-$board.raucb
+            rauc --no-verify --cert="$tmp/cert.pem" --key="$tmp/key.pem" resign "inputs/publisher-input-$board/publisher-input.raucb" "$target"
+            rauc --keyring="$tmp/cert.pem" info "$target"
+          done
+      - name: Publish verified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes

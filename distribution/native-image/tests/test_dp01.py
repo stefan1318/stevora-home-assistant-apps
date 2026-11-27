@@ -86,7 +86,7 @@ class NativeIntegratedContract(unittest.TestCase):
         self.assertNotIn('"/os/update","POST"',script)
         self.assertNotIn('"/backups/"+slug+"/restore/full"',script)
         patch=(SCRIPTS/"prepare-haos.sh").read_text()
-        self.assertIn('"signed_stevora_ota": false',patch)
+        self.assertIn('"signed_stevora_ota": true',patch)
         self.assertIn('"backup_restore_enabled": false',patch)
 
     def test_real_qemu_boot_test_in_ci(self):

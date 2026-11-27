@@ -7,6 +7,7 @@ on:
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-rpi4-build.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -129,6 +130,23 @@ jobs:
           EOF
           (cd release && sha256sum stevora-native-dev4-rpi4-64.img.xz > SHA256SUMS.txt)
           ls -lh release
+
+      - name: Collect release input from this build
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        run: |
+          shopt -s nullglob
+          bundles=(haos/output_rpi4_64/images/*.raucb)
+          test "${#bundles[@]}" -eq 1
+          cp "${bundles[0]}" publisher-input.raucb
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        with:
+          name: publisher-input-rpi4_64
+          path: publisher-input.raucb
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:

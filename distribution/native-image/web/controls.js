@@ -1,5 +1,5 @@
 function consumerState(value,tr) {
-  const labels={on:["Включено","On"],off:["Изключено","Off"],home:["Вкъщи","Home"],not_home:["Навън","Away"],unavailable:["Недостъпно","Unavailable"],unknown:["Няма данни","Unknown"],cool:["Охлаждане","Cooling"],heat:["Отопление","Heating"],heat_cool:["Автоматично","Auto"],dry:["Изсушаване","Dry"],fan_only:["Вентилация","Fan only"],standby:["Готовност","Standby"]};
+  const labels={on:["Включено","On"],off:["Изключено","Off"],home:["Вкъщи","Home"],not_home:["Навън","Away"],unavailable:["Недостъпно","Unavailable"],unknown:["Няма данни","Unknown"],cool:["Охлаждане","Cooling"],heat:["Отопление","Heating"],auto:["Авто","Auto"],heat_cool:["Отопление / охлаждане","Heat / cool"],dry:["Изсушаване","Dry"],fan_only:["Вентилация","Fan only"],standby:["Готовност","Standby"]};
   return labels[value]?tr(...labels[value]):String(value??"").replaceAll("_"," ");
 }
 function dismissOnBackdrop(dialog) {
@@ -10,12 +10,78 @@ function dismissOnBackdrop(dialog) {
 }
 "use strict";
 
+function climatePanel({entity, allowed, apply, tr, error}) {
+  const panel = document.createElement("section");
+  panel.className = "climate-panel";
+  let pending = false;
+  function render() {
+    const current = entity();
+    if (!current) return;
+    const attrs = current.attributes || {};
+    const value = attrs.temperature;
+    const focus = panel.contains(document.activeElement) && document.activeElement.dataset.control;
+    panel.replaceChildren();
+    function caption(text) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      panel.append(p);
+    }
+    function button(parent, label, id, disabled, action) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.control = id;
+      b.disabled = pending || disabled;
+      b.onclick = async () => {
+        if (pending) return;
+        pending = true;
+        error.textContent = "";
+        render();
+        try { await action(); }
+        catch (e) { error.textContent = e.message; }
+        finally { pending = false; render(); }
+      };
+      parent.append(b);
+      return b;
+    }
+    if (Number.isFinite(value)) {
+      caption(tr("Зададена температура","Target temperature"));
+      const row = document.createElement("div");
+      row.className = "setpoint";
+      const output = document.createElement("strong");
+      output.textContent = value + "°";
+      const lo = attrs.min_temp, hi = attrs.max_temp;
+      const step = Math.max(1, Number(attrs.target_temp_step) || 1);
+      function adjust(label, delta) {
+        const next = Number((value + delta).toFixed(2));
+        button(row,label,label,!allowed("temperature") || next < lo || next > hi,
+          () => apply("temperature","set_temperature",{temperature:next}));
+      }
+      adjust("−",-step); row.append(output); adjust("+",step);
+      panel.append(row);
+      caption(tr("Стъпка ","Step ") + step + "°" +
+        (Number.isFinite(lo) && Number.isFinite(hi) ? " · " + lo + "–" + hi + "°" : ""));
+    }
+    if (attrs.hvac_modes?.length) {
+      caption(tr("Режим на работа","Operating mode"));
+      const grid = document.createElement("div");
+      grid.className = "hvac-modes";
+      for (const mode of attrs.hvac_modes) {
+        button(grid,consumerState(mode,tr),mode,!allowed("hvac_mode"),
+          () => apply("hvac_mode","set_hvac_mode",{hvac_mode:mode}))
+          .setAttribute("aria-pressed",String(current.state === mode));
+      }
+      panel.append(grid);
+    }
+    if (focus) Array.from(panel.querySelectorAll("button")).find(b=>b.dataset.control===focus)?.focus();
+  }
+  return {panel,render};
+}
 function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
   const current = entity();
   if (!current || !profile()) throw new Error(tr("Устройството вече не е достъпно", "Device no longer available"));
   const domain = id.split(".")[0];
   const dialog = document.createElement("dialog");
-  dialog.className = "details-dialog flow-dialog";
+  dialog.className = "details-dialog flow-dialog device-sheet";
   const heading = document.createElement("h2");
   heading.textContent = name;
   const status = document.createElement("p");
@@ -56,6 +122,7 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
   };
   for (const [key,[label,service,field,spec]] of Object.entries(controls)) {
     if (!allowed(key) || (spec?.options && !spec.options.length)) continue;
+    if (domain==="climate" && (key==="hvac_mode" || key==="temperature" && Number.isFinite(attrs.temperature))) continue;
     const form = document.createElement("form");
     let input;
     if (field) {
@@ -99,11 +166,27 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
   dismissOnBackdrop(dialog);
   const close=document.createElement("button");
   close.textContent=tr("Затвори","Close"); close.onclick=()=>dialog.close();
-  dialog.append(heading,status,fields,error,close);
+  close.className="sheet-close";
+  close.setAttribute("aria-label",close.textContent); close.textContent="×";
+  const caption=document.createElement("small");
+  caption.textContent=domain==="climate"?tr("Климатизация","Climate settings"):tr("Настройки на устройството","Device settings");
+  dialog.append(caption,heading,close);
+  let climate;
+  if(domain==="climate"){
+    climate=climatePanel({entity,allowed,apply,tr,error});
+    dialog.append(climate.panel,status);
+    if(fields.childElementCount){
+      const details=document.createElement("details"),summary=document.createElement("summary");
+      summary.textContent=tr("Допълнителни настройки","Additional settings");
+      details.append(summary,fields);dialog.append(details);
+    }
+  }else dialog.append(status,fields);
+  dialog.append(error);
   const refresh = () => {
     const next=entity();
     if (!next || !profile()) {dialog.close();return;}
-    status.textContent=[consumerState(next.state,tr),next.attributes?.unit_of_measurement].filter(Boolean).join(" · ");
+    climate?.render();
+    status.textContent=(climate?tr("Текущ режим: ","Current mode: "):"")+[consumerState(next.state,tr),next.attributes?.unit_of_measurement].filter(Boolean).join(" · ");
   };
   document.addEventListener("stevora-device-update",refresh);
   dialog.onclose=()=>{document.removeEventListener("stevora-device-update",refresh);dialog.remove();};
