@@ -511,7 +511,7 @@
   function osUpload(){
     const info=state.updateInfo;
     const status=info?.publisher_configured?(info.status||"idle"):tr("Необходим е доверен сертификат на издателя.","A trusted publisher certificate is required.");
-    return '<section class="panel"><h2>STEVORA OS Update</h2><p>'+esc(status)+'</p>'+(info?.downloaded_release?'<form data-form="os-release"><button>'+esc(tr("Инсталирай ","Install ")+info.downloaded_release)+'</button></form>':'')+'<form class="update-upload" data-form="os-update"><input type="file" name="bundle" accept=".raucb" required><button '+(!info?.publisher_configured?'disabled':'')+'>'+esc(tr("Инсталирай подписан пакет","Install signed bundle"))+'</button></form></section>';
+    return '<section class="panel"><h2>STEVORA OS Update</h2><p>'+esc(status)+'</p>'+(info?.downloaded_release?'<form data-form="os-release"><button>'+esc(tr("Инсталирай ","Install ")+info.downloaded_release)+'</button></form>':'')+(info?.manual_upload_allowed!==false?'<form class="update-upload" data-form="os-update"><input type="file" name="bundle" accept=".raucb" required><button '+(!info?.publisher_configured?'disabled':'')+'>'+esc(tr("Инсталирай подписан пакет","Install signed bundle"))+'</button></form>':'')+'</section>';
   }
   function systemView(){
     if(!state.admin)return hdr(t("system"))+empty(t("notAdmin"));

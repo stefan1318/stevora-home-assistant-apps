@@ -61,7 +61,7 @@ func newUpdateHandler(core *url.URL) http.Handler {
 		}
 		if r.Method == "GET" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"publisher_configured": cert != "", "status": status, "downloaded_release": feed.cached()})
+			json.NewEncoder(w).Encode(map[string]any{"publisher_configured": cert != "", "status": status, "downloaded_release": feed.cached(), "manual_upload_allowed": !feed.usesOfficialReleaseFeed()})
 			return
 		}
 		if r.Method != "POST" {
