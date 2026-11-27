@@ -4,6 +4,7 @@ All device actions remain protected by Home Assistant, not this manifest.
 """
 import json
 import zlib
+from types import SimpleNamespace
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from .const import SCHEMA_VERSION, CONF_LANGUAGE, DEFAULT_LANGUAGE
 from .modules import describe_modules, panel_requested
@@ -18,7 +19,7 @@ SUPPORTED_DOMAINS = {
 UNASSIGNED_ROOM = "__stevora_unassigned__"
 
 
-def build_manifest(hass, entry):
+def build_manifest(hass, entry, *, adaptive=False):
     """Build an installation-scoped snapshot from HA area/entity/device registries."""
     areas = area_registry.async_get(hass)
     entities = entity_registry.async_get(hass)
@@ -37,7 +38,7 @@ def build_manifest(hass, entry):
         for a in areas.async_list_areas()
         if not selected_areas or a.id in selected_areas
     ]
-    include_unassigned = bool(settings.get("include_unassigned", False)) and not selected_areas
+    include_unassigned = (adaptive or bool(settings.get("include_unassigned", False))) and not selected_areas
     if include_unassigned:
         language = settings.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
         rooms.append({
@@ -76,7 +77,16 @@ def build_manifest(hass, entry):
         if len(excluded) < 100:
             excluded.append({"entity_id": entity.entity_id, "reason": reason})
 
-    for entity in entities.entities.values():
+    registry_entities = list(entities.entities.values())
+    if adaptive:
+        registry_entities.extend(
+            SimpleNamespace(entity_id=state.entity_id, device_id=None, area_id=None,
+                            name=state.name, original_name=None, disabled_by=None, hidden_by=None)
+            for state in hass.states.async_all()
+            if state.entity_id not in entities.entities
+        )
+
+    for entity in registry_entities:
         if entity.disabled_by is not None or entity.hidden_by is not None:
             skip(entity, "disabled" if entity.disabled_by is not None else "hidden")
             continue
@@ -84,7 +94,7 @@ def build_manifest(hass, entry):
             skip(entity, "explicitly_excluded")
             continue
         domain = entity.entity_id.split(".", 1)[0]
-        if domain not in SUPPORTED_DOMAINS:
+        if not adaptive and domain not in SUPPORTED_DOMAINS:
             skip(entity, "unsupported_domain")
             continue
         device = device_by_id.get(entity.device_id) if entity.device_id else None
@@ -102,7 +112,8 @@ def build_manifest(hass, entry):
             skip(entity, "auto_discovery_disabled")
             continue
         # HA configuration/diagnostic entities are opt-in.
-        if getattr(entity, "entity_category", None) is not None and not manually_selected:
+        entity_category = getattr(entity, "entity_category", None)
+        if entity_category is not None and not (adaptive or manually_selected):
             skip(entity, "categorized")
             continue
         area_id = profile.get("area_id") or entity.area_id or (device.area_id if device else None)
@@ -131,7 +142,8 @@ def build_manifest(hass, entry):
             continue
         mappings[area_id].append(entity.entity_id)
         category = display_category(entity.entity_id, profile.get("display_category", "auto"))
-        domain_mappings[category].append(entity.entity_id)
+        if not adaptive or domain in SUPPORTED_DOMAINS:
+            domain_mappings[category].append(entity.entity_id)
         live = getattr(getattr(hass, "states", None), "get", lambda _id: None)(entity.entity_id)
         capabilities = available_controls(entity.entity_id, live, original_name)
         inventory.append({
@@ -149,6 +161,13 @@ def build_manifest(hass, entry):
             "controls": [item for item in profile["controls"] if item in capabilities] if "controls" in profile else None,
             "available_controls": capabilities,
             "user_ids": profile.get("user_ids", []),
+            **({
+                "registry_id": getattr(entity, "id", None),
+                "device_class": getattr(entity, "device_class", None)
+                                or getattr(entity, "original_device_class", None),
+                "entity_category": entity_category,
+                "profile_category": profile.get("display_category", "auto"),
+            } if adaptive else {}),
         })
         counts["included"] += 1
         diagnostics.append({"entity_id": entity.entity_id, "reason": "included", "area_id": area_id})

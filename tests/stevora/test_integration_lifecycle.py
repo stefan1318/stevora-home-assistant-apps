@@ -103,6 +103,9 @@ class IntegrationLifecycleTests(unittest.TestCase):
         core = types.ModuleType("homeassistant.core")
         core.callback = lambda fn: fn
         core.HomeAssistant = object
+        core.Context = lambda **values: types.SimpleNamespace(**values)
+        exceptions = types.ModuleType("homeassistant.exceptions")
+        exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
         entries = types.ModuleType("homeassistant.config_entries")
         entries.ConfigEntry = _Entry
         entries.SOURCE_IMPORT = "import"  # Matches Home Assistant config_entries constant
@@ -116,6 +119,7 @@ class IntegrationLifecycleTests(unittest.TestCase):
             permissions.__name__: permissions,
             "homeassistant": types.ModuleType("homeassistant"),
             "homeassistant.core": core,
+            "homeassistant.exceptions": exceptions,
             "homeassistant.config_entries": entries,
             "homeassistant.components": components,
             "homeassistant.components.websocket_api": websocket,
@@ -180,6 +184,9 @@ class IntegrationLifecycleTests(unittest.TestCase):
     def test_websocket_uses_authenticated_user_projection(self):
         asyncio.run(self.integration.async_setup(self.hass, {}))
         self.assertIn(self.integration.subscribe_manifest, self.commands)
+        from stevora_lifecycle_pkg import adaptive_api
+        self.assertIn(adaptive_api.snapshot, self.commands)
+        self.assertIn(adaptive_api.execute, self.commands)
         response = {}
         connection = types.SimpleNamespace(
             user=types.SimpleNamespace(is_admin=False),
@@ -190,6 +197,38 @@ class IntegrationLifecycleTests(unittest.TestCase):
         self.assertEqual(response["payload"]["installation_id"], "test-entry")
         self.assertEqual(response["payload"]["role"], "regular")
         self.assertEqual(response["payload"]["preferred_language"], "en")
+
+    def test_adaptive_gateway_checks_confirmation_and_uses_authenticated_context(self):
+        from stevora_lifecycle_pkg import adaptive_api
+
+        errors, calls = [], []
+        async def call(domain, service, payload, *, blocking, context):
+            calls.append((domain, service, payload, blocking, context.user_id))
+        self.hass.services = types.SimpleNamespace(async_call=call)
+        connection = types.SimpleNamespace(
+            user=types.SimpleNamespace(id="operator", is_admin=False),
+            send_error=lambda _, code, __: errors.append(code),
+            send_result=lambda _: None,
+        )
+        capability = {"id": "registry:x", "entity_id": "switch.relay", "actions": [{
+            "id": "turn_on", "service": "switch.turn_on", "confirmation_required": True,
+            "parameters": {},
+        }]}
+        msg = {"id": 1, "capability_id": "registry:x", "action_id": "turn_on",
+               "parameters": {}, "confirmed": False}
+        with patch.object(adaptive_api, "_catalog", return_value={"capabilities": [capability]}):
+            asyncio.run(adaptive_api.execute(self.hass, connection, msg))
+            asyncio.run(adaptive_api.execute(self.hass, connection, {
+                **msg, "confirmed": True, "parameters": {"entity_id": "switch.other"},
+            }))
+            self.assertFalse(calls)
+            asyncio.run(adaptive_api.execute(self.hass, connection, {**msg, "confirmed": True}))
+        with patch.object(adaptive_api, "_catalog", return_value={"capabilities": []}):
+            asyncio.run(adaptive_api.execute(self.hass, connection, {**msg, "confirmed": True}))
+        asyncio.run(adaptive_api.override(self.hass, connection, {"id": 1, "device_id": "device:x"}))
+        self.assertEqual(errors, ["confirmation_required", "invalid_parameters",
+                                  "action_unavailable", "unauthorized"])
+        self.assertEqual(calls, [("switch", "turn_on", {"entity_id": "switch.relay"}, True, "operator")])
 
     def test_map_uses_latest_readable_mobile_fix_for_each_person(self):
         from datetime import datetime, timezone
