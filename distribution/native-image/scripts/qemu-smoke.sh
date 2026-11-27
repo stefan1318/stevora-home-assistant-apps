@@ -87,12 +87,14 @@ if [[ "${GOOD}" != 1 ]]; then
 fi
 
 curl -sS --fail --max-time 5 http://127.0.0.1:18080/build.json > "${WORKDIR}/build.json"
-for asset in flows.js qrcode.js controls.js management.js setup.js stevora-login.css stevora-login.png; do
+for asset in flows.js qrcode.js controls.js management.js adaptive.js setup.js stevora-login.css stevora-login.png; do
   curl -sS --fail --max-time 5 "http://127.0.0.1:18080/$asset" > "${WORKDIR}/$asset"
   test -s "${WORKDIR}/$asset"
 done
 curl -sS --fail --max-time 5 http://127.0.0.1:18080/healthz >/dev/null
 grep -q 'createStevoraSetup' "${WORKDIR}/setup.js"
+grep -q 'src="/adaptive.js"' "${WORKDIR}/page.html"
+grep -q 'stevora/os/v1/capabilities' "${WORKDIR}/adaptive.js"
 python3 - "${WORKDIR}/build.json" <<'PY'
 import json, pathlib, sys
 data = json.loads(pathlib.Path(sys.argv[1]).read_text())

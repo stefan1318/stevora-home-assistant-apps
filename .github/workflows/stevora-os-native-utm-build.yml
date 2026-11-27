@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/stevora-os-native-dev4-utm-arm64
+      - feature/adaptive-phase-1-2-utm
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-utm-build.yml'
@@ -44,10 +45,13 @@ jobs:
           (cd distribution/native-image/gateway && go test ./...)
           echo "Source validation PASS; guest boot is checked separately."
 
-      - name: Exercise thermostat and visual icon editor
+      - name: Exercise Adaptive Phase 1 and 2, thermostat and visual icon editor
         run: |
           python3 -m venv "$RUNNER_TEMP/stevora-browser"
-          "$RUNNER_TEMP/stevora-browser/bin/pip" install playwright==1.56.0
+          "$RUNNER_TEMP/stevora-browser/bin/pip" install playwright==1.56.0 voluptuous
+          "$RUNNER_TEMP/stevora-browser/bin/python" -m unittest discover -s tests/stevora -v
+          node --test distribution/native-image/tests/adaptive_renderer.test.cjs
+          "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_adaptive_renderer.py
           "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_device_controls.py
 
       - name: Verify RAUC publisher signing with disposable test keys
@@ -108,6 +112,10 @@ jobs:
           grep -qx 'CONFIG_HTTPD=y' haos/buildroot-external/busybox.config
           grep -q 'native_bootstrap: true' haos/buildroot-external/package/hassio/create-data-partition.sh
           test -s haos/buildroot-external/stevora-custom-components/stevora/manifest.json
+          cmp custom_components/stevora/adaptive_api.py \
+            haos/buildroot-external/stevora-custom-components/stevora/adaptive_api.py
+          cmp distribution/native-image/web/adaptive.js \
+            haos/buildroot-external/rootfs-overlay/usr/share/stevora-os/adaptive.js
           file haos/buildroot-external/rootfs-overlay/usr/bin/stevora-native-gateway | grep -qi 'ARM aarch64'
           grep -qx 'enable stevora-native-web.service' \
             haos/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset
@@ -210,14 +218,15 @@ jobs:
           Raspberry Pi 4 baseline: 74456c70dc821d70822b60309b6e33a50e24e39a
           Pinned Home Assistant OS: 495bedb8d70a92ad189efb64829ece34b165d3bd
           Target: generic_aarch64 / qemuarm-64 / ARM64 UEFI
-          QEMU ARM64 UEFI boot, gateway HTTP and assets: PASS
+          Adaptive Phase 1 and 2 contract and Chromium tests: PASS
+          QEMU ARM64 UEFI boot, gateway HTTP and adaptive.js: PASS
           UTM/HVF, Core onboarding, production integrations and signed OTA: unverified
           META
           (cd release && sha256sum *.qcow2.xz > SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: STEVORA-OS-Dev4-UTM-ARM64-QEMU-PASS
+          name: ${{ github.ref_name == 'feature/adaptive-phase-1-2-utm' && 'STEVORA-OS-Adaptive-Phase1-2-UTM-ARM64-QEMU-PASS' || 'STEVORA-OS-Dev4-UTM-ARM64-QEMU-PASS' }}
           path: release/
           retention-days: 7
           compression-level: 0

@@ -102,7 +102,7 @@ install -Dm0755 "$SELF_DIR/scripts/enroll-publisher.sh" "$ROOTFS/usr/bin/stevora
 mkdir -p "$ROOTFS/usr/share/stevora-components"
 cp -a "$COMPONENTS_DIR/stevora" "$ROOTFS/usr/share/stevora-components/"
 printf '%s\n' 'enable stevora-builtin.service' >> "$PRESET"
-for asset in qrcode.js qrcode-LICENSE.txt flows.js controls.js management.js; do
+for asset in qrcode.js qrcode-LICENSE.txt flows.js controls.js management.js adaptive.js; do
   install -m0644 "$SELF_DIR/web/$asset" "$PUBLIC_DIR/$asset"
 done
 

@@ -71,6 +71,24 @@ class DiscoveryRuntimeTests(unittest.TestCase):
             sys.modules.pop(name, None)
         cls.patch.stop()
 
+    def test_adaptive_inventory_preserves_legacy_and_backlight_policy(self):
+        hass = _Hass([("room", "Room")], [
+            ("valve.water", None), ("light.mirror", "room"),
+            ("switch.led", "room"), ("sensor.diagnostic", "room"),
+        ], "test", True)
+        hass.test_entities["light.mirror"].original_name = "Mirror backlight"
+        hass.test_entities["sensor.diagnostic"].entity_category = "diagnostic"
+        extra = types.SimpleNamespace(entity_id="vacuum.extra", name="Extra")
+        indicator = types.SimpleNamespace(name="Switch backlight")
+        hass.states = types.SimpleNamespace(async_all=lambda: [extra],
+                                            get=lambda key: indicator if key == "switch.led" else None)
+        entry = types.SimpleNamespace(entry_id="test", data={}, options={})
+        legacy = self.discovery.build_manifest(hass, entry)["entities"]
+        self.assertEqual([entity["entity_id"] for entity in legacy], ["switch.led"])
+        adaptive = self.discovery.build_manifest(hass, entry, adaptive=True)
+        self.assertEqual([entity["entity_id"] for entity in adaptive["entities"]],
+                         ["sensor.diagnostic", "vacuum.extra", "valve.water"])
+
     def test_two_independent_homes_do_not_share_entities(self):
         home_a = _Hass(
             [("living", "Living Room")],
