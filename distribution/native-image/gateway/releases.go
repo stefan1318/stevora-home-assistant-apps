@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,8 +37,9 @@ func releaseNumber(tag string) int64 {
 }
 
 type releaseAsset struct {
-	Name string
-	Size int64
+	Name   string
+	Size   int64
+	Digest string
 }
 type githubRelease struct {
 	Tag        string `json:"tag_name"`
@@ -85,21 +87,23 @@ func (f *releaseFeed) cached() string {
 func (f *releaseFeed) path(tag string) string {
 	return filepath.Join(updateDir, f.Board+"-"+tag+".raucb")
 }
-func newest(releases []githubRelease, floor, name string) (string, int64) {
+var releaseDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+func newest(releases []githubRelease, floor, name string) (string, releaseAsset) {
 	best := floor
-	var size int64
+	var selected releaseAsset
 	for _, r := range releases {
 		if r.Draft || r.Prerelease || releaseNumber(r.Tag) <= releaseNumber(best) {
 			continue
 		}
 		for _, a := range r.Assets {
-			if a.Name == name && a.Size > 0 && a.Size <= maxBundle {
-				best, size = r.Tag, a.Size
+			if a.Name == name && a.Size > 0 && a.Size <= maxBundle && releaseDigest.MatchString(a.Digest) {
+				best, selected = r.Tag, a
 				break
 			}
 		}
 	}
-	return best, size
+	return best, selected
 }
 func (f *releaseFeed) poll() error {
 	cert := publisherCert()
@@ -126,7 +130,8 @@ func (f *releaseFeed) poll() error {
 		floor = previous
 	}
 	name := "stevora-os-" + f.Board + ".raucb"
-	tag, size := newest(releases, floor, name)
+	tag, selected := newest(releases, floor, name)
+	size := selected.Size
 	if size == 0 {
 		return nil
 	}
@@ -150,10 +155,14 @@ func (f *releaseFeed) poll() error {
 		return err
 	}
 	defer os.Remove(file.Name())
-	n, err := io.Copy(file, io.LimitReader(asset.Body, size+1))
+	digest := sha256.New()
+	n, err := io.Copy(io.MultiWriter(file, digest), io.LimitReader(asset.Body, size+1))
 	closeErr := file.Close()
 	if err != nil || closeErr != nil || n != size {
 		return errors.New("incomplete release download")
+	}
+	if fmt.Sprintf("sha256:%x", digest.Sum(nil)) != selected.Digest {
+		return errors.New("release checksum verification failed")
 	}
 	if err = exec.Command("rauc", "--keyring", cert, "info", file.Name()).Run(); err != nil {
 		return errors.New("release signature verification failed")

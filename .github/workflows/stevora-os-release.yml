@@ -71,7 +71,9 @@ jobs:
         run: |
           export PUBLISHER_CERT="$(cat publisher-certificate/publisher.pem)"
           bash distribution/native-image/scripts/sign-release.sh inputs signed
+      - name: Generate bundle checksums
+        run: cd signed && sha256sum *.raucb > SHA256SUMS.txt
       - name: Publish verified release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb signed/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes
