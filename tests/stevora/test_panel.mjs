@@ -717,4 +717,24 @@ assert.equal(refreshOptions[0].silent,true);
 eventsPanel.disconnectedCallback();
 assert.equal(unsubscribed.length,3);
 
+const adaptivePanel = new Panel();
+adaptivePanel._language = "bg";
+adaptivePanel._adaptiveCatalog = JSON.parse(readFileSync("contracts/adaptive/v1/catalog.json", "utf8"));
+adaptivePanel._hass = {states: {
+  "climate.fixture": {state: "heat", attributes: {}},
+  "sensor.fixture": {state: "unavailable", attributes: {}},
+}};
+assert.equal(adaptivePanel.adaptiveRoomName({id:"workroom",name:"Workshop"}), "Работилница");
+const adaptiveClimate = adaptivePanel.nativeDeviceDetails({entity_id:"climate.fixture",domain:"climate"});
+assert.match(adaptiveClimate, /Климатик/);
+assert.match(adaptiveClimate, /data-adaptive-action="hvac_mode"/);
+assert.match(adaptiveClimate, /name="temperature" min="16" max="30"/);
+const adaptiveMeter = adaptivePanel.nativeDeviceDetails({entity_id:"sensor.fixture",domain:"sensor"});
+assert.doesNotMatch(adaptiveMeter, /<form/);
+assert.equal(adaptivePanel.adaptiveManagers(), "");
+adaptivePanel._adaptiveCatalog.management = {
+  configuration_revision: 2, categories: {climate:{bg:"Климатизация"}},
+};
+assert.match(adaptivePanel.adaptiveManagers(), /data-adaptive-group="device:air"/);
+
 console.log("STEVORA panel runtime: PASS");

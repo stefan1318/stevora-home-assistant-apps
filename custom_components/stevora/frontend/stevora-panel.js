@@ -6,6 +6,7 @@ class StevoraHomePanel extends HTMLElement {
     this._hass = null;
     this._manifest = null;
     this._adaptiveCatalog = null;
+    this._detailEntity = null;
     this._panelModel = null;
     this._hub = null;
     this._hubError = "";
@@ -49,6 +50,7 @@ class StevoraHomePanel extends HTMLElement {
       // Never render a previous home's manifest against the new home's states.
       this._manifest = null;
       this._adaptiveCatalog = null;
+      this._detailEntity = null;
       this._panelModel = null;
       this._hub = null;
       this._hubError = "";
@@ -206,6 +208,7 @@ class StevoraHomePanel extends HTMLElement {
     } catch (error) {
       this._manifest = null;
       this._adaptiveCatalog = null;
+      this._detailEntity = null;
       this._panelModel = null;
       this._hub = null;
       this._admin = null;
@@ -670,8 +673,71 @@ class StevoraHomePanel extends HTMLElement {
     return {state,attrs,current,target,humidity,unit};
   }
 
+  adaptiveRoomName(room) {
+    const entry = this._adaptiveCatalog?.rooms?.find(item => item.id === room.id);
+    return entry?.translations?.[this._language] || entry?.name || room.name;
+  }
+
+  adaptiveCapability(id) {
+    return this._adaptiveCatalog?.capabilities.find(item => item.entity_id === id);
+  }
+
+  adaptiveManagers() {
+    const catalog = this._adaptiveCatalog;
+    if (!catalog?.management) return "";
+    const e = value => this.escape(value);
+    const names = new Map(catalog.capabilities.map(item =>
+      [item.id, item.names?.[this._language] || item.entity_id]));
+    const categories = Object.entries(catalog.management.categories);
+    return '<details class="audit" data-editor-key="capability-groups"><summary>' +
+      this.t("Категории и групи", "Categories and groups") + '</summary>' +
+      catalog.devices.map(device => {
+        const saved = device.override || {};
+        return '<form data-adaptive-group="' + e(device.id) + '"><strong>' +
+          e(device.capability_ids.map(id => names.get(id)).filter(Boolean).join(", ")) +
+          '</strong><label>' + this.t("Категория", "Category") +
+          '<select name="category"><option value="">' + this.t("Автоматично", "Automatic") + '</option>' +
+          categories.map(([id, labels]) => '<option value="' + e(id) + '"' +
+            (saved.category === id ? ' selected' : '') + '>' + e(labels[this._language] || id) + '</option>').join("") +
+          '</select></label><label>' + this.t("Група", "Group") +
+          '<input name="group" maxlength="64" pattern="[a-z0-9][a-z0-9_\\-]{0,63}" value="' +
+          e(saved.group || "") + '"></label><button>' + this.t("Запази", "Save") + '</button></form>';
+      }).join("") + '</details>';
+  }
+
+  nativeDeviceDetails(card) {
+    const item = this.adaptiveCapability(card.entity_id);
+    const snapshot = this._hass?.states?.[card.entity_id];
+    const e = value => this.escape(value);
+    const measurements = (item?.measurements || []).filter(key => key !== "state")
+      .map(key => [key, snapshot?.attributes?.[key]])
+      .filter(([, value]) => ["number", "string", "boolean"].includes(typeof value));
+    const actions = item?.availability === "available" && snapshot &&
+      !["unknown", "unavailable"].includes(snapshot.state) ? item.actions : [];
+    const forms = actions.map(action => {
+      const fields = Object.entries(action.parameters || {}).map(([key, field]) => {
+        if (field.type === "enum") return '<label>' + e(key) + '<select required name="' + e(key) +
+          '"><option value="">—</option>' + field.options.map(value =>
+            '<option value="' + e(value) + '">' + e(value) + '</option>').join("") + '</select></label>';
+        if (!["number", "integer"].includes(field.type)) return null;
+        return '<label>' + e(key) + '<input required type="number" name="' + e(key) + '" min="' +
+          e(field.min) + '" max="' + e(field.max) + '" step="' +
+          e(field.type === "integer" ? 1 : "any") + '"></label>';
+      });
+      if (fields.includes(null)) return "";
+      return '<form data-adaptive-action="' + e(action.id) + '" data-entity="' + e(card.entity_id) +
+        '">' + fields.join("") + '<button>' + e(action.labels?.[this._language] || action.id) + '</button></form>';
+    });
+    return '<section class="v7-card" data-adaptive-detail="' + e(card.entity_id) + '"><strong>' +
+      e(this.adaptiveName(card)) + '</strong> · <span data-adaptive-state>' +
+      e(this.nativeStateLabel(snapshot, card.domain)) + '</span>' +
+      '<dl>' + measurements.map(([key, value]) => '<dt>' + e(key) +
+        '</dt><dd data-adaptive-reading="' + e(key) + '">' + e(value) + '</dd>').join("") +
+      '</dl>' + forms.join("") + '</section>';
+  }
+
   adaptiveName(card) {
-    const capability = this._adaptiveCatalog?.capabilities.find(item => item.entity_id === card.entity_id);
+    const capability = this.adaptiveCapability(card.entity_id);
     return capability?.names?.[this._language] || card.name;
   }
 
@@ -943,6 +1009,18 @@ class StevoraHomePanel extends HTMLElement {
       const first = node.firstChild;
       if (first && first.nodeType === 3) first.nodeValue = String(value);
     };
+    this.shadowRoot.querySelectorAll("[data-adaptive-detail]").forEach(node => {
+      const id = node.getAttribute("data-adaptive-detail");
+      const state = states[id];
+      const card = cards.get(id);
+      if (!card) return;
+      text(one(node, "[data-adaptive-state]"), this.nativeStateLabel(state, card.domain));
+      node.querySelectorAll("[data-adaptive-reading]").forEach(reading => {
+        const value = state?.attributes?.[reading.getAttribute("data-adaptive-reading")];
+        text(reading, isOnline(state) && ["number", "string", "boolean"].includes(typeof value) ? value : "—");
+      });
+      node.querySelectorAll("button").forEach(button => { button.disabled = !isOnline(state); });
+    });
     this.shadowRoot.querySelectorAll("[data-live-card]").forEach(node => {
       const entityId = node.getAttribute("data-live-card");
       const card = cards.get(entityId);
@@ -1080,7 +1158,7 @@ class StevoraHomePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     const uiSnapshot = this.captureUiState();
     const items = this.inventory();
-    const rooms = (this._panelModel?.sections || []).map(({id, name}) => ({id, name}));
+    const rooms = (this._panelModel?.sections || []).map(room => ({id: room.id, name: this.adaptiveRoomName(room)}));
     const controllable = new Set(this._manifest?.controllable_entities || []);
     const audit = this._manifest?.discovery_diagnostics || null;
     const reasons = audit?.counts || {};
@@ -1092,6 +1170,7 @@ class StevoraHomePanel extends HTMLElement {
       <h3>${this.t("Двуезични имена BG/EN", "Bilingual BG/EN names")}</h3>
       <div class="auditlist">${admin.rooms.rooms.map(room => `<div><strong>${this.escape(room.name)}</strong><input data-translation-room-bg="${this.escape(room.id)}" placeholder="Български" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.bg || "")}"/><input data-translation-room-en="${this.escape(room.id)}" placeholder="English" value="${this.escape(admin.rooms.translations?.rooms?.[room.id]?.en || "")}"/><button data-translation-save-room="${this.escape(room.id)}">Save BG/EN</button></div>`).join("")}</div>
       ${this.deviceEditors(admin.rooms)}
+      ${this.adaptiveManagers()}
       <h3>${this.t("Видимост на устройствата", "Device visibility")}</h3>
       <div class="auditlist" style="max-height:330px">${(admin.rooms.entities || []).map(e => `<div style="padding:6px 0"><span>${this.escape(e.name)} — ${this.escape(e.entity_id)} · ${this.escape(e.reason || (e.included ? "included" : "unknown"))} ${e.area_id ? "· " + this.escape(e.area_id) : ""}</span>
         <select data-visibility="${this.escape(e.entity_id)}" ${e.disabled || e.hidden ? "disabled" : ""}>
@@ -1117,7 +1196,7 @@ class StevoraHomePanel extends HTMLElement {
     // model and active HA state. Historical Dunav entity IDs are never used.
     const visible = new Map(items.map(x => [x.entity_id, x]));
     const sections = (this._panelModel?.sections || []).map(room => ({
-      ...room, cards: room.cards.filter(card => visible.has(card.entity_id))
+      ...room, name: this.adaptiveRoomName(room), cards: room.cards.filter(card => visible.has(card.entity_id))
     }));
     const allCards = sections.flatMap(room => room.cards.map(card => ({
       ...card, roomId: room.id, roomName: room.name
@@ -1419,6 +1498,10 @@ class StevoraHomePanel extends HTMLElement {
           ${this._mode === "stevora" ? "" : `<div class="v7-banner">${this.t("Manifest не е зареден — управлението е блокирано","Manifest not loaded — device controls are disabled")}</div>`}
           ${this._error ? `<div class="v7-banner">${this.escape(this._error)}</div>` : ""}
           ${this._adminError ? `<div class="v7-banner">${this.escape(this._adminError)}</div>` : ""}
+          ${this._detailEntity ? (() => {
+            const card = allCards.find(item => item.entity_id === this._detailEntity);
+            return card ? this.nativeDeviceDetails(card) : "";
+          })() : ""}
           ${content}
           <footer class="v7-footer"><span>STEVORA HOME PANEL · 7.1.1</span><span>${this.t("Работи с текущия Home Assistant","Powered by this Home Assistant")}</span></footer>
         </div></main>
@@ -1449,6 +1532,40 @@ class StevoraHomePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-assist-prompt]").forEach(button =>
       button.onclick = () => { void this.sendAssist(button.dataset.assistPrompt); }
     );
+    this.shadowRoot.querySelectorAll("[data-adaptive-group]").forEach(form => form.onsubmit = async event => {
+      event.preventDefault();
+      const management = this._adaptiveCatalog?.management;
+      if (!this._admin || !management) return;
+      const request = {type:"stevora/os/v1/capabilities/override",
+        device_id:form.dataset.adaptiveGroup, expected_revision:management.configuration_revision};
+      for (const key of ["category", "group"]) {
+        const value = form.elements.namedItem(key).value.trim();
+        if (value) request[key] = value;
+      }
+      try {
+        await this._hass.callWS(request);
+        this._resetEditorValues = true;
+        await this.refresh();
+      } catch(error) { this._adminError = String(error?.message || error); this.render(); }
+    });
+    this.shadowRoot.querySelectorAll("[data-adaptive-action]").forEach(form => form.onsubmit = async event => {
+      event.preventDefault();
+      const item = this.adaptiveCapability(form.dataset.entity);
+      const action = item?.actions.find(candidate => candidate.id === form.dataset.adaptiveAction);
+      const state = this._hass?.states?.[form.dataset.entity];
+      if (this._mode !== "stevora" || item?.availability !== "available" || !action ||
+          !state || ["unknown", "unavailable"].includes(state.state)) return;
+      const confirmed = !!action.confirmation_required;
+      if (confirmed && !globalThis.confirm(this.t("Изпълнение на действието?", "Run this action?"))) return;
+      const parameters = Object.fromEntries(Object.entries(action.parameters || {}).map(([key, field]) => {
+        const value = form.elements.namedItem(key).value;
+        return [key, field.type === "enum" ? value : Number(value)];
+      }));
+      try {
+        await this._hass.callWS({type:"stevora/os/v1/capabilities/action",
+          capability_id:item.id, action_id:action.id, parameters, confirmed});
+      } catch(error) { this._error = String(error?.message || error); this.render(); }
+    });
     const assistantSave = this.shadowRoot.getElementById("save-assistant");
     if (assistantSave) assistantSave.onclick = async () => {
       try {
@@ -1779,11 +1896,8 @@ class StevoraHomePanel extends HTMLElement {
       if (action === "details") {
         if (card.layout === "info" &&
             !["sensor","binary_sensor"].includes(domain)) return;
-        // HA More Info is the familiar native control panel. HA decides which
-        // services this authenticated user can actually invoke.
-        this.dispatchEvent(new CustomEvent("hass-more-info", {
-          detail:{entityId:entity}, bubbles:true, composed:true,
-        }));
+        this._detailEntity = this._detailEntity === entity ? null : entity;
+        this.render();
         return;
       }
       const key = action.startsWith("temperature-") ? "temperature" : action;
