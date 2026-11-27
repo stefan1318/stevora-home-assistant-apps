@@ -54,6 +54,10 @@ test("consumes the shared v1 catalog and emits typed gateway commands", () => {
   const [climate] = ui.rows(fixture, "climate", "workroom", "Климатик", "bg");
   assert.equal(climate.id, "registry:air");
   const mode = climate.actions.find(action => action.id === "hvac_mode");
+  const localized = {...climate, actions: [{...mode, labels: {bg: "Работен режим"}}]};
+  const controls = ui.render([localized],
+    new Map([[climate.entity_id, {state: "heat"}]]), true, "bg", String);
+  assert.match(controls, /Работен режим/);
   assert.deepEqual(ui.command(climate, mode, () => "heat", true), {
     type: "stevora/os/v1/capabilities/action",
     capability_id: climate.id,

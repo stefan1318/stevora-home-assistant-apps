@@ -54,7 +54,7 @@ const StevoraAdaptive = (() => {
   }
 
   function actionForm(item, action, enabled, locale) {
-    const title = esc(label(action.id, locale));
+    const title = esc(action.labels?.[locale] || label(action.id, locale));
     const fields = Object.entries(action.parameters).map(([key, field]) => {
       if (field.type === "enum") {
         return '<select required aria-label="'+title+'" name="'+esc(key)+'"><option value="" selected disabled>—</option>'
