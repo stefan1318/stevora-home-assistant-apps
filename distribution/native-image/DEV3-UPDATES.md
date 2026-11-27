@@ -48,3 +48,8 @@ Official publishing is triggered manually by a repository administrator against 
 `stevora-os-vMAJOR.MINOR.PATCH` tag after release acceptance. Creating the tag
 does not start publisher signing. Update Center installation requests require
 the explicit approval header emitted after the administrator confirms in the UI.
+
+An official image only accepts newer releases staged from the official feed.
+Unversioned uploads remain available on Dev4 enrollment builds. In the lab,
+enroll and boot the initial official version before testing rejection of a
+previous version and bootloader rollback to the known-good slot.

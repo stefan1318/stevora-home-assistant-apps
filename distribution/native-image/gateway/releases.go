@@ -67,6 +67,12 @@ func readFeed() *releaseFeed {
 	}
 	return nil
 }
+// Pre-release images retain local bundle enrollment. An official image only
+// accepts staged releases selected against its installed STEVORA version.
+func (f *releaseFeed) usesOfficialReleaseFeed() bool {
+	return f != nil && releaseNumber(f.Installed) > 0
+}
+
 func (f *releaseFeed) cached() string {
 	if f == nil {
 		return ""

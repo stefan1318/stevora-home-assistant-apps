@@ -77,6 +77,10 @@ func newUpdateHandler(core *url.URL) http.Handler {
 			http.Error(w, "Administrator must explicitly approve installation", http.StatusPreconditionRequired)
 			return
 		}
+		if staged == "" && feed.usesOfficialReleaseFeed() {
+			http.Error(w, "Select a newer official release from Update Center", http.StatusConflict)
+			return
+		}
 		if cert == "" {
 			http.Error(w, "Enroll the release publisher certificate on the host first", 409)
 			return

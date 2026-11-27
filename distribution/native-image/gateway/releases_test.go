@@ -27,3 +27,18 @@ func TestNewestStableBoardRelease(t *testing.T) {
 		t.Fatal("offered installed release")
 	}
 }
+
+func TestOfficialImageDisallowsUnversionedUpload(t *testing.T) {
+	for _, entry := range []struct {
+		feed *releaseFeed
+		want bool
+	}{
+		{nil, false},
+		{&releaseFeed{Installed: "stevora-os-v0.0.0"}, false},
+		{&releaseFeed{Installed: "stevora-os-v1.0.0"}, true},
+	} {
+		if got := entry.feed.usesOfficialReleaseFeed(); got != entry.want {
+			t.Errorf("feed %v: official = %t, want %t", entry.feed, got, entry.want)
+		}
+	}
+}
