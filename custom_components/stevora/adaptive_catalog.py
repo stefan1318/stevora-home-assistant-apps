@@ -148,7 +148,7 @@ def group_availability(members):
     return "degraded" if "available" in statuses else "unavailable"
 
 
-def build_catalog(scoped, states, has_service, overrides, language):
+def build_catalog(scoped, states, has_service, overrides, language, *, configuration_revision=None):
     """Derive every device, system and action from the caller's visible entities."""
     controllable = set(scoped["controllable_entities"])
     capabilities, grouped = [], defaultdict(list)
@@ -193,6 +193,7 @@ def build_catalog(scoped, states, has_service, overrides, language):
             "id": device_id, "area_ids": sorted({item["area_id"] for item in members}),
             "capability_ids": [item["id"] for item in members],
             "availability": group_availability(members),
+            **({"override": overrides.get(device_id, {})} if configuration_revision is not None else {}),
         })
         group = overrides.get(device_id, {}).get("group")
         for item in members:
@@ -212,5 +213,10 @@ def build_catalog(scoped, states, has_service, overrides, language):
             "availability": group_availability(members),
         } for (category, group), members in sorted(systems.items())],
     }
+    if configuration_revision is not None:
+        payload["management"] = {
+            "configuration_revision": configuration_revision,
+            "categories": {key: dict(zip(("en", "bg"), labels)) for key, labels in LABELS.items()},
+        }
     payload["revision"] = sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     return payload

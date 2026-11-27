@@ -41,7 +41,8 @@ def _catalog(hass, entry, user, language=None):
     manager = hass.data[DOMAIN]["_admin_managers"]
     overrides = manager.data.get("capability_overrides", {}).get(entry.entry_id, {})
     return build_catalog(localized_manifest(scoped, language), hass.states.get,
-                         hass.services.has_service, overrides, language)
+                         hass.services.has_service, overrides, language,
+                         configuration_revision=manager.data["revision"] if user.is_admin else None)
 
 
 @websocket_api.websocket_command({
@@ -149,6 +150,7 @@ async def execute(hass, connection, msg):
 @websocket_api.websocket_command({
     "type": API + "/override",
     vol.Required("device_id"): str,
+    vol.Required("expected_revision"): int,
     vol.Optional("category"): vol.In(tuple(LABELS)),
     vol.Optional("group"): vol.All(str, vol.Match(re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z"))),
 })
@@ -162,6 +164,9 @@ async def override(hass, connection, msg):
     manager = hass.data[DOMAIN]["_admin_managers"]
     device_id = msg["device_id"]
     async with manager.lock:
+        if msg["expected_revision"] != manager.data["revision"]:
+            connection.send_error(msg["id"], "conflict", "Configuration revision changed")
+            return
         scoped = _catalog(hass, entry, connection.user)
         saved = manager.data.get("capability_overrides", {})
         devices = dict(saved.get(entry.entry_id, {}))

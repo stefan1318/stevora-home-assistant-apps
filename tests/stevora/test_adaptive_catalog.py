@@ -31,12 +31,12 @@ class AdaptiveCatalogTests(unittest.TestCase):
         with patch.dict(sys.modules, {pkg.__name__: pkg}):
             cls.catalog = importlib.import_module(pkg.__name__ + ".adaptive_catalog")
 
-    def build(self, items, states=None, control=(), overrides=None, services=None):
+    def build(self, items, states=None, control=(), overrides=None, services=None, revision=None):
         lookup = (states or {}).get
         services = services if services is not None else lambda *_: True
         return self.catalog.build_catalog(
             {"installation_id": "test", "entities": items, "controllable_entities": control, "rooms": []},
-            lookup, services, overrides or {}, "bg",
+            lookup, services, overrides or {}, "bg", configuration_revision=revision,
         )
 
     def test_empty_home_and_unknown_domain(self):
@@ -70,6 +70,11 @@ class AdaptiveCatalogTests(unittest.TestCase):
         self.assertEqual(limited["systems"][0]["device_ids"], ["device:a"])
         self.assertNotIn("water_heater.unit", json.dumps(limited))
         self.assertEqual(limited["capabilities"][0]["classification"]["source"], "admin")
+        self.assertNotIn("management", limited)
+        self.assertNotIn("override", limited["devices"][0])
+        admin = self.build([climate], overrides=overrides, revision=2)
+        self.assertEqual(admin["devices"][0]["override"], overrides["device:a"])
+        self.assertEqual(admin["management"]["configuration_revision"], 2)
 
     def test_evidence_and_authorization_each_required_for_actions(self):
         item = entity("switch.relay", "sw", controls=("toggle",))
