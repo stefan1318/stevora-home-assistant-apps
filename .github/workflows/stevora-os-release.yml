@@ -28,6 +28,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           pattern: publisher-input-*
@@ -37,19 +40,7 @@ jobs:
         env:
           PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
           PUBLISHER_KEY: ${{ secrets.STEVORA_RAUC_KEY_PEM }}
-        run: |
-          set -eu
-          umask 077
-          tmp=$(mktemp -d)
-          trap 'rm -rf "$tmp"' EXIT
-          printf '%s\n' "${PUBLISHER_CERT:?missing release certificate}" > "$tmp/cert.pem"
-          printf '%s\n' "${PUBLISHER_KEY:?missing release key}" > "$tmp/key.pem"
-          mkdir signed
-          for board in rpi4_64 generic_aarch64 ova; do
-            target=signed/stevora-os-$board.raucb
-            rauc --no-verify --cert="$tmp/cert.pem" --key="$tmp/key.pem" resign "inputs/publisher-input-$board/publisher-input.raucb" "$target"
-            rauc --keyring="$tmp/cert.pem" info "$target"
-          done
+        run: bash distribution/native-image/scripts/sign-release.sh inputs signed
       - name: Publish verified release assets
         env:
           GH_TOKEN: ${{ github.token }}

@@ -50,6 +50,12 @@ jobs:
           "$RUNNER_TEMP/stevora-browser/bin/pip" install playwright==1.56.0
           "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_device_controls.py
 
+      - name: Verify RAUC publisher signing with disposable test keys
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y rauc squashfs-tools
+          bash distribution/native-image/tests/release-signing.sh
+
   build-utm:
     if: github.event_name != 'pull_request'
     name: Build generic ARM64 UEFI QCOW2
