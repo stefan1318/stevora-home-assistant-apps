@@ -6,6 +6,7 @@ from hashlib import sha256
 import json
 import math
 
+from .device_customization import is_backlight_entity
 from .localization import localize_name
 
 VERSION = 1
@@ -85,7 +86,8 @@ def metadata_signature(state):
     """Ignore ordinary telemetry ticks, which arrive through the scoped HA stream."""
     attrs = state.attributes if state is not None else {}
     domain = state.entity_id.partition(".")[0] if state is not None else ""
-    return (availability(state), tuple((key, attrs.get(key)) for key in sorted(METADATA_ATTRIBUTES)),
+    return (availability(state), is_backlight_entity(attrs.get("friendly_name")),
+            tuple((key, attrs.get(key)) for key in sorted(METADATA_ATTRIBUTES)),
             tuple(key for key in MEASUREMENTS.get(domain, ()) if attrs.get(key) is not None))
 
 
