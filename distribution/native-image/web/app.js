@@ -504,7 +504,7 @@
   }
   async function updateRequest(file,release){
     const response=await fetch("/stevora-update"+(release?"?release="+encodeURIComponent(release):""),{method:file||release?"POST":"GET",
-      headers:{Authorization:"Bearer "+state.token,...(file?{"Content-Type":"application/octet-stream"}:{})},
+      headers:{Authorization:"Bearer "+state.token,...(file||release?{"X-Stevora-Update-Approval":"install"}:{}),...(file?{"Content-Type":"application/octet-stream"}:{})},
       body:file||undefined,cache:"no-store"});
     if(!response.ok)throw new Error((await response.text()).slice(0,160));return response;
   }

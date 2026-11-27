@@ -1,7 +1,6 @@
 name: Publish signed STEVORA OS releases
 on:
-  push:
-    tags: ['stevora-os-v*']
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -11,6 +10,15 @@ jobs:
   version:
     runs-on: ubuntu-24.04
     steps:
+      - name: Verify administrator approval and selected version tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVER: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = tag
+          permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$APPROVER/permission" --jq .permission)
+          test "$permission" = admin
       - run: '[[ "$GITHUB_REF_NAME" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]'
   publisher-certificate:
     needs: version

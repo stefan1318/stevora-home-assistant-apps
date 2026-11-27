@@ -42,3 +42,9 @@ It caches a newer stable bundle for its own board after checking its signature.
 An administrator opens Update Center, approves installation and restarts to
 activate the new slot. The manual upload remains available. Existing Dev4
 systems need one initial upgrade to a build containing the release client.
+
+
+Official publishing is triggered manually by a repository administrator against a
+`stevora-os-vMAJOR.MINOR.PATCH` tag after release acceptance. Creating the tag
+does not start publisher signing. Update Center installation requests require
+the explicit approval header emitted after the administrator confirms in the UI.

@@ -5,6 +5,7 @@ class StevoraHomePanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._manifest = null;
+    this._adaptiveCatalog = null;
     this._panelModel = null;
     this._hub = null;
     this._hubError = "";
@@ -47,6 +48,7 @@ class StevoraHomePanel extends HTMLElement {
       this.stopRegistrySubscriptions();
       // Never render a previous home's manifest against the new home's states.
       this._manifest = null;
+      this._adaptiveCatalog = null;
       this._panelModel = null;
       this._hub = null;
       this._hubError = "";
@@ -144,9 +146,18 @@ class StevoraHomePanel extends HTMLElement {
           model?.revision !== manifest?.revision) {
         throw new Error("Panel manifest changed during refresh");
       }
+      const candidate = await this._hass.callWS({
+        type: "stevora/os/v1/capabilities", schema_version: 1, language: locale
+      }).catch(() => null);
+      if (sessionChanged()) { this._refreshQueued = true; return; }
+      const catalog = candidate?.schema_version === 1 &&
+        candidate.installation_id === manifest.installation_id &&
+        Array.isArray(candidate.capabilities) ? candidate : null;
       unchanged = !!(silent && this._mode === "stevora" &&
         previousInstallation === manifest.installation_id &&
-        previousRevision === manifest.revision);
+        previousRevision === manifest.revision &&
+        this._adaptiveCatalog?.revision === catalog?.revision);
+      this._adaptiveCatalog = catalog;
       this._manifest = manifest;
       this._panelModel = model;
       this._language = manifest.preferred_language === "en" ? "en" : "bg";
@@ -194,6 +205,7 @@ class StevoraHomePanel extends HTMLElement {
       }
     } catch (error) {
       this._manifest = null;
+      this._adaptiveCatalog = null;
       this._panelModel = null;
       this._hub = null;
       this._admin = null;
@@ -658,6 +670,11 @@ class StevoraHomePanel extends HTMLElement {
     return {state,attrs,current,target,humidity,unit};
   }
 
+  adaptiveName(card) {
+    const capability = this._adaptiveCatalog?.capabilities.find(item => item.entity_id === card.entity_id);
+    return capability?.names?.[this._language] || card.name;
+  }
+
   renderClimateCenter(card, summaryOnly = false) {
     if (!card) return '<section class="v7-card v7-climate">' +
       this.t("Няма климатично устройство","No climate device") + '</section>';
@@ -694,7 +711,7 @@ class StevoraHomePanel extends HTMLElement {
       (summaryOnly ? ' is-summary' : '') + '" data-live-climate="' + id + '">' +
       '<div class="v7-climate-top"><span class="v7-climate-device-icon">' +
       '<ha-icon icon="mdi:air-conditioner"></ha-icon></span><div class="v7-climate-title">' +
-      '<strong>' + e(card.name) + '</strong><small>' + e(mode) + '</small></div>' +
+      '<strong>' + e(this.adaptiveName(card)) + '</strong><small>' + e(mode) + '</small></div>' +
       '<span class="v7-climate-status">' +
       (online ? this.t("На линия","Online") : this.t("Недостъпно","Unavailable")) +
       '</span></div>' +
@@ -899,7 +916,7 @@ class StevoraHomePanel extends HTMLElement {
       '" data-live-card="' + id + '">' +
       '<div class="v7-device-head"><span class="v7-device-glyph"><ha-icon icon="' +
       e(icon) + '"></ha-icon></span><span class="v7-device-heading"><strong>' +
-      e(card.name) + '</strong><small>' +
+      e(this.adaptiveName(card)) + '</strong><small>' +
       (card.display_category === "lighting" ? this.t("Осветление","Lighting") : e(this.t(
         ({light:"Осветление",climate:"Климат",fan:"Вентилатор",cover:"Щори",
           switch:"Превключвател",media_player:"Медия",lock:"Сигурност",
@@ -1184,7 +1201,7 @@ class StevoraHomePanel extends HTMLElement {
         return '<div class="v7-light-tile" data-live-light="' + this.escape(card.entity_id) + '"><div class="v7-light-name-wrap">' +
           '<span class="v7-state-dot ' + (on ? "on" : "") + '"' +
           (color && on ? ' style="background:' + color + '"' : "") + '></span>' +
-          '<span class="v7-light-name">' + this.escape(card.name) + '</span></div>' +
+          '<span class="v7-light-name">' + this.escape(this.adaptiveName(card)) + '</span></div>' +
           (can(card,"toggle") && !rgb ?
             '<button class="v7-action subtle" data-action="toggle" data-id="' +
               this.escape(card.entity_id) + '">' +

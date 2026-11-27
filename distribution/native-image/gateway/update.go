@@ -73,6 +73,10 @@ func newUpdateHandler(core *url.URL) http.Handler {
 			http.Error(w, "Invalid upload", 400)
 			return
 		}
+		if r.Header.Get("X-Stevora-Update-Approval") != "install" {
+			http.Error(w, "Administrator must explicitly approve installation", http.StatusPreconditionRequired)
+			return
+		}
 		if cert == "" {
 			http.Error(w, "Enroll the release publisher certificate on the host first", 409)
 			return
