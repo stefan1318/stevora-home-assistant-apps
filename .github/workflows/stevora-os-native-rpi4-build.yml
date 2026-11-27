@@ -19,7 +19,7 @@ concurrency:
 jobs:
   source-validation:
     name: ARM64 source and regression contracts (not a boot test)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.STEVORA_OS_SELF_HOSTED == 'true' && fromJSON('["self-hosted","linux","stevora-os-linux"]') || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
 
   build-rpi4:
     name: Build actual rpi4_64 ARM64 .img.xz (hardware boot not verified)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.STEVORA_OS_SELF_HOSTED == 'true' && fromJSON('["self-hosted","linux","stevora-os-linux"]') || 'ubuntu-24.04' }}
     timeout-minutes: 330
     needs: source-validation
     env:
@@ -52,12 +52,16 @@ jobs:
           go-version-file: distribution/native-image/gateway/go.mod
           cache: false
 
-      - name: Inspect resources and free unused runner SDKs
+      - name: Inspect resources and free unused hosted runner SDKs
         run: |
           df -h /
           free -h
           docker --version
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          else
+            docker info >/dev/null
+          fi
           df -h /
 
       - name: Fetch exact pinned upstream Home Assistant OS and Buildroot
