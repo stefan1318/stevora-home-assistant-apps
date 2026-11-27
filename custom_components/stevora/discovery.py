@@ -100,7 +100,9 @@ def build_manifest(hass, entry, *, adaptive=False):
         device = device_by_id.get(entity.device_id) if entity.device_id else None
         profile = device_profiles.get(entity.entity_id, {})
         original_name = entity.original_name or entity.name or entity.entity_id
-        if is_backlight_entity(entity.entity_id, entity.name, entity.original_name):
+        live = getattr(getattr(hass, "states", None), "get", lambda _id: None)(entity.entity_id)
+        live_name = getattr(live, "name", None) if adaptive else None
+        if is_backlight_entity(entity.entity_id, entity.name, entity.original_name, live_name):
             skip(entity, "backlight")
             continue
         manually_selected = (
@@ -144,7 +146,6 @@ def build_manifest(hass, entry, *, adaptive=False):
         category = display_category(entity.entity_id, profile.get("display_category", "auto"))
         if not adaptive or domain in SUPPORTED_DOMAINS:
             domain_mappings[category].append(entity.entity_id)
-        live = getattr(getattr(hass, "states", None), "get", lambda _id: None)(entity.entity_id)
         capabilities = available_controls(entity.entity_id, live, original_name)
         inventory.append({
             "entity_id": entity.entity_id,

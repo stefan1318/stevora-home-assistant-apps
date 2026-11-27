@@ -71,7 +71,24 @@ const StevoraAdaptive = (() => {
       +(enabled ? "" : "disabled")+'>'+title+'</button></form>';
   }
 
-  function render(items, states, connected, locale, stateLabel) {
+  function managementForm(device, management, locale, connected) {
+    const tr = (en, bg) => locale === "bg" ? bg : en;
+    const override = device.override || {};
+    const options = Object.entries(management.categories).map(([id, names]) =>
+      '<option value="'+esc(id)+'"'+(id === override.category ? ' selected' : '')+'>'
+      +esc(names[locale] || id)+'</option>').join("");
+    return '<form class="adaptive-profile" data-form="adaptive-profile" data-device="'+esc(device.id)+'">'
+      +'<label>'+tr("Category","Категория")+'<select name="category"><option value="">'
+      +tr("Automatic","Автоматично")+'</option>'+options+'</select></label>'
+      +'<label>'+tr("Group ID","Идентификатор на група")+'<input name="group" maxlength="64" '
+      +'pattern="[a-z0-9][a-z0-9_\\-]{0,63}" value="'+esc(override.group||"")+'"></label>'
+      +'<button type="submit"'+(connected ? '' : ' disabled')+'>'+tr("Save","Запази")+'</button>'
+      +(override.category || override.group ? '<button type="submit" name="reset" value="1" formnovalidate'
+        +(connected ? '' : ' disabled')+'>'+tr("Reset","Възстанови")+'</button>' : '')+'</form>';
+  }
+
+  function render(items, states, connected, locale, stateLabel, catalog=null) {
+    const editable = new Map(catalog?.management ? catalog.devices.map(device=>[device.id,device]) : []);
     return '<div class="cards">'+items.map(item => {
       const snapshot = states.get(item.entity_id);
       const state = reading(item,snapshot,"state",locale,stateLabel);
@@ -81,10 +98,13 @@ const StevoraAdaptive = (() => {
       const enabled = connected && snapshot && !["unavailable","unknown"].includes(snapshot.state);
       const actions = item.availability === "available"
         ? item.actions.map(action=>actionForm(item,action,enabled,locale)).join("") : "";
+      const device = editable.get(item.device_id);
+      editable.delete(item.device_id);
       return '<details class="device-card adaptive-device" data-capability-card="'+esc(item.id)+'"><summary><strong>'
         +esc(name(item,locale))+'</strong><small data-observation="state">'+esc(state)+'</small></summary>'
         +(measurements ? '<dl class="adaptive-measurements">'+measurements+'</dl>' : "")
-        +(actions ? '<div class="adaptive-controls">'+actions+'</div>' : "")+'</details>';
+        +(actions ? '<div class="adaptive-controls">'+actions+'</div>' : "")
+        +(device ? managementForm(device,catalog.management,locale,connected) : "")+'</details>';
     }).join("")+'</div>';
   }
 

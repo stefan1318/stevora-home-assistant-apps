@@ -243,7 +243,7 @@
       }
     });
     ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;state.voice?.end();
-      for(const button of q("#screen").querySelectorAll(".adaptive-action button"))button.disabled=true;
+      for(const button of q("#screen").querySelectorAll(".adaptive-action button,.adaptive-profile button"))button.disabled=true;
       q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);scheduleReconnect(ws);});
   }
   function scheduleReconnect(ws){
@@ -625,7 +625,7 @@
       managementButton("devices","Управление на устройства","Device Manager")+
       managementButton("visibility","Видимост","Visibility")+'</div>':"";
     return hdr(title)+managementActions+toolbar("devices",catalog.rooms)+(items.length
-      ? StevoraAdaptive.render(items,state.adaptiveStates,state.connected,locale,value=>consumerState(value,tr))
+      ? StevoraAdaptive.render(items,state.adaptiveStates,state.connected,locale,value=>consumerState(value,tr),catalog)
       : empty());
   }
   function updateAdaptiveReading(id,snapshot){
@@ -1070,6 +1070,26 @@
     const form=ev.target.closest("form[data-form]");if(!form)return;
     ev.preventDefault();
     try{
+      if(form.dataset.form==="adaptive-profile"){
+        const management=state.adaptiveCatalog?.management;
+        if(!state.admin || !state.connected || !management)return;
+        const fields=new FormData(form);
+        const reset=ev.submitter?.name==="reset";
+        const category=fields.get("category"), group=fields.get("group")?.trim();
+        const buttons=[...form.querySelectorAll("button")];
+        buttons.forEach(button=>button.disabled=true);
+        try{
+          await call({type:StevoraAdaptive.API+"/override",device_id:form.dataset.device,
+            expected_revision:management.configuration_revision,
+            ...(!reset&&category?{category}:{}),...(!reset&&group?{group}:{})});
+          await loadData();
+          notice(tr("Настройките са записани.","Settings saved."));
+        }catch(error){
+          if(error.code==="conflict")await loadData();
+          throw error;
+        }finally{buttons.forEach(button=>button.disabled=!state.connected);}
+        return;
+      }
       if(form.dataset.form==="adaptive-action"){
         const item=state.adaptiveCatalog?.capabilities.find(row=>row.id===form.dataset.capability);
         const action=item?.actions.find(candidate=>candidate.id===form.dataset.action);
