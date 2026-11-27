@@ -22,8 +22,10 @@ const StevoraAdaptive = (() => {
   const label = (key, locale) => labels[key]?.[locale === "bg" ? 1 : 0] ?? key;
   const name = (item, locale) => item.names?.[locale] ?? item.entity_id;
 
-  function valid(catalog) {
+  function valid(catalog, installationId) {
     return catalog?.schema_version === 1 && typeof catalog.installation_id === "string"
+      && catalog.installation_id.length > 0
+      && (installationId == null || catalog.installation_id === installationId)
       && ["rooms","devices","systems","capabilities"].every(key => Array.isArray(catalog[key]));
   }
 

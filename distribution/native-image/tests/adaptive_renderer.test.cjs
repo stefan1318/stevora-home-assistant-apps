@@ -48,7 +48,8 @@ test("escapes catalog content and uses only gateway target identifiers", () => {
 
 test("consumes the shared v1 catalog and emits typed gateway commands", () => {
   const fixture = require("../../../contracts/adaptive/v1/catalog.json");
-  assert.equal(ui.valid(fixture), true);
+  assert.equal(ui.valid(fixture, "fixture-home-a"), true);
+  assert.equal(ui.valid(fixture, "fixture-home-b"), false);
   assert.equal(ui.valid({...fixture, schema_version: 2}), false);
 
   const [climate] = ui.rows(fixture, "climate", "workroom", "Климатик", "bg");

@@ -337,7 +337,7 @@
       if(socket!==state.ws||request!==syncSerial)return;
       state.agent=agent||pipeline?.conversation_engine;state.pipeline=pipeline;state.people=Array.isArray(people)?people:[];
       state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
-      state.adaptiveCatalog=StevoraAdaptive.valid(adaptive)?adaptive:null;
+      state.adaptiveCatalog=StevoraAdaptive.valid(adaptive,state.stevoraManifest?.installation_id)?adaptive:null;
       const ids=new Set((state.adaptiveCatalog?.capabilities||[]).map(item=>item.entity_id));
       state.adaptiveStates=new Map((Array.isArray(entities)?entities:[])
         .filter(entity=>ids.has(entity.entity_id)).map(entity=>[entity.entity_id,entity]));
