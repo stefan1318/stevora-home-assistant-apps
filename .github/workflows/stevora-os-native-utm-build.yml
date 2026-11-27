@@ -57,7 +57,7 @@ jobs:
           bash distribution/native-image/tests/release-signing.sh
 
   build-utm:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build generic ARM64 UEFI QCOW2
     runs-on: ubuntu-24.04
     timeout-minutes: 330
