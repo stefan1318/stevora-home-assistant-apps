@@ -13,6 +13,7 @@ on:
     paths:
       - 'distribution/native-image/**'
       - '.github/workflows/stevora-os-native-integrated-build.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -111,6 +112,18 @@ jobs:
           grep -q '^enable stevora-native-web.service$' \
             haos/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset
 
+      - uses: actions/download-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        with:
+          name: release-publisher-certificate
+          path: publisher-certificate
+
+      - name: Embed the public OTA publisher certificate
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        run: |
+          rootfs=haos/buildroot-external/rootfs-overlay
+          install -Dm0644 publisher-certificate/publisher.pem "$rootfs/etc/stevora/publisher.pem"
+
       - name: Build complete OVA via official HAOS Buildroot container
         working-directory: haos
         env:
@@ -161,6 +174,23 @@ jobs:
           WARNING: OAuth/MFA, Apps, Integrations and backups require real VM acceptance. Local OS updates require a publisher-signed RAUC bundle. Restore is disabled.
           EOF
           ls -lh release
+
+      - name: Collect release input from this build
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        run: |
+          shopt -s nullglob
+          bundles=(haos/output_ova/images/*.raucb)
+          test "${#bundles[@]}" -eq 1
+          cp "${bundles[0]}" publisher-input.raucb
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        with:
+          name: publisher-input-ova
+          path: publisher-input.raucb
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:

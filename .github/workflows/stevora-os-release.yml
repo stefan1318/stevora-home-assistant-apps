@@ -1,0 +1,69 @@
+name: Publish signed STEVORA OS releases
+on:
+  push:
+    tags: ['stevora-os-v*']
+permissions:
+  contents: read
+concurrency:
+  group: publish-stevora-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: '[[ "$GITHUB_REF_NAME" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]'
+  publisher-certificate:
+    needs: version
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    steps:
+      - name: Export the public publisher certificate
+        env:
+          PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
+        run: |
+          printf '%s\n' "${PUBLISHER_CERT:?missing release certificate}" |
+            openssl x509 -out publisher.pem
+          openssl x509 -in publisher.pem -checkend 0 -noout
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-publisher-certificate
+          path: publisher.pem
+          if-no-files-found: error
+  pi:
+    needs: publisher-certificate
+    uses: ./.github/workflows/stevora-os-native-rpi4-build.yml
+  utm:
+    needs: publisher-certificate
+    uses: ./.github/workflows/stevora-os-native-utm-build.yml
+  ova:
+    needs: publisher-certificate
+    uses: ./.github/workflows/stevora-os-native-integrated-build.yml
+  publish:
+    needs: [pi, utm, ova]
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: publisher-input-*
+          path: inputs
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-publisher-certificate
+          path: publisher-certificate
+      - run: sudo apt-get update -qq && sudo apt-get install -y rauc
+      - name: Sign and verify the three bundles
+        env:
+          PUBLISHER_KEY: ${{ secrets.STEVORA_RAUC_KEY_PEM }}
+        run: |
+          export PUBLISHER_CERT="$(cat publisher-certificate/publisher.pem)"
+          bash distribution/native-image/scripts/sign-release.sh inputs signed
+      - name: Publish verified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes

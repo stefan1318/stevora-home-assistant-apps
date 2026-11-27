@@ -1,3 +1,14 @@
+const deviceIcons = [
+  ["lightbulb","💡","Лампа","Light"],["led-strip","🌈","LED лента","LED strip"],
+  ["air-conditioner","❄","Климатик","Air conditioner"],["fan","🌀","Вентилатор","Fan"],
+  ["radiator","♨","Радиатор","Radiator"],["power-plug","🔌","Контакт","Outlet"],
+  ["thermometer","🌡","Термометър","Thermometer"],["water-percent","💧","Влажност","Humidity"],
+  ["lock","🔒","Ключалка","Lock"],["speaker","🔊","Тонколона","Speaker"],
+  ["television","📺","Телевизор","Television"],["window-shutter","▤","Щора","Shutter"]
+];
+function profileGlyph(icon) {
+  return deviceIcons.find(([id])=>"mdi:"+id===icon)?.[1];
+}
 "use strict";
 
 // Core and Supervisor authorize every operation using the active user's connection.
@@ -16,6 +27,19 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
     d.className="details-dialog flow-dialog";h.textContent=title;error.setAttribute("role","alert");
     const readers=[];
     for (const spec of fields) {
+      if (spec.type==="icon") {
+        const group=document.createElement("fieldset"),legend=document.createElement("legend");
+        legend.textContent=spec.label;group.className="icon-picker";group.append(legend);
+        const choices=[["","◌",l("Автоматично","Automatic")],
+          ...deviceIcons.map(([id,glyph,bg,en])=>["mdi:"+id,glyph,l(bg,en)])];
+        if(spec.value && !profileGlyph(spec.value))choices.push([spec.value,"◆",l("Текуща икона","Current icon")]);
+        for(const [id,glyph,title] of choices){
+          const label=document.createElement("label"),radio=document.createElement("input");
+          radio.type="radio";radio.name=spec.key;radio.value=id;radio.checked=id===(spec.value||"");
+          label.append(radio,document.createTextNode(glyph+" "+title));group.append(label);
+        }
+        form.append(group);readers.push(data=>{data[spec.key]=form.elements[spec.key].value;});continue;
+      }
       const label=document.createElement("label");label.textContent=spec.label;
       const input=document.createElement(spec.options?"select":"input");
       if (spec.options) for (const [id,name] of spec.options) input.add(new Option(name,id));
@@ -70,12 +94,13 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
       editor(e.name,[
         field("name",l("Име в STEVORA","STEVORA name"),p.name,"text",{maxLength:80}),
         pick("area_id",l("Помещение","Room"),[inherit(),...entries(s.rooms.filter(x=>x.id!=="__stevora_unassigned__"))],p.area_id||""),
+        field("icon",l("Икона","Icon"),p.icon,"icon"),
         pick("layout",l("Изглед","Layout"),strings(["compact","expanded","info"]),p.layout||"compact"),
         pick("display_category",l("Категория","Category"),strings(["auto","lighting","switches","climate","fans","covers","media","sensors","binary_sensors","locks"]),p.display_category||"auto"),
         field("automatic",l("Автоматичен избор на контроли","Use all supported controls"),!Array.isArray(p.controls),"checkbox"),
         ...available.map(k=>field(k,k,(p.controls??available).includes(k),"checkbox"))
       ],async v=>{
-        const profile={...p,name:v.name,area_id:v.area_id||null,layout:v.layout,display_category:v.display_category};
+        const profile={...p,icon:v.icon,name:v.name,area_id:v.area_id||null,layout:v.layout,display_category:v.display_category};
         if(v.automatic)delete profile.controls;else profile.controls=available.filter(k=>v[k]);
         await call({type:"stevora/admin/devices/update",expected_revision:s.revision,profiles:{[id]:profile}});await refresh();
       });
