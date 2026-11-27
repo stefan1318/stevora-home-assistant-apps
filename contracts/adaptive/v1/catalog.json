@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "installation_id": "fixture-home-a",
+  "language": "en",
+  "rooms": [
+    {
+      "id": "workroom",
+      "name": "Workshop",
+      "source_name": "Workshop",
+      "translations": {
+        "en": "Workshop",
+        "bg": "Работилница"
+      }
+    }
+  ],
+  "devices": [
+    {
+      "id": "device:air",
+      "area_ids": [
+        "workroom"
+      ],
+      "capability_ids": [
+        "registry:air"
+      ],
+      "availability": "available"
+    },
+    {
+      "id": "device:lamp",
+      "area_ids": [
+        "workroom"
+      ],
+      "capability_ids": [
+        "registry:lamp"
+      ],
+      "availability": "available"
+    },
+    {
+      "id": "device:meter",
+      "area_ids": [
+        "workroom"
+      ],
+      "capability_ids": [
+        "registry:meter"
+      ],
+      "availability": "unavailable"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "registry:air",
+      "entity_id": "climate.fixture",
+      "device_id": "device:air",
+      "area_id": "workroom",
+      "semantic_type": "climate",
+      "device_class": null,
+      "state_class": null,
+      "unit": null,
+      "diagnostic": false,
+      "availability": "available",
+      "read_only": false,
+      "measurements": [
+        "state"
+      ],
+      "names": {
+        "en": "Air",
+        "bg": "Климатик"
+      },
+      "icon": "",
+      "layout": "compact",
+      "actions": [
+        {
+          "id": "hvac_mode",
+          "service": "climate.set_hvac_mode",
+          "parameters": {
+            "hvac_mode": {
+              "type": "enum",
+              "options": [
+                "heat",
+                "off"
+              ]
+            }
+          },
+          "confirmation_required": true,
+          "labels": {
+            "en": "Mode",
+            "bg": "Режим"
+          }
+        },
+        {
+          "id": "temperature",
+          "service": "climate.set_temperature",
+          "parameters": {
+            "temperature": {
+              "type": "number",
+              "min": 16,
+              "max": 30,
+              "step": 0.5
+            }
+          },
+          "confirmation_required": true,
+          "labels": {
+            "en": "Setpoint",
+            "bg": "Зададена температура"
+          }
+        }
+      ],
+      "classification": {
+        "category": "climate",
+        "source": "ha_domain",
+        "confidence": "high"
+      }
+    },
+    {
+      "id": "registry:lamp",
+      "entity_id": "light.fixture",
+      "device_id": "device:lamp",
+      "area_id": "workroom",
+      "semantic_type": "light",
+      "device_class": null,
+      "state_class": null,
+      "unit": null,
+      "diagnostic": false,
+      "availability": "available",
+      "read_only": false,
+      "measurements": [
+        "state"
+      ],
+      "names": {
+        "en": "Lamp",
+        "bg": "Лампа"
+      },
+      "icon": "",
+      "layout": "compact",
+      "actions": [
+        {
+          "id": "color",
+          "service": "light.turn_on",
+          "parameters": {
+            "red": {
+              "type": "integer",
+              "min": 0,
+              "max": 255
+            },
+            "green": {
+              "type": "integer",
+              "min": 0,
+              "max": 255
+            },
+            "blue": {
+              "type": "integer",
+              "min": 0,
+              "max": 255
+            }
+          },
+          "confirmation_required": false,
+          "labels": {
+            "en": "Colour",
+            "bg": "Цвят"
+          }
+        }
+      ],
+      "classification": {
+        "category": "lighting",
+        "source": "ha_domain",
+        "confidence": "high"
+      }
+    },
+    {
+      "id": "registry:meter",
+      "entity_id": "sensor.fixture",
+      "device_id": "device:meter",
+      "area_id": "workroom",
+      "semantic_type": "sensor",
+      "device_class": "energy",
+      "state_class": null,
+      "unit": "kWh",
+      "diagnostic": false,
+      "availability": "unavailable",
+      "read_only": true,
+      "measurements": [
+        "state"
+      ],
+      "names": {
+        "en": "Meter",
+        "bg": "Електромер"
+      },
+      "icon": "",
+      "layout": "compact",
+      "actions": [],
+      "classification": {
+        "category": "energy",
+        "source": "ha_device_class",
+        "confidence": "high"
+      }
+    }
+  ],
+  "systems": [
+    {
+      "id": "climate:device:air",
+      "category": "climate",
+      "labels": {
+        "en": "Climate",
+        "bg": "Климатизация"
+      },
+      "device_ids": [
+        "device:air"
+      ],
+      "area_ids": [
+        "workroom"
+      ],
+      "capability_ids": [
+        "registry:air"
+      ],
+      "availability": "available"
+    },
+    {
+      "id": "energy:device:meter",
+      "category": "energy",
+      "labels": {
+        "en": "Energy",
+        "bg": "Енергия"
+      },
+      "device_ids": [
+        "device:meter"
+      ],
+      "area_ids": [
+        "workroom"
+      ],
+      "capability_ids": [
+        "registry:meter"
+      ],
+      "availability": "unavailable"
+    },
+    {
+      "id": "lighting:device:lamp",
+      "category": "lighting",
+      "labels": {
+        "en": "Lighting",
+        "bg": "Осветление"
+      },
+      "device_ids": [
+        "device:lamp"
+      ],
+      "area_ids": [
+        "workroom"
+      ],
+      "capability_ids": [
+        "registry:lamp"
+      ],
+      "availability": "available"
+    }
+  ],
+  "revision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+}
