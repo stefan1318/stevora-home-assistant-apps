@@ -75,3 +75,13 @@ dialog.device-sheet{box-sizing:border-box;width:min(460px,calc(100vw - 28px));ma
 .device-sheet details{margin-top:12px}
 .icon-picker label{padding:8px;border-radius:8px;cursor:pointer}
 .icon-picker input[type=radio]{width:auto}
+
+#navigation button[hidden] { display: none; }
+.adaptive-device summary { cursor: pointer; }
+.adaptive-device summary small { display: block; margin-top: .4rem; padding-left: 1.1rem; }
+.adaptive-measurements { display: grid; gap: .45rem; margin: .75rem 0; }
+.adaptive-measurements div { display: flex; justify-content: space-between; gap: .75rem; }
+.adaptive-measurements dd { margin: 0; font-variant-numeric: tabular-nums; }
+.adaptive-controls { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: .75rem; }
+.adaptive-action { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.adaptive-action input { width: 6.5rem; }

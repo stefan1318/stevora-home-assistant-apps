@@ -28,6 +28,13 @@ jobs:
           python-version: '3.13'
       - name: Verify target is real STEVORA image + root UI
         run: python -m unittest discover -s distribution/tests -p 'test_*.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test adaptive native UI contract
+        run: |
+          node --check distribution/native-image/web/app.js
+          node --test distribution/native-image/tests/adaptive_renderer.test.cjs
       - name: Explicitly prevent fake release artifact
         run: |
           python - <<'PY'

@@ -71,6 +71,7 @@
     entities:[],areas:[],registry:[],deviceRegistry:[],configEntries:[],apps:[],
     store:[],backups:[],system:{},userList:[],messages:[],installations:{},
     room:"",filter:"",busy:false,error:"",lastError:"",selectedApp:"",stevoraManifest:null,
+    adaptiveCatalog:null,adaptiveStates:new Map(),adaptiveSubscription:null,
   };
   const backlight = e => /back[ _-]?light|подсвет/i.test([e.entity_id,e.name,e.attributes?.friendly_name,e.original_name].join(" "));
   const isAllowed = e => !!e && !backlight(e) &&
@@ -104,6 +105,7 @@
     state.pending.clear();
     state.people=[];mapVisible=false;state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
     state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
+    state.adaptiveCatalog=null;state.adaptiveStates.clear();state.adaptiveSubscription=null;
     state.currentUser=null;state.pipeline=null;state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
   }
   function saveAuth(record) {
@@ -205,7 +207,8 @@
         q("#connection-label").textContent=tr("Свързано с дома","Connected to home");
         await Promise.all([
           tryCall({type:"subscribe_events",event_type:"state_changed"},null),
-          tryCall({type:"stevora/os/v1/manifest/subscribe"},null)
+          tryCall({type:"stevora/os/v1/manifest/subscribe"},null),
+          subscribeAdaptive(ws),
         ]);
         const saved=await tryCall({type:"frontend/get_user_data",key:"stevora_profile"},null);
         if(ws!==state.ws)return;
@@ -218,12 +221,14 @@
         if(task){clearTimeout(task.timer);state.pending.delete(msg.id);msg.success?task.resolve(msg.result):task.reject(msg.error||new Error("HA WS command failed"))}
         return;
       }
-      if(msg.type==="event" && msg.event?.manifest_changed){
+      if(msg.type==="event" && (msg.event?.manifest_changed ||
+          (msg.id===state.adaptiveSubscription && msg.event?.revision))){
         scheduleSync();return;
       }
       if(msg.type==="event" && state.voice?.id===msg.id){state.voice.event(msg.event);return;}
       if(msg.type==="event" && msg.event?.event_type==="state_changed"){
         const e=msg.event.data?.new_state;
+        updateAdaptiveReading(msg.event.data?.entity_id,e);
         if(state.view==="people" && /^(person|device_tracker)\./.test(msg.event.data?.entity_id||""))refreshPeople();
         if(!e && msg.event.data?.entity_id){
           state.entities=state.entities.filter(item=>item.entity_id!==msg.event.data.entity_id);
@@ -237,13 +242,20 @@
         }
       }
     });
-    ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;state.voice?.end();q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);scheduleReconnect(ws);});
+    ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;state.voice?.end();
+      for(const button of q("#screen").querySelectorAll(".adaptive-action button"))button.disabled=true;
+      q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);scheduleReconnect(ws);});
   }
   function scheduleReconnect(ws){
     if(!state.token||state.ws!==ws)return;
     clearTimeout(retryTimer);
     retryTimer=setTimeout(()=>{if(state.ws===ws&&state.token)connect().catch(e=>{notice(formatError(e),true);scheduleReconnect(state.ws);});},connectDelay);
     connectDelay=Math.min(connectDelay*2,30000);
+  }
+  async function subscribeAdaptive(ws) {
+    const id=state.id;
+    const result=await tryCall({type:StevoraAdaptive.API+"/subscribe",schema_version:1},null);
+    if(ws===state.ws)state.adaptiveSubscription=result?.revision ? id : null;
   }
   function scheduleSync(){
     if(!state.connected||state.login||document.body.classList.contains("setup-mode")||syncTimer)return;
@@ -306,11 +318,12 @@
     const socket=state.ws,request=++syncSerial;
     try {
       // Get_states is projected by Core to the current user's permissions.
-      const [entities,areas,registry,devices]=await Promise.all([
+      const [entities,areas,registry,devices,adaptive]=await Promise.all([
         call({type:"get_states"}),
         tryCall({type:"config/area_registry/list"},[]),
         tryCall({type:"config/entity_registry/list"},[]),
         tryCall({type:"config/device_registry/list"},[]),
+        tryCall({type:StevoraAdaptive.API,schema_version:1,language:locale},null),
       ]);
       const people=await tryCall({type:"stevora/os/v1/people"},[]);
       const assistants=await tryCall({type:"conversation/agent/list"}, {agents:[]});
@@ -324,6 +337,12 @@
       if(socket!==state.ws||request!==syncSerial)return;
       state.agent=agent||pipeline?.conversation_engine;state.pipeline=pipeline;state.people=Array.isArray(people)?people:[];
       state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
+      state.adaptiveCatalog=StevoraAdaptive.valid(adaptive)?adaptive:null;
+      const ids=new Set((state.adaptiveCatalog?.capabilities||[]).map(item=>item.entity_id));
+      state.adaptiveStates=new Map((Array.isArray(entities)?entities:[])
+        .filter(entity=>ids.has(entity.entity_id)).map(entity=>[entity.entity_id,entity]));
+      const activeCategory=state.view.startsWith("system:")?state.view.slice(7):null;
+      if(activeCategory && !StevoraAdaptive.categories(state.adaptiveCatalog).has(activeCategory))state.view="devices";
       const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
       state.entities=(Array.isArray(entities)?entities:[])
         .filter(e=>readable.has(e.entity_id)&&!backlight(e));
@@ -374,9 +393,24 @@
   }
   function nav(){
     const map={updates:locale==="bg"?"Обновявания":"Update Center",people:locale==="bg"?"Хора и присъствие":"People & Presence",home:t("home"),rooms:t("rooms"),devices:t("devices"),lighting:t("lighting"),climate:t("climate"),scenes:t("scenes"),automations:t("automations"),integrations:t("integrations"),apps:t("apps"),system:t("system"),backups:t("backups"),users:t("users"),assist:t("assist")};
-    q("#navigation").querySelectorAll("[data-view]").forEach(btn=>{
+    const navigation=q("#navigation");
+    const categories=StevoraAdaptive.categories(state.adaptiveCatalog);
+    navigation.querySelectorAll("[data-adaptive-navigation]").forEach(btn=>btn.remove());
+    for(const [category,labels] of categories){
+      if(category==="climate" || category==="lighting")continue;
+      const view="system:"+category;
+      map[view]=labels[locale]||category;
+      const button=document.createElement("button");
+      button.dataset.view=view;button.dataset.adaptiveNavigation="";
+      button.append(document.createElement("span"));
+      navigation.insertBefore(button,navigation.querySelector('[data-view="scenes"]'));
+    }
+    navigation.querySelectorAll("[data-view]").forEach(btn=>{
       const view=btn.getAttribute("data-view");
       btn.classList.toggle("selected",view===state.view);
+      if(view==="lighting"||view==="climate")btn.hidden=state.adaptiveCatalog
+        ? !categories.has(view)
+        : !state.stevoraManifest?.domain_mappings?.[view]?.length;
       const label=btn.querySelector("span");if(label)label.textContent=map[view]||view;
     });
     q("#current-title").textContent="STEVORA · "+map[state.view];
@@ -385,8 +419,8 @@
   function stat(title,value){return '<article class="metric"><small>'+esc(title)+'</small><strong>'+esc(value)+'</strong></article>'}
   function hdr(title,subtitle=""){return '<div class="section-head"><h1>'+esc(title)+'</h1><small>'+esc(subtitle)+'</small></div>'}
   function empty(message=t("noData")){return '<p class="empty">'+esc(message)+'</p>'}
-  function toolbar(type){
-    const options=[["",t("roomAll")],...(state.stevoraManifest?.rooms||state.areas).map(a=>[a.area_id||a.id,a.name])];
+  function toolbar(type, rooms=state.stevoraManifest?.rooms||state.areas){
+    const options=[["",t("roomAll")],...rooms.map(a=>[a.area_id||a.id,a.name])];
     return '<div class="filters"><select data-room>'+options.map(([id,name])=>'<option value="'+esc(id)+'" '+(state.room===id?"selected":"")+'>'+esc(name)+'</option>').join("")+'</select><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div>'
   }
   function matches(name){return !state.filter || String(name).toLocaleLowerCase().includes(state.filter.toLocaleLowerCase())}
@@ -576,11 +610,45 @@
       return '<article class="device-card presence-person"><div class="presence-person-head"><span class="presence-avatar" aria-hidden="true">'+esc(initial)+'</span><div><strong>'+esc(label)+'</strong><span class="presence-state">'+esc(consumerState(p.state,tr))+'</span></div></div><small>'+esc(located?[stamp,Number.isFinite(a.gps_accuracy)?"± "+a.gps_accuracy+" m":""].filter(Boolean).join(" · "):tr("Няма споделена позиция","No shared location"))+'</small></article>';
     }).join("")||empty())+'</div>';
   }
+  function adaptiveView(){
+    if(!state.adaptiveCatalog)return false;
+    if(state.view==="devices" || state.view.startsWith("system:"))return true;
+    return ["climate","lighting"].includes(state.view)
+      && !state.stevoraManifest?.domain_mappings?.[state.view]?.length;
+  }
+  function renderAdaptive(){
+    const catalog=state.adaptiveCatalog;
+    const category=state.view.startsWith("system:")?state.view.slice(7):state.view==="devices"?null:state.view;
+    const title=StevoraAdaptive.categories(catalog).get(category)?.[locale]||t("devices");
+    const items=StevoraAdaptive.rows(catalog,category,state.room,state.filter,locale);
+    const managementActions=state.admin?'<div class="actions">'+
+      managementButton("devices","Управление на устройства","Device Manager")+
+      managementButton("visibility","Видимост","Visibility")+'</div>':"";
+    return hdr(title)+managementActions+toolbar("devices",catalog.rooms)+(items.length
+      ? StevoraAdaptive.render(items,state.adaptiveStates,state.connected,locale,value=>consumerState(value,tr))
+      : empty());
+  }
+  function updateAdaptiveReading(id,snapshot){
+    const item=state.adaptiveCatalog?.capabilities.find(row=>row.entity_id===id);
+    if(!item)return;
+    if(snapshot)state.adaptiveStates.set(id,snapshot);else state.adaptiveStates.delete(id);
+    if(!adaptiveView())return;
+    const card=[...q("#screen").querySelectorAll("[data-capability-card]")]
+      .find(node=>node.dataset.capabilityCard===item.id);
+    if(!card)return;
+    for(const node of card.querySelectorAll("[data-observation]")){
+      node.textContent=StevoraAdaptive.reading(item,snapshot,node.dataset.observation,locale,value=>consumerState(value,tr));
+    }
+    if(!snapshot || ["unavailable","unknown"].includes(snapshot.state)){
+      for(const button of card.querySelectorAll(".adaptive-action button"))button.disabled=true;
+    }
+  }
   function renderContent(){
     if(state.login || document.body.classList.contains("setup-mode"))return;
     nav();
     let result;
-    switch(state.view){
+    if(adaptiveView())result=renderAdaptive();
+    else switch(state.view){
       case "home":result=home();break;
       case "people":result=presenceView();break;
       case "rooms":result=roomsView();break;
@@ -598,7 +666,12 @@
       case "assist":result=assistView();break;
       default:result=empty();
     }
+    const expanded=new Set([...q("#screen").querySelectorAll("details[data-capability-card][open]")]
+      .map(node=>node.dataset.capabilityCard));
     q("#screen").innerHTML=result;
+    for(const node of q("#screen").querySelectorAll("details[data-capability-card]")){
+      node.open=expanded.has(node.dataset.capabilityCard);
+    }
     const showMap=q("#show-presence-map");if(showMap)showMap.onclick=()=>{mapVisible=true;renderContent();};
     q("#screen").querySelectorAll("[data-presence-map]").forEach(btn=>btn.onclick=()=>{
       const action=btn.dataset.presenceMap;
@@ -630,7 +703,8 @@
   }
   function setView(view){
     const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
-    if(!allowed.includes(view))return;
+    if(!allowed.includes(view) && !(view.startsWith("system:")
+        && StevoraAdaptive.categories(state.adaptiveCatalog).has(view.slice(7))))return;
     if(state.view==="assist"&&view!=="assist")state.voice?.end();
     state.view=view;if(view==="people")refreshPeople();state.filter="";state.room="";
     q("#sidebar").classList.remove("mobile-open");
@@ -996,6 +1070,25 @@
     const form=ev.target.closest("form[data-form]");if(!form)return;
     ev.preventDefault();
     try{
+      if(form.dataset.form==="adaptive-action"){
+        const item=state.adaptiveCatalog?.capabilities.find(row=>row.id===form.dataset.capability);
+        const action=item?.actions.find(candidate=>candidate.id===form.dataset.action);
+        if(!state.connected || !item || !action)return;
+        const confirmed=action.confirmation_required && confirm(tr(
+          "Потвърждаваш ли действието за „"+item.names[locale]+"“?",
+          'Confirm this action for "'+item.names[locale]+'"?'));
+        if(action.confirmation_required && !confirmed)return;
+        const submit=form.querySelector("button");submit.disabled=true;
+        try{
+          const data=new FormData(form);
+          await call(StevoraAdaptive.command(item,action,key=>data.get(key),confirmed));
+          notice(tr("Командата е приета.","Command accepted."));
+        }finally{
+          const snapshot=state.adaptiveStates.get(item.entity_id);
+          submit.disabled=!state.connected || !snapshot || ["unavailable","unknown"].includes(snapshot.state);
+        }
+        return;
+      }
       if(["os-update","os-release"].includes(form.dataset.form)){
         const release=form.dataset.form==="os-release" && state.updateInfo?.downloaded_release;
         const file=form.elements.bundle?.files[0];if(!state.admin||(!file&&!release)||!confirm(tr("Инсталиране в неактивния системен дял?","Install to the inactive OS slot?")))return;
