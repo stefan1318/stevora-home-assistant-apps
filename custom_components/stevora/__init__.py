@@ -9,6 +9,7 @@ import voluptuous as vol
 from .panel import async_register_panel, async_remove_panel
 from .const import DOMAIN
 from .discovery import build_manifest
+from .adaptive_api import register as register_adaptive_commands
 from .permissions import project_manifest_for_user
 from .panel_generator import generate_panel
 from .localization import localized_manifest
@@ -139,6 +140,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     websocket_api.async_register_command(hass, websocket_people)
     websocket_api.async_register_command(hass, subscribe_manifest)
     register_admin_commands(hass)
+    register_adaptive_commands(hass)
     register_hub_commands(hass)
     manager = AdminManagers(hass)
     await manager.load()

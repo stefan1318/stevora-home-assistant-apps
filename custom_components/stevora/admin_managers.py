@@ -20,7 +20,7 @@ class AdminManagers:
         self._hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.lock = asyncio.Lock()
-        self.data = {"revision": 1, "visibility": {}, "room_aliases": {}, "room_order": [], "entity_aliases": {}, "device_profiles": {}, "translations": {"rooms": {}, "entities": {}}, "assistants": {"default_pipeline": None, "user_pipelines": {}}}
+        self.data = {"revision": 1, "visibility": {}, "room_aliases": {}, "room_order": [], "entity_aliases": {}, "device_profiles": {}, "capability_overrides": {}, "translations": {"rooms": {}, "entities": {}}, "assistants": {"default_pipeline": None, "user_pipelines": {}}}
 
     async def load(self):
         saved = await self._store.async_load()
@@ -32,6 +32,7 @@ class AdminManagers:
                 "room_order": saved.get("room_order", []),
                 "entity_aliases": saved.get("entity_aliases", {}),
                 "device_profiles": saved.get("device_profiles", {}),
+                "capability_overrides": saved.get("capability_overrides", {}),
                 "translations": saved.get("translations", {"rooms": {}, "entities": {}}),
                 "assistants": saved.get("assistants", {"default_pipeline": None, "user_pipelines": {}}),
             })
