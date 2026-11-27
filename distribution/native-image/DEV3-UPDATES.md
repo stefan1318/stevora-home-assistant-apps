@@ -26,8 +26,10 @@ The native wizard uses Core config and options flows. It handles Tuya's local QR
 Configure the protected GitHub environment `stevora-os-release` once. Set
 `STEVORA_RAUC_CERT_PEM` and `STEVORA_RAUC_KEY_PEM` to the matching publisher
 certificate and private key as multiline secrets. Restrict publishing to trusted
-release tags and protect tag creation. Enroll the matching public certificate
-once on each hub using the console procedure above.
+release tags and protect tag creation. Release-tag builds embed the public certificate in the installation images and
+initialize persistent trust before RAUC starts. The same certificate is used
+to sign the bundles. Existing publisher enrollment takes precedence. Images
+built outside the release workflow can use the console enrollment above.
 
 Push a tag such as `stevora-os-v1.2.3` at the intended release commit. The
 release workflow builds the Pi 4, UTM and OVA targets, re-signs their RAUC

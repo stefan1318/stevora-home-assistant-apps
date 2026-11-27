@@ -113,6 +113,18 @@ jobs:
             haos/buildroot-external/rootfs-overlay/usr/lib/systemd/system-preset/70-haos.preset
           git -C haos diff --stat
 
+      - uses: actions/download-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        with:
+          name: release-publisher-certificate
+          path: publisher-certificate
+
+      - name: Embed the public OTA publisher certificate
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        run: |
+          rootfs=haos/buildroot-external/rootfs-overlay
+          install -Dm0644 publisher-certificate/publisher.pem "$rootfs/etc/stevora/publisher.pem"
+
       - name: Build ARM64 UEFI image via upstream HAOS Buildroot container
         working-directory: haos
         env:

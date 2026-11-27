@@ -1,0 +1,9 @@
+[Unit]
+Description=Initialize STEVORA OTA publisher trust
+RequiresMountsFor=/mnt/data/stevora
+ConditionPathExists=/etc/stevora/publisher.pem
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/stevora-bootstrap-publisher /etc/stevora/publisher.pem /mnt/data/stevora/update
