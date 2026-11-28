@@ -30,3 +30,11 @@ The bridge reads the same canonical files as the MCP service, but does not conne
 ## Major update installation
 
 Update **both** `__init__.py` and `storage.py` from this repository under `/config/custom_components/stevora_memory_bridge/`, validate the Home Assistant configuration and restart HA. Install the latest Android APK. In Settings → Memory Manager, open Review proposals. Test with a harmless test proposal first, check that its status changes and that an audit record is created in `/config/stevora/memory/audit/`. Check `/config/stevora/memory/backups/` for approved changes. Do not use the approval feature on important records until this test succeeds.
+
+## STEVORA OS Native UI
+
+On builds that include the native Memory & Sync screen, open STEVORA OS as an
+administrator and refresh after enabling the bridge. The **Memory** navigation
+entry appears after the authenticated bridge health check succeeds. The screen
+reads the available knowledge base and sync report and lists recent proposals
+for review. If storage is unavailable, the screen reports that state.

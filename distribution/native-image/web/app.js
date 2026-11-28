@@ -72,6 +72,7 @@
     store:[],backups:[],system:{},userList:[],messages:[],installations:{},
     room:"",filter:"",busy:false,error:"",lastError:"",selectedApp:"",stevoraManifest:null,
     adaptiveCatalog:null,adaptiveStates:new Map(),adaptiveSubscription:null,
+    memoryHealth:null,memoryData:null,
   };
   const backlight = e => /back[ _-]?light|подсвет/i.test([e.entity_id,e.name,e.attributes?.friendly_name,e.original_name].join(" "));
   const isAllowed = e => !!e && !backlight(e) &&
@@ -106,6 +107,8 @@
     state.people=[];mapVisible=false;state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
     state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
     state.adaptiveCatalog=null;state.adaptiveStates.clear();state.adaptiveSubscription=null;
+    state.memoryHealth=null;state.memoryData=null;
+    if(state.view==="memory")state.view="home";
     state.currentUser=null;state.pipeline=null;state.messages=[];state.userList=[];state.admin=false;state.authorized=false;
   }
   function saveAuth(record) {
@@ -243,6 +246,9 @@
       }
     });
     ws.addEventListener("close",()=>{if(ws!==state.ws)return;state.connected=false;state.voice?.end();
+      state.memoryHealth=null;state.memoryData=null;
+      if(state.view==="memory"){state.view="home";renderContent();}
+      else q('#navigation [data-view="memory"]')?.remove();
       for(const button of q("#screen").querySelectorAll(".adaptive-action button,.adaptive-profile button"))button.disabled=true;
       q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);scheduleReconnect(ws);});
   }
@@ -354,6 +360,13 @@
       const user=await tryCall({type:"auth/current_user"},null);
       if(socket!==state.ws||request!==syncSerial)return;
       state.admin=user?.is_admin===true;state.currentUser=user;
+      const memoryHealth=state.admin ? await tryCall({type:"stevora_memory/health"},null) : null;
+      if(socket!==state.ws||request!==syncSerial)return;
+      state.memoryHealth=memoryHealth?.bridge==="ready"&&memoryHealth.api_version===1?memoryHealth:null;
+      if(!state.memoryHealth){
+        state.memoryData=null;
+        if(state.view==="memory")state.view="home";
+      }
       if(state.admin)await loadAdmin(state.view);
       renderContent();
       document.dispatchEvent(new Event("stevora-device-update"));
@@ -361,6 +374,7 @@
   }
   async function loadAdmin(view) {
     if(!state.admin)return;
+    if(view==="memory"&&state.memoryHealth)await loadMemory();
     if(view==="integrations"){
       state.configEntries=await tryCall({type:"config_entries/get"},[]);
       state.handlers=await coreREST("/api/config/config_entries/flow_handlers?type=integration").catch(()=>[]);
@@ -397,9 +411,51 @@
   function visibleEntities(domain){
     return state.entities.filter(e=>(!domain||domain==="all"||e.entity_id.startsWith(domain+"."))&&isAllowed(e)&&(!state.room||entityArea(e)===state.room));
   }
+  async function loadMemory(){
+    const socket=state.ws, health=state.memoryHealth;
+    const read=filename=>health.files?.includes(filename)
+      ? tryCall({type:"stevora_memory/read",filename},null) : null;
+    const [knowledge,sync,proposals]=await Promise.all([
+      read("knowledge_base.md"),read("memory_status.json"),
+      health.storage_available?tryCall({type:"stevora_memory/proposals",limit:20},null):null,
+    ]);
+    if(socket!==state.ws||health!==state.memoryHealth||!state.admin||!state.connected)return;
+    state.memoryData={knowledge,sync,proposals};
+  }
+
+  function memoryView(){
+    if(!state.admin||!state.memoryHealth)return "";
+    const data=state.memoryData;
+    if(!state.memoryHealth.storage_available)return hdr(tr("Памет и синхронизация","Memory & Sync"))+
+      empty(tr("Модулът е активен. Хранилището за памет още не е достъпно.","The bridge is active. Memory storage is unavailable."));
+    const content=(record,missing)=>record
+      ? '<pre class="memory-content">'+esc(record.content)+'</pre>'+
+        (record.truncated?'<p>'+esc(tr("Показана е част от файла.","This file is shown in part."))+'</p>':"")
+      : empty(missing);
+    const proposals=data?.proposals?.proposals;
+    return hdr(tr("Памет и синхронизация","Memory & Sync"))+
+      (data?'<section class="panel"><h2>'+esc(tr("Състояние на синхронизацията","Sync status"))+'</h2>'+
+        content(data.sync,tr("Няма отчет за синхронизация.","No sync status file."))+
+      '</section><section class="panel"><h2>'+esc(tr("База знания","Knowledge base"))+'</h2>'+
+        content(data.knowledge,tr("Няма достъпен файл с база знания.","No knowledge base file is available."))+
+      '</section><section class="panel"><h2>'+esc(tr("Предложения за преглед","Proposals for review"))+'</h2>'+
+        (Array.isArray(proposals)?(proposals.map(item=>'<details class="device-card"><summary>'+
+          esc(item.title||item.id)+'</summary><small>'+esc(item.status||"")+'</small><p>'+
+          esc(item.details||"")+'</p></details>').join("")||empty(tr("Няма предложения.","No proposals.")))
+          :empty(tr("Предложенията са недостъпни.","Proposals unavailable.")))+'</section>':empty(t("connecting")));
+  }
+
   function nav(){
     const map={updates:locale==="bg"?"Обновявания":"Update Center",people:locale==="bg"?"Хора и присъствие":"People & Presence",home:t("home"),rooms:t("rooms"),devices:t("devices"),lighting:t("lighting"),climate:t("climate"),scenes:t("scenes"),automations:t("automations"),integrations:t("integrations"),apps:t("apps"),system:t("system"),backups:t("backups"),users:t("users"),assist:t("assist")};
     const navigation=q("#navigation");
+    navigation.querySelector('[data-view="memory"]')?.remove();
+    if(state.admin&&state.connected&&state.memoryHealth){
+      map.memory=tr("Памет","Memory");
+      const button=document.createElement("button");
+      button.dataset.view="memory";
+      button.append("▤ ",document.createElement("span"));
+      navigation.insertBefore(button,navigation.querySelector('[data-view="assist"]'));
+    }
     const categories=StevoraAdaptive.categories(state.adaptiveCatalog);
     navigation.querySelectorAll("[data-adaptive-navigation]").forEach(btn=>btn.remove());
     for(const [category,labels] of categories){
@@ -685,6 +741,7 @@
       case "backups":result=backupView();break;
       case "users":result=usersView();break;
       case "assist":result=assistView();break;
+      case "memory":result=memoryView();break;
       default:result=empty();
     }
     const expanded=new Set([...q("#screen").querySelectorAll("details[data-capability-card][open]")]
@@ -723,14 +780,15 @@
     }
   }
   function setView(view){
-    const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist"];
+    if(view==="memory"&&(!state.admin||!state.connected||!state.memoryHealth))return;
+    const allowed=["updates","people","home","rooms","devices","lighting","climate","scenes","automations","integrations","apps","system","backups","users","assist","memory"];
     if(!allowed.includes(view) && !(view.startsWith("system:")
         && StevoraAdaptive.categories(state.adaptiveCatalog).has(view.slice(7))))return;
     if(state.view==="assist"&&view!=="assist")state.voice?.end();
     state.view=view;if(view==="people")refreshPeople();state.filter="";state.room="";
     q("#sidebar").classList.remove("mobile-open");
     renderContent();
-    if(["integrations","apps","system","updates","backups","users"].includes(view)&&state.admin){
+    if(["integrations","apps","system","updates","backups","users","memory"].includes(view)&&state.admin){
       notice(t("connecting"));
       loadAdmin(view).then(()=>{notice("");renderContent()}).catch(e=>notice(formatError(e),true));
     }
