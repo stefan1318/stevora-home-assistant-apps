@@ -45,6 +45,8 @@ jobs:
     uses: ./.github/workflows/stevora-os-native-rpi4-build.yml
   utm:
     needs: publisher-certificate
+    permissions:
+      contents: write
     uses: ./.github/workflows/stevora-os-native-utm-build.yml
   ova:
     if: '!startsWith(github.ref, ''refs/tags/stevora-os-lab-v'')'
