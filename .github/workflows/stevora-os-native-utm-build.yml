@@ -17,15 +17,20 @@ on:
   workflow_dispatch:
     inputs:
       lab_ota:
-        description: Build a publisher-signed UTM OTA bundle for manual lab enrollment
+        description: Enable the isolated automatic OTA test channel
         type: boolean
         default: false
+      lab_version:
+        description: Laboratory baseline or follow-up update
+        type: choice
+        options: ["1.0.0", "1.0.1"]
+        default: "1.0.0"
 
 permissions:
   contents: read
 
 concurrency:
-  group: stevora-dev4-utm-${{ github.ref }}
+  group: stevora-dev4-utm-${{ github.ref }}-${{ inputs.lab_version || 'normal' }}
   cancel-in-progress: true
 
 jobs:
@@ -65,12 +70,29 @@ jobs:
           sudo apt-get install -y rauc squashfs-tools
           bash distribution/native-image/tests/release-signing.sh
 
+  lab-certificate:
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-auto-ota-test'
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    steps:
+      - name: Export only the public publisher certificate
+        env:
+          PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
+        run: |
+          openssl x509 -checkend 0 -noout <<< "${PUBLISHER_CERT:?missing publisher certificate}"
+          openssl x509 <<< "$PUBLISHER_CERT" > publisher.pem
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lab-publisher-certificate
+          path: publisher.pem
+          if-no-files-found: error
+
   build-utm:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: always() && !cancelled() && needs.source-validation.result == 'success' && (needs.lab-certificate.result == 'success' || !inputs.lab_ota) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     name: Build generic ARM64 UEFI QCOW2
     runs-on: ubuntu-24.04
     timeout-minutes: 330
-    needs: source-validation
+    needs: [source-validation, lab-certificate]
     env:
       UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
     steps:
@@ -111,6 +133,8 @@ jobs:
           file stevora-native-gateway | grep -qi 'ARM aarch64'
 
       - name: Overlay STEVORA components onto the pinned ARM64 UEFI target
+        env:
+          STEVORA_OTA_LAB_VERSION: ${{ inputs.lab_ota && inputs.lab_version || '' }}
         run: |
           bash distribution/native-image/scripts/prepare-haos.sh haos generic_aarch64
           grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' haos/buildroot-external/configs/generic_aarch64_defconfig
@@ -137,6 +161,17 @@ jobs:
         run: |
           rootfs=haos/buildroot-external/rootfs-overlay
           install -Dm0644 publisher-certificate/publisher.pem "$rootfs/etc/stevora/publisher.pem"
+
+      - uses: actions/download-artifact@v4
+        if: inputs.lab_ota
+        with:
+          name: lab-publisher-certificate
+          path: lab-publisher
+      - name: Embed publisher trust for the isolated OTA channel
+        if: inputs.lab_ota
+        run: |
+          install -Dm0644 lab-publisher/publisher.pem \
+            haos/buildroot-external/rootfs-overlay/etc/stevora/publisher.pem
 
       - name: Build ARM64 UEFI image via upstream HAOS Buildroot container
         working-directory: haos
@@ -239,8 +274,10 @@ jobs:
 
   sign-lab-ota:
     name: Sign UTM laboratory OTA bundle
-    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-ota-lab'
-    needs: [build-utm]
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-auto-ota-test' && inputs.lab_version == '1.0.1'
+    needs: [boot-utm]
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     environment: stevora-os-release
     steps:
@@ -264,14 +301,23 @@ jobs:
           printf '%s\n' "${PUBLISHER_KEY:?missing signing key}" > "$signing/key.pem"
           unset PUBLISHER_KEY
           rauc --no-verify --cert=lab/publisher.pem --key="$signing/key.pem" resign \
-            input/publisher-input.raucb lab/stevora-utm-lab.raucb
-          rauc --keyring=lab/publisher.pem info lab/stevora-utm-lab.raucb
+            input/publisher-input.raucb lab/stevora-os-generic_aarch64.raucb
+          rauc --keyring=lab/publisher.pem info lab/stevora-os-generic_aarch64.raucb
           openssl x509 -in lab/publisher.pem -noout -fingerprint -sha256 > lab/PUBLISHER-SHA256.txt
           printf '%s\n' "$GITHUB_SHA" > lab/SOURCE-COMMIT.txt
-          (cd lab && sha256sum stevora-utm-lab.raucb publisher.pem > SHA256SUMS.txt)
+          (cd lab && sha256sum stevora-os-generic_aarch64.raucb publisher.pem > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: STEVORA-UTM-ARM64-LAB-OTA
           path: lab/
           retention-days: 7
           if-no-files-found: error
+
+      - name: Publish the boot-checked update to the isolated prerelease channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create stevora-os-lab-v1.0.1 lab/stevora-os-generic_aarch64.raucb lab/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "STEVORA OS UTM automated OTA lab 1.0.1" \
+            --notes "Laboratory UTM ARM64 update. Source: $GITHUB_SHA. Install from Update Center with administrator approval."

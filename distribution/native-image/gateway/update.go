@@ -97,7 +97,7 @@ func newUpdateHandler(core *url.URL) http.Handler {
 		}
 		var bundle string
 		if staged != "" {
-			if feed == nil || !releaseTag.MatchString(staged) || staged != feed.cached() {
+			if feed == nil || releaseNumber(staged) < 0 || staged != feed.cached() {
 				http.Error(w, "Release no longer staged", 409)
 				return
 			}

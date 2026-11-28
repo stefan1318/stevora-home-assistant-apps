@@ -21,9 +21,15 @@ import (
 const releaseRepo = "stefan1318/stevora-home-assistant-apps"
 const maxBundle = 2 << 30
 
+const labTagPrefix = "stevora-os-lab-v"
+const stableTagPrefix = "stevora-os-v"
+
 var releaseTag = regexp.MustCompile(`^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$`)
 
 func releaseNumber(tag string) int64 {
+	if strings.HasPrefix(tag, labTagPrefix) {
+		tag = stableTagPrefix + strings.TrimPrefix(tag, labTagPrefix)
+	}
 	parts := releaseTag.FindStringSubmatch(tag)
 	if parts == nil {
 		return -1
@@ -73,11 +79,18 @@ func (f *releaseFeed) usesOfficialReleaseFeed() bool {
 	return f != nil && releaseNumber(f.Installed) > 0
 }
 
+func (f *releaseFeed) tagPrefix() string {
+	if strings.HasPrefix(f.Installed, labTagPrefix) {
+		return labTagPrefix
+	}
+	return stableTagPrefix
+}
+
 func (f *releaseFeed) cached() string {
 	if f == nil {
 		return ""
 	}
-	files, _ := filepath.Glob(filepath.Join(updateDir, f.Board+"-stevora-os-v*.raucb"))
+	files, _ := filepath.Glob(filepath.Join(updateDir, f.Board+"-"+f.tagPrefix()+"*.raucb"))
 	best := f.Installed
 	for _, path := range files {
 		tag := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), f.Board+"-"), ".raucb")
@@ -99,7 +112,9 @@ func newest(releases []githubRelease, floor, name string) (string, releaseAsset)
 	best := floor
 	var selected releaseAsset
 	for _, r := range releases {
-		if r.Draft || r.Prerelease || releaseNumber(r.Tag) <= releaseNumber(best) {
+		lab := strings.HasPrefix(floor, labTagPrefix)
+		if r.Draft || r.Prerelease != lab || strings.HasPrefix(r.Tag, labTagPrefix) != lab ||
+			releaseNumber(r.Tag) <= releaseNumber(best) {
 			continue
 		}
 		for _, a := range r.Assets {
@@ -191,7 +206,7 @@ func (f *releaseFeed) monitor() {
 		os.Remove(p)
 	}
 	// Remove bundles superseded by the currently booted system.
-	bundles, _ := filepath.Glob(filepath.Join(updateDir, f.Board+"-stevora-os-v*.raucb"))
+	bundles, _ := filepath.Glob(filepath.Join(updateDir, f.Board+"-"+f.tagPrefix()+"*.raucb"))
 	for _, p := range bundles {
 		tag := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), f.Board+"-"), ".raucb")
 		if releaseNumber(tag) <= releaseNumber(f.Installed) {
