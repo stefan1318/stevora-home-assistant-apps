@@ -101,8 +101,8 @@ data = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert data["product"] == "STEVORA OS"
 assert data["release"] == "native-integrated-dev.4"
 assert data["test_only"] is True
-assert data["signed_stevora_ota"] is False
-print("Native boot+HTTP service PASS; unsigned update remains disabled.")
+assert data["signed_stevora_ota"] is True
+print("Native boot and HTTP service PASS; the image advertises signed OTA capability.")
 PY
 
 echo "Native $ARCH image boot verified: STEVORA root / reachable on HTTP TCP/80."
