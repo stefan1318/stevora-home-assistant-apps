@@ -42,3 +42,20 @@ func TestOfficialImageDisallowsUnversionedUpload(t *testing.T) {
 		}
 	}
 }
+
+func TestLabAndStableFeedsAreIsolated(t *testing.T) {
+	name := "stevora-os-generic_aarch64.raucb"
+	asset := []releaseAsset{{name, 42, "sha256:" + strings.Repeat("a", 64)}}
+	releases := []githubRelease{
+		{"stevora-os-v9.0.0", false, false, asset},
+		{"stevora-os-lab-v1.0.1", false, true, asset},
+		{"stevora-os-lab-v2.0.0", false, false, asset},
+		{"stevora-os-v1.0.2", false, true, asset},
+	}
+	if tag, _ := newest(releases, "stevora-os-lab-v1.0.0", name); tag != "stevora-os-lab-v1.0.1" {
+		t.Fatal(tag)
+	}
+	if tag, _ := newest(releases, "stevora-os-v1.0.0", name); tag != "stevora-os-v9.0.0" {
+		t.Fatal(tag)
+	}
+}
