@@ -53,3 +53,17 @@ An official image only accepts newer releases staged from the official feed.
 Unversioned uploads remain available on Dev4 enrollment builds. In the lab,
 enroll and boot the initial official version before testing rejection of a
 previous version and bootloader rollback to the known-good slot.
+
+### Raspberry Pi 4 automatic OTA laboratory channel
+
+The `1.1.0` Pi 4 lab image is the clean-install baseline. It embeds the
+public publisher certificate and polls prereleases for a newer
+`stevora-os-rpi4_64.raucb`. Use a separate test SD card and complete clean
+boot and onboarding before testing updates.
+
+Build a future revision using a higher Pi 4 lab version such as `1.1.1`.
+The workflow produces the signed Pi 4 bundle as an Actions artifact.
+After a test administrator approves publication, publish that verified
+bundle under the matching `stevora-os-lab-v1.1.1` GitHub prerelease.
+The installed baseline verifies the download digest and RAUC signature
+and offers it in Update Center for administrator approval.

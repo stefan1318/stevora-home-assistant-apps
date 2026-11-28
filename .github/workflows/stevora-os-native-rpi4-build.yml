@@ -9,6 +9,11 @@ on:
       - '.github/workflows/stevora-os-native-rpi4-build.yml'
   workflow_call:
   workflow_dispatch:
+    inputs:
+      lab_version:
+        description: Pi 4 OTA lab version, leave empty for a standard image
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -39,11 +44,33 @@ jobs:
           (cd distribution/native-image/gateway && go test ./...)
           echo "Source validation PASS; no Pi hardware boot has been tested."
 
+  lab-certificate:
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_version != '' && github.ref == 'refs/heads/codex/rpi4-auto-ota-test'
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    steps:
+      - name: Validate Pi 4 lab version
+        env:
+          LAB_VERSION: ${{ inputs.lab_version }}
+        run: '[[ "$LAB_VERSION" =~ ^1\.1\.(0|[1-9][0-9]{0,5})$ ]]'
+      - name: Export only the public publisher certificate
+        env:
+          PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
+        run: |
+          openssl x509 -checkend 0 -noout <<< "${PUBLISHER_CERT:?missing publisher certificate}"
+          openssl x509 <<< "$PUBLISHER_CERT" > publisher.pem
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lab-publisher-certificate
+          path: publisher.pem
+          if-no-files-found: error
+
   build-rpi4:
+    if: always() && !cancelled() && needs.source-validation.result == 'success' && (needs.lab-certificate.result == 'success' || !inputs.lab_version)
     name: Build actual rpi4_64 ARM64 .img.xz (hardware boot not verified)
     runs-on: ubuntu-24.04
     timeout-minutes: 330
-    needs: source-validation
+    needs: [source-validation, lab-certificate]
     env:
       UPSTREAM_HAOS_SHA: 495bedb8d70a92ad189efb64829ece34b165d3bd
     steps:
@@ -84,6 +111,8 @@ jobs:
           file stevora-native-gateway | grep -qi 'ARM aarch64'
 
       - name: Overlay STEVORA components onto the pinned Raspberry Pi 4 target
+        env:
+          STEVORA_OTA_LAB_VERSION: ${{ inputs.lab_version }}
         run: |
           bash distribution/native-image/scripts/prepare-haos.sh haos rpi4_64
           grep -qx 'BR2_PACKAGE_LIBOPENSSL_BIN=y' haos/buildroot-external/configs/rpi4_64_defconfig
@@ -107,6 +136,22 @@ jobs:
           rootfs=haos/buildroot-external/rootfs-overlay
           install -Dm0644 publisher-certificate/publisher.pem "$rootfs/etc/stevora/publisher.pem"
 
+      - uses: actions/download-artifact@v4
+        if: inputs.lab_version != ''
+        with:
+          name: lab-publisher-certificate
+          path: lab-publisher
+      - name: Embed publisher trust for the Pi 4 OTA channel
+        if: inputs.lab_version != ''
+        env:
+          LAB_VERSION: ${{ inputs.lab_version }}
+        run: |
+          install -Dm0644 lab-publisher/publisher.pem \
+            haos/buildroot-external/rootfs-overlay/etc/stevora/publisher.pem
+          cmp lab-publisher/publisher.pem haos/buildroot-external/rootfs-overlay/etc/stevora/publisher.pem
+          grep -Fx "rpi4_64 stevora-os-lab-v$LAB_VERSION" \
+            haos/buildroot-external/rootfs-overlay/usr/share/stevora-os/release-feed
+
       - name: Build Raspberry Pi 4 image via upstream HAOS Buildroot container
         working-directory: haos
         env:
@@ -127,12 +172,15 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Package reproducible build-only Raspberry Pi 4 image
+        env:
+          LAB_VERSION: ${{ inputs.lab_version || 'not configured' }}
         run: |
           mkdir -p release
           cp "${{ steps.image.outputs.image }}" release/stevora-native-dev4-rpi4-64.img.xz
           cat > release/BUILD-IDENTITY.txt <<EOF
           STEVORA OS Native Integrated Dev4 — Raspberry Pi 4 64-bit
           STEVORA source commit: $GITHUB_SHA
+          Pi 4 OTA lab version: $LAB_VERSION
           Pinned Home Assistant OS source: $UPSTREAM_HAOS_SHA
           Target: rpi4_64 / linux arm64 / raspberrypi4-64
           Status: BUILD-ONLY; physical Raspberry Pi 4 boot NOT VERIFIED
@@ -144,7 +192,7 @@ jobs:
           ls -lh release
 
       - name: Collect release input from this build
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v') || inputs.lab_version != ''
         run: |
           shopt -s nullglob
           bundles=(haos/output_rpi4_64/images/*.raucb)
@@ -152,7 +200,7 @@ jobs:
           cp "${bundles[0]}" publisher-input.raucb
 
       - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v') || inputs.lab_version != ''
         with:
           name: publisher-input-rpi4_64
           path: publisher-input.raucb
@@ -167,3 +215,42 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+  sign-lab-ota:
+    name: Sign Pi 4 laboratory OTA bundle
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_version != '' && inputs.lab_version != '1.1.0' && github.ref == 'refs/heads/codex/rpi4-auto-ota-test'
+    needs: [build-rpi4]
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: publisher-input-rpi4_64
+          path: input
+      - run: sudo apt-get update -qq && sudo apt-get install -y rauc
+      - name: Sign and verify the laboratory bundle
+        env:
+          PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
+          PUBLISHER_KEY: ${{ secrets.STEVORA_RAUC_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          umask 077
+          signing=$(mktemp -d)
+          trap 'rm -rf "$signing"' EXIT
+          mkdir -p lab
+          openssl x509 -checkend 0 -noout <<< "${PUBLISHER_CERT:?missing public certificate}"
+          openssl x509 <<< "$PUBLISHER_CERT" > lab/publisher.pem
+          printf '%s\n' "${PUBLISHER_KEY:?missing signing key}" > "$signing/key.pem"
+          unset PUBLISHER_KEY
+          rauc --no-verify --cert=lab/publisher.pem --key="$signing/key.pem" resign \
+            input/publisher-input.raucb lab/stevora-os-rpi4_64.raucb
+          rauc --keyring=lab/publisher.pem info lab/stevora-os-rpi4_64.raucb
+          openssl x509 -in lab/publisher.pem -noout -fingerprint -sha256 > lab/PUBLISHER-SHA256.txt
+          printf '%s\n' "$GITHUB_SHA" > lab/SOURCE-COMMIT.txt
+          (cd lab && sha256sum stevora-os-rpi4_64.raucb publisher.pem > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-RPI4-ARM64-LAB-OTA
+          path: lab/
+          retention-days: 7
+          if-no-files-found: error
