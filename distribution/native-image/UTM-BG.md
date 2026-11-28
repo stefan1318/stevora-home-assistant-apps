@@ -49,3 +49,52 @@ macOS, onboarding, Home Assistant Core и Supervisor, мобилните кли�
   и няма достъп до редакция на категории и групи. Подсветките не се управляват.
 - Контролите се появяват според наличните действия в каталога. Домейни без
   проверен адаптер за действие се представят само за четене.
+
+## Прекъсване на достъпа след HA Restore
+
+Направи проверките, докато прекъсването още се вижда. Запиши часа
+и IP адреса на VM от UTM или от серийната конзола. От Mac провери по IP.
+
+```bash
+"/Applications/UTM.app/Contents/MacOS/utmctl" ip-address 'STEVORA OS Dev4'
+VM_IP=172.20.10.3 # Замени с текущия IPv4 адрес от UTM.
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 4 "http://$VM_IP/healthz"
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 4 "http://$VM_IP:8123/"
+arp -n "$VM_IP"
+```
+
+В серийната конзола на VM провери gateway, проксито и Core поотделно.
+
+```bash
+date -Iseconds
+ip -br addr
+ip route
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 4 http://127.0.0.1/healthz
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 4 http://127.0.0.1/auth/providers
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 4 http://127.0.0.1:8123/
+systemctl show stevora-native-web haos-supervisor -p Id -p ActiveState -p NRestarts
+journalctl -b -u stevora-native-web -u haos-supervisor -u NetworkManager --since '-15 min' --no-pager
+docker inspect -f '{{.Name}} {{.State.Status}} {{.State.StartedAt}} restart={{.RestartCount}} oom={{.State.OOMKilled}}' homeassistant hassio_supervisor
+ha supervisor info
+```
+
+- Ако двата порта работят вътре, а Mac не достига същия IP и ARP е
+  `(incomplete)`, провери пътя между Mac и VM. За A/B тест използвай
+  **Shared Network** на отделно копие на VM. Вземи новия IP след boot и
+  повтори проверката при смяна или повторно свързване към hotspot.
+  Пусни копието отделно от оригинала и в изолирана тестова мрежа.
+- Ако `/healthz` е 200, а `/auth/providers` през порт 80 връща 503,
+  провери Core на 8123 и журнала му с `ha core logs`. При Restore от
+  друга инсталация провери дали настройките на Core сочат към наличен
+  TLS сертификат и дали протоколът и портът съвпадат с локалния upstream
+  на gateway (`http://127.0.0.1:8123`).
+- Ако HTTP работи, а Apps показва грешка, сравни списъка от
+  `ha supervisor info` с Apps в STEVORA. В браузъра DevTools → Network → WS
+  провери `/api/websocket` за отваряне на нова връзка, `auth_ok` и резултата
+  от `supervisor/api` за `/addons`. Прегледай локално съобщенията с токени.
+- За регресионен тест използвай изолирана VM с тестово копие на архива.
+  След Restore отвори Apps, прекъсни мрежата на клиента и я възстанови.
+  Провери повторното свързване и зареждането на списъка. Ако Supervisor
+  временно върне грешка, последният зареден списък остава видим с
+  обяснение. При успешен повторен опит се показва актуалният списък,
+  включително ако е празен.

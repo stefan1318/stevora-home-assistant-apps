@@ -11,6 +11,7 @@ with sync_playwright() as pw:
  done=set()
  events=[]
  transport={}
+ apps={'fail':False,'installed':[{'name':'Terminal','slug':'test_terminal','state':'started','ingress':True}]}
  device={"entity_id":"light.test","name":"Desk lamp","area_id":"desk","available_controls":["brightness","toggle"],"controls":["brightness"]}
  failed=[True]
  def route(r):
@@ -52,8 +53,10 @@ with sync_playwright() as pw:
    vals['supervisor/ingress/session']={'session':'mock-session'}
    if typ=='supervisor/api':
     endpoint=m['endpoint']
+    if endpoint=='/addons' and apps['fail']:
+     return sock.send(json.dumps(dict(id=m['id'],type='result',success=False,error={'message':'Supervisor unavailable'})))
     vals[typ]={
-     '/addons':{'addons':[{'name':'Terminal','slug':'test_terminal','state':'started','ingress':True}]},
+     '/addons':{'addons':apps['installed']},
      '/store':{'addons':[]},
      '/addons/test_terminal/info':{'name':'Terminal','options':{'port':22}},
      '/addons/test_terminal/options/validate':{'valid':m.get('data')=={'port':2222}},
@@ -115,6 +118,20 @@ with sync_playwright() as pw:
  page.get_by_role('button',name='Save',exact=True).click()
  expect(page.get_by_role('dialog')).to_have_count(0)
  assert any(m.get('endpoint')=='/addons/test_terminal/options' and m.get('data')=={'options':{'port':2222}} for m in events)
+ apps_nav=page.locator('[data-view="apps"]')
+ apps['fail']=True
+ transport['socket'].close()
+ expect(page.get_by_text('Supervisor could not load installed apps.',exact=False)).to_be_visible(timeout=15000)
+ expect(page.get_by_text('Terminal',exact=True)).to_be_visible()
+ expect(page.locator('[data-addon-action="open"]')).to_have_count(0)
+ apps['fail']=False
+ installed=apps['installed']
+ apps['installed']=[]
+ apps_nav.click()
+ expect(page.get_by_text('Terminal',exact=True)).to_have_count(0)
+ expect(page.get_by_text('Supervisor could not load installed apps.',exact=False)).to_have_count(0)
+ apps['installed']=installed
+ apps_nav.click()
  page.locator('[data-addon-action="open"]').click()
  expect(page.get_by_role('heading',name='Test app')).to_be_visible()
  page.evaluate('sessionStorage.clear()');page.goto('http://stevora.test/')
@@ -136,5 +153,5 @@ with sync_playwright() as pw:
  expect(page.get_by_role('button',name='Sign in to STEVORA')).to_be_visible(timeout=12000)
  page.get_by_role('button',name='Change language').click()
  expect(page.get_by_role('button',name='Вход в STEVORA')).to_be_visible()
- print('PASS: Core unavailable, owner validation and creation, token exchange, authenticated resume, home configuration, privacy choice, manifest, home, existing-home login BG/EN')
+ print('PASS: Core unavailable, owner validation and creation, token exchange, authenticated resume, home configuration, privacy choice, manifest, home, Apps reconnect and recovery, ingress, existing-home login BG/EN')
  browser.close()
