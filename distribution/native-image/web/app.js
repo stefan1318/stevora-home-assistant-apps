@@ -71,7 +71,7 @@
     entities:[],areas:[],registry:[],deviceRegistry:[],configEntries:[],apps:[],
     store:[],appErrors:{},backups:[],system:{},userList:[],messages:[],installations:{},
     room:"",filter:"",busy:false,error:"",lastError:"",selectedApp:"",stevoraManifest:null,
-    adaptiveCatalog:null,adaptiveStates:new Map(),adaptiveSubscription:null,
+    temperatureUnit:null,deviceCommands:new Set(),adaptiveCatalog:null,adaptiveStates:new Map(),adaptiveSubscription:null,
     memoryHealth:null,memoryData:null,
   };
   const backlight = e => /back[ _-]?light|подсвет/i.test([e.entity_id,e.name,e.attributes?.friendly_name,e.original_name].join(" "));
@@ -241,7 +241,7 @@
           const i=state.entities.findIndex(v=>v.entity_id===e.entity_id);
           if(i>=0)state.entities[i]=e;else state.entities.push(e);
           document.dispatchEvent(new Event("stevora-device-update"));
-          if(["home","rooms","devices","lighting","climate","scenes","automations"].includes(state.view))renderContent();
+          if(!adaptiveView() && ["home","rooms","devices","lighting","climate","scenes","automations"].includes(state.view))renderContent();
         }
       }
     });
@@ -249,7 +249,7 @@
       state.memoryHealth=null;state.memoryData=null;
       if(state.view==="memory"){state.view="home";renderContent();}
       else q('#navigation [data-view="memory"]')?.remove();
-      for(const button of q("#screen").querySelectorAll(".adaptive-action button,.adaptive-profile button"))button.disabled=true;
+      document.dispatchEvent(new Event("stevora-device-update"));
       q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);if(state.view==="apps")renderContent();scheduleReconnect(ws);});
   }
   function scheduleReconnect(ws){
@@ -271,15 +271,31 @@
   function deviceProfile(id){
     return state.stevoraManifest?.entities?.find(x=>x.entity_id===id);
   }
-  function allows(e,key){
-    const p=deviceProfile(e?.entity_id);
-    return controllable(e) && (p?.controls??p?.available_controls??[]).includes(key);
-  }
   function latestEntity(id){
     return state.entities.find(x=>x.entity_id===id);
   }
-  function deviceDetails(id){
-    openStevoraDevice({id,entity:()=>latestEntity(id),profile:()=>deviceProfile(id),canControl:()=>controllable(latestEntity(id)),call,tr,name:[info(latestEntity(id)),entityArea(latestEntity(id)) && areaName(entityArea(latestEntity(id)))].filter(Boolean).join(" · ")});
+  async function deviceDetails(id){
+    const item=state.adaptiveCatalog?.capabilities.find(row=>row.entity_id===id);
+    const profile=deviceProfile(id);
+    const live=()=>item ? state.adaptiveStates.get(id) : latestEntity(id);
+    const entity=()=>live() || (item ? {entity_id:id,state:item.availability,attributes:{}} : null);
+    const allowed=()=>Boolean(deviceProfile(id) && state.connected && deviceProfile(id)?.layout!=="info" && controllable(live()));
+    const controls=profile?.controls ?? profile?.available_controls ?? [];
+    if(allowed() && profile.layout!=="info" && controls.length===1 && controls[0]==="toggle"
+       && ["on","off"].includes(live().state)){
+      const domain=id.split(".")[0], service=live().state==="on"?"turn_off":"turn_on";
+      if(state.deviceCommands.has(id))return;
+      state.deviceCommands.add(id);
+      try{await call({type:"call_service",domain,service,target:{entity_id:id}});}
+      finally{state.deviceCommands.delete(id);}
+      return;
+    }
+    const current=entity();
+    if(!current)return;
+    const area=item?.area_id || entityArea(current);
+    const name=[item?.names?.[locale] || info(current),area && areaName(area)].filter(Boolean).join(" · ");
+    openStevoraDevice({id,entity,profile:()=>deviceProfile(id)||{},canControl:allowed,call,tr,name,
+      temperatureUnit:state.temperatureUnit,observations:item?.measurements});
   }
   function managementButton(key,bg,en){
     return '<button data-management="'+key+'">'+esc(tr(bg,en))+'</button>';
@@ -324,12 +340,13 @@
     const socket=state.ws,request=++syncSerial;
     try {
       // Get_states is projected by Core to the current user's permissions.
-      const [entities,areas,registry,devices,adaptive]=await Promise.all([
+      const [entities,areas,registry,devices,adaptive,coreConfig]=await Promise.all([
         call({type:"get_states"}),
         tryCall({type:"config/area_registry/list"},[]),
         tryCall({type:"config/entity_registry/list"},[]),
         tryCall({type:"config/device_registry/list"},[]),
         tryCall({type:StevoraAdaptive.API,schema_version:1,language:locale},null),
+        tryCall({type:"get_config"},null),
       ]);
       const people=await tryCall({type:"stevora/os/v1/people"},[]);
       const assistants=await tryCall({type:"conversation/agent/list"}, {agents:[]});
@@ -343,11 +360,13 @@
       if(socket!==state.ws||request!==syncSerial)return;
       state.agent=agent||pipeline?.conversation_engine;state.pipeline=pipeline;state.people=Array.isArray(people)?people:[];
       state.stevoraManifest=manifest?.installation_id && Array.isArray(manifest.entities)?manifest:null;
+      state.temperatureUnit=coreConfig?.unit_system?.temperature;
       state.adaptiveCatalog=StevoraAdaptive.valid(adaptive,state.stevoraManifest?.installation_id)?adaptive:null;
       const ids=new Set((state.adaptiveCatalog?.capabilities||[]).map(item=>item.entity_id));
       state.adaptiveStates=new Map((Array.isArray(entities)?entities:[])
         .filter(entity=>ids.has(entity.entity_id)).map(entity=>[entity.entity_id,entity]));
-      const activeCategory=state.view.startsWith("system:")?state.view.slice(7):null;
+      const activeCategory=state.view.startsWith("system:")?state.view.slice(7):
+        ["lighting","climate"].includes(state.view) && state.adaptiveCatalog ? state.view : null;
       if(activeCategory && !StevoraAdaptive.categories(state.adaptiveCatalog).has(activeCategory))state.view="devices";
       const readable=new Set((state.stevoraManifest?.entities||[]).map(e=>e.entity_id));
       state.entities=(Array.isArray(entities)?entities:[])
@@ -474,7 +493,7 @@
       map[view]=labels[locale]||category;
       const button=document.createElement("button");
       button.dataset.view=view;button.dataset.adaptiveNavigation="";
-      button.append(document.createElement("span"));
+      button.append(StevoraAdaptive.icon(category)+" ",document.createElement("span"));
       navigation.insertBefore(button,navigation.querySelector('[data-view="scenes"]'));
     }
     navigation.querySelectorAll("[data-view]").forEach(btn=>{
@@ -505,21 +524,13 @@
     if(!matches(name+" "+id))return "";
     const action=(s,label,disabled=false)=>'<button data-entity="'+esc(id)+'" data-service="'+s+'" '+(disabled?"disabled":"")+'>'+esc(label)+'</button>';
     let buttons="";
-    if(["light","switch","fan"].includes(domain) && allows(e,"toggle"))buttons+=action("toggle",e.state==="off"?t("turnOn"):t("turnOff"));
-    if(domain==="climate"){
-      const v=Number(e.attributes?.temperature),lo=Number(e.attributes?.min_temp??5),hi=Number(e.attributes?.max_temp??35);
-      buttons+='<span class="temp-readout">'+esc(t("target"))+': '+(Number.isFinite(v)?v+"°":"—")+'</span>';
-      if(allows(e,"temperature")&&Number.isFinite(v)&&v>=lo&&v<=hi){
-        buttons+=action("climate-down","−1°",v-1<lo)+action("climate-up","+1°",v+1>hi);
-      }
-    }
     if(domain==="scene" && controllable(e))buttons+=action("turn_on",t("activate"));
     if(domain==="automation" && controllable(e))buttons+=action("trigger",t("trigger"));
     if(domain==="automation" && state.admin)
       buttons+='<button data-automation-edit="'+esc(id)+'">'+esc(tr("Редактирай","Edit"))+'</button>';
     const stateLabel=consumerState(e.state,tr);
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
-    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+(profileGlyph(deviceProfile(id)?.icon)||{light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(name)+'</button></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
+    return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+(profileGlyph(deviceProfile(id)?.icon)||(deviceProfile(id)?.display_category && StevoraAdaptive.icon(deviceProfile(id).display_category))||{light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(name)+'</button></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
   }
   function roomTiles(rooms){
     const devices=state.adaptiveCatalog?.capabilities||state.entities;
@@ -543,15 +554,17 @@
   function entityScreen(view){
     const domain={lighting:"light",climate:"climate",scenes:"scene",automations:"automation"}[view]||"all";
     const name=t(view)||t("devices");
-    const list=visibleEntities(domain);
-    return hdr(name,list.length+" "+t("devices"))+(view==="devices"?nativeDeviceManagement():"")+
+    const mapped=state.stevoraManifest?.domain_mappings?.[view];
+    const list=visibleEntities(mapped?"all":domain).filter(e=>
+      (!mapped || mapped.includes(e.entity_id)) && matches(info(e)+" "+e.entity_id));
+    return hdr(name,list.length+" "+t("devices"))+
       (view==="automations"&&state.admin?
         '<div class="actions"><button data-automation-new="1">'+esc(tr("Нова автоматизация","New automation"))+'</button></div>':"")+
-      toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
+      toolbar()+roomSections(list,entityArea,items=>'<div class="cards">'+items.map(card).join("")+'</div>');
   }
   function roomsView(){
     const rooms=nativeRooms();
-    return hdr(t("rooms"))+(state.admin?managementButton("rooms","Управление на помещения","Rooms Manager"):"")+'<div class="room-grid">'+roomTiles(rooms)+'</div>';
+    return hdr(t("rooms"))+'<div class="room-grid">'+roomTiles(rooms)+'</div>';
   }
   function integrationView(){
     if(!state.admin)return hdr(t("integrations"))+empty(t("notAdmin"));
@@ -605,7 +618,7 @@
     const cards=Object.entries(state.system).map(([k,data])=>
       '<article class="system-card"><h2>'+esc(k.replace("/","").replace("/"," · "))+'</h2><dl>'+
       Object.entries(data||{}).filter(([key,val])=>["version","version_latest","update_available","state","healthy","supported","operating_system","hostname","arch","disk_total","disk_used","memory_total","memory_usage","boot","channel","supervisor","status"].includes(key)).map(([key,val])=>'<div><dt>'+esc(key)+'</dt><dd>'+esc(typeof val==="object"?JSON.stringify(val):val)+'</dd></div>').join("")+'</dl></article>').join("");
-    return hdr(t("system"))+'<section class="panel"><div class="actions">'+
+    return hdr(t("system"))+'<section class="panel"><h2>'+esc(tr("Настройки на дома","Home settings"))+'</h2>'+nativeDeviceManagement()+'</section><section class="panel"><div class="actions">'+
        managementButton("general","Дом и регион","Home & region")+managementButton("network","Мрежа","Network")+
        managementButton("check","Провери конфигурацията","Check configuration")+managementButton("coreRestart","Рестартирай Core","Restart Core")+
        managementButton("coreUpdate","Обнови Core","Update Core")+managementButton("supervisorUpdate","Обнови Supervisor","Update Supervisor")+
@@ -700,25 +713,37 @@
   function adaptiveView(){
     if(!state.adaptiveCatalog)return false;
     if(state.view==="devices" || state.view.startsWith("system:"))return true;
-    return ["climate","lighting"].includes(state.view)
-      && !state.stevoraManifest?.domain_mappings?.[state.view]?.length;
+    return ["climate","lighting"].includes(state.view);
   }
   function nativeDeviceManagement(){
     if(!state.admin)return "";
     return '<div class="actions">'+
       managementButton("devices","Управление на устройства","Device Manager")+
       managementButton("localizedDevices","Имена BG/EN","BG/EN names")+
-      (state.adaptiveCatalog?.management?managementButton("capabilityGroups","Категории и групи","Categories and groups"):"")+
+      managementButton("rooms","Управление на помещения","Rooms Manager")+
       managementButton("visibility","Видимост","Visibility")+'</div>';
+  }
+  function roomSections(items, areaOf, render){
+    if(!items.length)return empty();
+    const grouped=new Map();
+    for(const item of items){
+      const area=areaOf(item)||"__stevora_unassigned__";
+      if(!grouped.has(area))grouped.set(area,[]);
+      grouped.get(area).push(item);
+    }
+    const order=new Set([...nativeRooms().map(roomId).filter(id=>id!=="__stevora_unassigned__"),
+      ...[...grouped.keys()].filter(id=>id!=="__stevora_unassigned__"),"__stevora_unassigned__"]);
+    return [...order].filter(id=>grouped.has(id)).map(id=>'<section class="device-room"><h2>'+
+      esc(id==="__stevora_unassigned__"?tr("Без стая","Unassigned"):areaName(id))+
+      '</h2>'+render(grouped.get(id))+'</section>').join("");
   }
   function renderAdaptive(){
     const catalog=state.adaptiveCatalog;
     const category=state.view.startsWith("system:")?state.view.slice(7):state.view==="devices"?null:state.view;
     const title=StevoraAdaptive.categories(catalog).get(category)?.[locale]||t("devices");
     const items=StevoraAdaptive.rows(catalog,category,state.room,state.filter,locale);
-    return hdr(title)+nativeDeviceManagement()+toolbar("devices",catalog.rooms)+(items.length
-      ? StevoraAdaptive.render(items,state.adaptiveStates,state.connected,locale,value=>consumerState(value,tr),catalog)
-      : empty());
+    return hdr(title)+toolbar("devices",catalog.rooms)+roomSections(items,item=>item.area_id,
+      group=>StevoraAdaptive.render(group,state.adaptiveStates,locale,value=>consumerState(value,tr),profileGlyph));
   }
   function updateAdaptiveReading(id,snapshot){
     const item=state.adaptiveCatalog?.capabilities.find(row=>row.entity_id===id);
@@ -731,9 +756,7 @@
     for(const node of card.querySelectorAll("[data-observation]")){
       node.textContent=StevoraAdaptive.reading(item,snapshot,node.dataset.observation,locale,value=>consumerState(value,tr));
     }
-    if(!snapshot || ["unavailable","unknown"].includes(snapshot.state)){
-      for(const button of card.querySelectorAll(".adaptive-action button"))button.disabled=true;
-    }
+
   }
   function renderContent(){
     if(state.login || document.body.classList.contains("setup-mode"))return;
@@ -813,18 +836,9 @@
     const e=state.entities.find(x=>x.entity_id===id);
     if(!controllable(e))throw new Error("Forbidden by STEVORA Manifest or unavailable entity");
     const domain=id.split(".")[0];
-    if(action==="toggle"&&!allows(e,"toggle") || action.startsWith("climate-")&&!allows(e,"temperature"))throw Error(t("noPermission"));
-    const p={type:"call_service",domain,service:action,target:{entity_id:id}};
-    if(action==="climate-up"||action==="climate-down"){
-      if(domain!=="climate")throw new Error("Invalid climate action");
-      const v=Number(e.attributes?.temperature),lo=Number(e.attributes?.min_temp??5),hi=Number(e.attributes?.max_temp??35);
-      const next=v+(action==="climate-up"?1:-1);
-      if(!Number.isFinite(next)||next<lo||next>hi)throw new Error("Out of range");
-      p.service="set_temperature";p.service_data={temperature:next};
-    }else if(action==="toggle"&&!["light","switch","fan"].includes(domain))throw new Error("Invalid toggle");
-    else if(action==="trigger"&&domain!=="automation")throw new Error("Invalid trigger");
-    else if(action==="turn_on"&&domain!=="scene")throw new Error("Invalid activation");
-    await call(p);
+    if(action==="trigger"&&domain!=="automation")throw new Error("Invalid trigger");
+    if(action==="turn_on"&&domain!=="scene")throw new Error("Invalid activation");
+    await call({type:"call_service",domain,service:action,target:{entity_id:id}});
     const entities=await call({type:"get_states"});state.entities=(entities||[]).filter(x=>deviceProfile(x.entity_id)&&!backlight(x));renderContent();
   }
   async function addonAction(slugId,action){
@@ -928,7 +942,7 @@
     await openFlow(domain);
   }
   const tr=(bg,en)=>locale==="bg"?bg:en;
-  const management=createStevoraManagement({call,supervisor,rest:coreREST,tr,refresh:loadData,currentLanguage:()=>locale,currentCatalog:()=>state.adaptiveCatalog,
+  const management=createStevoraManagement({call,supervisor,rest:coreREST,tr,refresh:loadData,currentLanguage:()=>locale,
     setLanguage:value=>{locale=value;sessionStorage.setItem("stevora.lang",value);}});
   function openCoreSettings(path,label){
     if(!["/config/dashboard","/config/voice-assistants/assistants","/profile/security"].includes(path))return;
@@ -1094,7 +1108,7 @@
   document.addEventListener("click",async ev=>{
     const btn=ev.target.closest("button");
     const card=ev.target.closest("[data-detail]");
-    if(card&&(!btn||btn.hasAttribute("data-open-detail"))){try{deviceDetails(card.dataset.detail);}catch(e){notice(formatError(e),true);}return;}
+    if(card&&(!btn||btn===card||btn.hasAttribute("data-open-detail"))){try{await deviceDetails(card.dataset.detail);}catch(e){notice(formatError(e),true);}return;}
     if(!btn)return;
     if(btn.dataset.management){try{await management.run(btn.dataset.management);}catch(e){notice(formatError(e),true);}return;}
     if(btn.dataset.coreSettings){openCoreSettings(btn.dataset.coreSettings,btn.textContent);return;}
@@ -1164,45 +1178,6 @@
     const form=ev.target.closest("form[data-form]");if(!form)return;
     ev.preventDefault();
     try{
-      if(form.dataset.form==="adaptive-profile"){
-        const management=state.adaptiveCatalog?.management;
-        if(!state.admin || !state.connected || !management)return;
-        const fields=new FormData(form);
-        const reset=ev.submitter?.name==="reset";
-        const category=fields.get("category"), group=fields.get("group")?.trim();
-        const buttons=[...form.querySelectorAll("button")];
-        buttons.forEach(button=>button.disabled=true);
-        try{
-          await call({type:StevoraAdaptive.API+"/override",device_id:form.dataset.device,
-            expected_revision:management.configuration_revision,
-            ...(!reset&&category?{category}:{}),...(!reset&&group?{group}:{})});
-          await loadData();
-          notice(tr("Настройките са записани.","Settings saved."));
-        }catch(error){
-          if(error.code==="conflict")await loadData();
-          throw error;
-        }finally{buttons.forEach(button=>button.disabled=!state.connected);}
-        return;
-      }
-      if(form.dataset.form==="adaptive-action"){
-        const item=state.adaptiveCatalog?.capabilities.find(row=>row.id===form.dataset.capability);
-        const action=item?.actions.find(candidate=>candidate.id===form.dataset.action);
-        if(!state.connected || !item || !action)return;
-        const confirmed=action.confirmation_required && confirm(tr(
-          "Потвърждаваш ли действието за „"+item.names[locale]+"“?",
-          'Confirm this action for "'+item.names[locale]+'"?'));
-        if(action.confirmation_required && !confirmed)return;
-        const submit=form.querySelector("button");submit.disabled=true;
-        try{
-          const data=new FormData(form);
-          await call(StevoraAdaptive.command(item,action,key=>data.get(key),confirmed));
-          notice(tr("Командата е приета.","Command accepted."));
-        }finally{
-          const snapshot=state.adaptiveStates.get(item.entity_id);
-          submit.disabled=!state.connected || !snapshot || ["unavailable","unknown"].includes(snapshot.state);
-        }
-        return;
-      }
       if(["os-update","os-release"].includes(form.dataset.form)){
         const release=form.dataset.form==="os-release" && state.updateInfo?.downloaded_release;
         const file=form.elements.bundle?.files[0];if(!state.admin||(!file&&!release)||!confirm(tr("Инсталиране в неактивния системен дял?","Install to the inactive OS slot?")))return;

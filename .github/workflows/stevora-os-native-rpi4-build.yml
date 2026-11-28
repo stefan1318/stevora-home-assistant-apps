@@ -96,13 +96,13 @@ jobs:
           git -C haos diff --stat
 
       - uses: actions/download-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: (startsWith(github.ref, 'refs/tags/stevora-os-v') || startsWith(github.ref, 'refs/tags/stevora-os-lab-v'))
         with:
           name: release-publisher-certificate
           path: publisher-certificate
 
       - name: Embed the public OTA publisher certificate
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: (startsWith(github.ref, 'refs/tags/stevora-os-v') || startsWith(github.ref, 'refs/tags/stevora-os-lab-v'))
         run: |
           rootfs=haos/buildroot-external/rootfs-overlay
           install -Dm0644 publisher-certificate/publisher.pem "$rootfs/etc/stevora/publisher.pem"
@@ -144,7 +144,7 @@ jobs:
           ls -lh release
 
       - name: Collect release input from this build
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: (startsWith(github.ref, 'refs/tags/stevora-os-v') || startsWith(github.ref, 'refs/tags/stevora-os-lab-v'))
         run: |
           shopt -s nullglob
           bundles=(haos/output_rpi4_64/images/*.raucb)
@@ -152,7 +152,7 @@ jobs:
           cp "${bundles[0]}" publisher-input.raucb
 
       - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: (startsWith(github.ref, 'refs/tags/stevora-os-v') || startsWith(github.ref, 'refs/tags/stevora-os-lab-v'))
         with:
           name: publisher-input-rpi4_64
           path: publisher-input.raucb

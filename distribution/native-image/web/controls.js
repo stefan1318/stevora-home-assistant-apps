@@ -10,7 +10,18 @@ function dismissOnBackdrop(dialog) {
 }
 "use strict";
 
-function climatePanel({entity, allowed, apply, tr, error}) {
+function climateRange(attrs, temperatureUnit) {
+  const min=attrs.min_temp, max=attrs.max_temp;
+  const step=Number.isFinite(attrs.target_temp_step) && attrs.target_temp_step>0 ? attrs.target_temp_step : 1;
+  if(!Number.isFinite(min) || !Number.isFinite(max) || max<=min)return null;
+  // Some cooling integrations expose a Celsius minimum and an unconverted Fahrenheit maximum.
+  const mixed=temperatureUnit==="°C" && attrs.hvac_modes?.includes("cool")
+    && min>=5 && min<=25 && max>=60 && max<=100
+    && Number.isFinite(attrs.temperature) && attrs.temperature>=min && attrs.temperature<=40;
+  const upper=mixed ? min+Math.floor(((max-32)*5/9-min)/step)*step : max;
+  return upper>min ? {min,max:upper,step} : null;
+}
+function climatePanel({entity, allowed, apply, tr, error, temperatureUnit}) {
   const panel = document.createElement("section");
   panel.className = "climate-panel";
   let pending = false;
@@ -48,20 +59,20 @@ function climatePanel({entity, allowed, apply, tr, error}) {
       const row = document.createElement("div");
       row.className = "setpoint";
       const output = document.createElement("strong");
-      output.textContent = value + "°";
-      const lo = attrs.min_temp, hi = attrs.max_temp;
-      const step = Math.max(1, Number(attrs.target_temp_step) || 1);
+      const unit=temperatureUnit || "°";
+      output.textContent = value + unit;
+      const range=climateRange(attrs,temperatureUnit);
       function adjust(label, delta) {
-        const next = Number((value + delta).toFixed(2));
-        button(row,label,label,!allowed("temperature") || next < lo || next > hi,
+        const next = range && Number((value + delta*range.step).toFixed(4));
+        button(row,label,label,!range || !allowed("temperature") || next < range.min || next > range.max,
           () => apply("temperature","set_temperature",{temperature:next}));
       }
-      adjust("−",-step); row.append(output); adjust("+",step);
+      adjust("−",-1); row.append(output); adjust("+",1);
       panel.append(row);
-      caption(tr("Стъпка ","Step ") + step + "°" +
-        (Number.isFinite(lo) && Number.isFinite(hi) ? " · " + lo + "–" + hi + "°" : ""));
+      if(range && allowed("temperature"))caption(tr("Стъпка ","Step ") + range.step + unit +
+        " · " + range.min + "–" + range.max + unit);
     }
-    if (attrs.hvac_modes?.length) {
+    if (attrs.hvac_modes?.length && allowed("hvac_mode")) {
       caption(tr("Режим на работа","Operating mode"));
       const grid = document.createElement("div");
       grid.className = "hvac-modes";
@@ -76,7 +87,7 @@ function climatePanel({entity, allowed, apply, tr, error}) {
   }
   return {panel,render};
 }
-function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
+function openStevoraDevice({id, entity, profile, canControl, call, tr, name, temperatureUnit, observations}) {
   const current = entity();
   if (!current || !profile()) throw new Error(tr("Устройството вече не е достъпно", "Device no longer available"));
   const domain = id.split(".")[0];
@@ -100,7 +111,6 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
   const number = (min,max,value,step=1) => ({type:"number",min,max,value,step});
   const choice = (options,value) => ({options:options || [],value});
   const controls = {
-    toggle: [tr("Вкл. / Изкл.","Toggle"), "toggle"],
     brightness: [tr("Яркост (%)","Brightness (%)"),"turn_on","brightness_pct",number(0,100,Math.round((attrs.brightness||0)*100/255))],
     color: [tr("Цвят","Color"),"turn_on","rgb_color",{type:"color", value:"#"+(attrs.rgb_color||[255,255,255]).map(n=>Number(n).toString(16).padStart(2,"0")).join("")}],
     color_temp: [tr("Цветна температура (K)","Color temperature (K)"),"turn_on","color_temp_kelvin",number(attrs.min_color_temp_kelvin||2000,attrs.max_color_temp_kelvin||6500,attrs.color_temp_kelvin)],
@@ -109,7 +119,6 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
     preset_mode: [tr("Профил","Preset"),"set_preset_mode","preset_mode",choice(attrs.preset_modes,attrs.preset_mode)],
     oscillate: [tr("Осцилация","Oscillation"),"oscillate","oscillating",choice(["on","off"],attrs.oscillating?"on":"off")],
     direction: [tr("Посока","Direction"),"set_direction","direction",choice(["forward","reverse"],attrs.direction)],
-    temperature: [tr("Задание (°)","Target (°)"),"set_temperature","temperature",number(attrs.min_temp,attrs.max_temp,attrs.temperature)],
     hvac_mode: [tr("Режим","Mode"),"set_hvac_mode","hvac_mode",choice(attrs.hvac_modes,current.state)],
     fan_mode: [tr("Вентилатор","Fan mode"),"set_fan_mode","fan_mode",choice(attrs.fan_modes,attrs.fan_mode)],
     swing_mode: [tr("Жалузи","Swing"),"set_swing_mode","swing_mode",choice(attrs.swing_modes,attrs.swing_mode)],
@@ -124,6 +133,7 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
     if (!allowed(key) || (spec?.options && !spec.options.length)) continue;
     if (domain==="climate" && (key==="hvac_mode" || key==="temperature" && Number.isFinite(attrs.temperature))) continue;
     const form = document.createElement("form");
+    form.dataset.control=key;
     let input;
     if (field) {
       const caption = document.createElement("label");
@@ -160,32 +170,58 @@ function openStevoraDevice({id, entity, profile, canControl, call, tr, name}) {
         if (key==="oscillate") value=value==="on";
         await apply(key,service,field?{[field]:value}:{});
       } catch(e) { error.textContent=e.message||String(e); }
-      finally {button.disabled=false;if(input)input.disabled=false;}
+      finally {button.disabled=!allowed(key);if(input)input.disabled=button.disabled;}
     };
   }
+  const power=document.createElement("button");
+  power.onclick=async()=>{
+    if(power.disabled)return;
+    power.disabled=true;
+    error.textContent="";
+    try{await apply("toggle",entity().state==="on"?"turn_off":"turn_on",{});}
+    catch(e){error.textContent=e.message;}
+    finally{refresh();}
+  };
+  const readings=document.createElement("dl");
+  readings.className="adaptive-measurements";
   dismissOnBackdrop(dialog);
   const close=document.createElement("button");
   close.textContent=tr("Затвори","Close"); close.onclick=()=>dialog.close();
   close.className="sheet-close";
   close.setAttribute("aria-label",close.textContent); close.textContent="×";
   const caption=document.createElement("small");
-  caption.textContent=domain==="climate"?tr("Климатизация","Climate settings"):tr("Настройки на устройството","Device settings");
+  caption.textContent=domain==="climate"?tr("Климатизация","Climate"):tr("Устройство","Device");
   dialog.append(caption,heading,close);
   let climate;
   if(domain==="climate"){
-    climate=climatePanel({entity,allowed,apply,tr,error});
+    climate=climatePanel({entity,allowed,apply,tr,error,temperatureUnit});
     dialog.append(climate.panel,status);
     if(fields.childElementCount){
       const details=document.createElement("details"),summary=document.createElement("summary");
-      summary.textContent=tr("Допълнителни настройки","Additional settings");
+      summary.textContent=tr("Допълнителни контроли","Additional controls");
       details.append(summary,fields);dialog.append(details);
     }
-  }else dialog.append(status,fields);
-  dialog.append(error);
+  }else dialog.append(status,power,fields);
+  dialog.append(readings,error);
   const refresh = () => {
     const next=entity();
     if (!next || !profile()) {dialog.close();return;}
     climate?.render();
+    power.hidden=!allowed("toggle") || !["on","off"].includes(next.state);
+    power.disabled=power.hidden;
+    power.textContent=next.state==="on"?tr("Изключи","Turn off"):tr("Включи","Turn on");
+    readings.replaceChildren();
+    for(const key of observations || ["current_temperature"]){
+      const value=next.attributes?.[key];
+      if(key==="state" || key==="temperature" && climate || !["number","string"].includes(typeof value))continue;
+      const row=document.createElement("div"), label=document.createElement("dt"), result=document.createElement("dd");
+      label.textContent=typeof StevoraAdaptive!=="undefined" ? StevoraAdaptive.label(key,tr("bg","en")) :
+        tr("Текуща температура","Current temperature");
+      result.textContent=consumerState(value,tr)+(key==="current_temperature"?(temperatureUnit||"°"):"");
+      row.append(label,result);readings.append(row);
+    }
+    for(const input of fields.querySelectorAll("input,select,button"))
+      input.disabled=!allowed(input.closest("form").dataset.control);
     status.textContent=(climate?tr("Текущ режим: ","Current mode: "):"")+[consumerState(next.state,tr),next.attributes?.unit_of_measurement].filter(Boolean).join(" · ");
   };
   document.addEventListener("stevora-device-update",refresh);

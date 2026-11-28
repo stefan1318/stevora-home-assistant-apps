@@ -9,96 +9,57 @@ WEB = Path("distribution/native-image/web")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(executable_path=which("google-chrome") or which("chromium"))
-    page = browser.new_page(viewport={"width": 375, "height": 740})
-    page.set_content("<main id='screen'></main>")
-    page.add_style_tag(path=str(WEB / "app.css"))
-    page.add_script_tag(path=str(WEB / "adaptive.js"))
-    page.evaluate("""() => {
-      const thermostat = {
-        id:"registry:thermostat", entity_id:"climate.fixture", device_id:"device:living",
-        names:{bg:"Термостат",en:"Thermostat"}, availability:"available",
-        measurements:["state","current_temperature"],
-        actions:[{id:"temperature",confirmation_required:true,
-          parameters:{temperature:{type:"number",min:15,max:25}}}],
-      };
-      const water = {
-        id:"registry:water", entity_id:"valve.fixture", names:{bg:"Клапан",en:"Valve"},
-        availability:"unavailable", measurements:["state"], actions:[],
-      };
-      const states = new Map([["climate.fixture",{state:"heat",attributes:{current_temperature:20}}]]);
-      const catalog = {
-        devices:[{id:"device:living",override:{category:"climate",group:"zone-1"}}],
-        management:{configuration_revision:2,categories:{
-          climate:{bg:"Климатизация",en:"Climate"}, heat_pump:{bg:"Термопомпа",en:"Heat pump"},
-        }},
-      };
-      const screen = document.querySelector("#screen");
-      screen.innerHTML = StevoraAdaptive.render([thermostat,water],states,true,"bg",String,catalog);
-      screen.addEventListener("submit",ev=>{
-        ev.preventDefault();
-        const data = new FormData(ev.target);
-        if(ev.target.dataset.form==="adaptive-action"){
-          window.command = StevoraAdaptive.command(thermostat,thermostat.actions[0],name=>data.get(name),true);
-        }
-      });
-    }""")
-    page.get_by_text("Термостат", exact=True).click()
-    expect(page.get_by_text("20", exact=True)).to_be_visible()
-    control = page.get_by_role("spinbutton", name="Зададена температура")
-    control.fill("26")
-    assert control.evaluate("input => input.validity.rangeOverflow")
-    control.fill("21")
-    page.get_by_role("button", name="Зададена температура").click()
-    assert page.evaluate("window.command.parameters") == {"temperature": 21}
-    assert page.evaluate("window.command.confirmed")
-    expect(page.get_by_label("Категория")).to_have_value("climate")
-    expect(page.get_by_label("Идентификатор на група")).to_have_value("zone-1")
-    page.get_by_text("Клапан", exact=True).click()
-    valve = page.locator('[data-capability-card="registry:water"]')
-    expect(valve.get_by_text("Недостъпно")).to_be_visible()
-    expect(valve.get_by_role("button")).to_have_count(0)
-    page.add_script_tag(path=str(WEB / "management.js"))
-    page.evaluate("""() => {
-      window.managerRequests = [];
-      const catalog = {
-        capabilities:[{id:"registry:thermostat", names:{bg:"Термостат"}}],
-        devices:[{id:"device:living", capability_ids:["registry:thermostat"],
-          override:{category:"climate", group:"zone-1"}}],
-        management:{configuration_revision:2,categories:{
-          climate:{bg:"Климатизация"}, heat_pump:{bg:"Термопомпа"},
-        }},
-      };
-      const manager = createStevoraManagement({
-        call: async request => window.managerRequests.push(request),
-        tr: bg => bg, refresh: async () => {}, currentLanguage: () => "bg",
-        currentCatalog: () => catalog,
-      });
-      return manager.run("capabilityGroups");
-    }""")
-    page.get_by_role("dialog").get_by_role("button", name="Редактирай").click()
-    editor = page.get_by_role("dialog")
-    editor.get_by_label("Категория").select_option("heat_pump")
-    editor.get_by_label("Идентификатор на група").fill("zone-2")
-    editor.get_by_role("button", name="Запази").click()
-    assert page.evaluate("window.managerRequests") == [{
-        "type": "stevora/os/v1/capabilities/override",
-        "device_id": "device:living",
-        "expected_revision": 2,
-        "category": "heat_pump",
-        "group": "zone-2",
-    }]
     memory_page = browser.new_page(locale="en-US")
     memory_page.route("http://stevora.test/", lambda route: route.fulfill(
-        content_type="text/html", body="""<nav id="navigation"><button data-view="assist"><span></span></button></nav>
+        content_type="text/html", body="""<nav id="navigation"><button data-view="lighting"><span></span></button>
+        <button data-view="scenes"><span></span></button><button data-view="assist"><span></span></button></nav>
         <span id="current-title"></span><button id="lang-toggle"></button><main id="screen"></main>"""))
     memory_page.goto("http://stevora.test/")
     memory_page.add_script_tag(path=str(WEB / "adaptive.js"))
+    for script in ("controls.js", "management.js"):
+        memory_page.add_script_tag(path=str(WEB / script))
     memory_page.add_script_tag(content="""window.createStevoraSetup = () => ({});
-      window.createStevoraManagement = () => ({});""")
+""")
     app = (WEB / "app.js").read_text()
     startup = "nav();initAuth().catch(e=>showLogin(formatError(e)));"
     assert startup in app
     memory_page.add_script_tag(content=app.replace(startup, """
+      window.controlTest = {
+        render() {
+          const items = [
+            ["switch.desk","Desk light","office","lighting","mdi:led-strip","off"],
+            ["light.hall","Hall light","hall","lighting","","on"],
+            ["fan.desk","Desk fan","office","fans","","on"],
+            ["sensor.room","Humidity","office","general","","42"],
+          ];
+          const caps = items.map(([id,name,area,category,icon])=>({
+            id, entity_id:id, names:{en:name}, area_id:area, icon,
+            classification:{category}, availability:"available", measurements:["state"],
+          }));
+          const states=items.map(([id,name,area,category,icon,state])=>({
+            entity_id:id,state,attributes:{friendly_name:name},
+          }));
+          state.adaptiveStates=new Map(states.map(entity=>[entity.entity_id,entity]));
+          state.adaptiveCatalog={rooms:[{id:"office",name:"Office"},{id:"hall",name:"Hall"}],capabilities:caps,
+            systems:[{category:"lighting",labels:{en:"Lighting"},capability_ids:["switch.desk","light.hall"]},
+              {category:"fans",labels:{en:"Fans"},capability_ids:["fan.desk"]}]};
+          state.stevoraManifest={entities:[{entity_id:"switch.desk",available_controls:["toggle"]}],
+            controllable_entities:["switch.desk"]};
+          state.connected=true;
+          window.deviceCalls=[];
+          state.ws={readyState:WebSocket.OPEN,send(raw){
+            const request=JSON.parse(raw);
+            const pending=state.pending.get(request.id);
+            clearTimeout(pending.timer);
+            state.pending.delete(request.id);
+            window.deviceCalls.push(request);
+            pending.resolve({});
+          }};
+          state.view="lighting";
+          nav();
+          document.querySelector("#screen").innerHTML=renderAdaptive();
+        },
+      };
       window.memoryTest = {
         async load(admin, bridge) {
           state.connected = true; state.login = true;
@@ -136,4 +97,18 @@ with sync_playwright() as pw:
     expect(memory_page.locator("#screen img")).to_have_count(0)
     memory_page.evaluate("memoryTest.load(true, false)")
     expect(memory).to_have_count(0)
+    memory_page.evaluate("controlTest.render()")
+    expect(memory_page.get_by_role("heading",name="Office",exact=True)).to_be_visible()
+    expect(memory_page.get_by_role("heading",name="Hall",exact=True)).to_be_visible()
+    expect(memory_page.get_by_role("button",name="Desk light")).to_contain_text("🌈")
+    expect(memory_page.locator('[data-view="system:fans"]')).to_have_text("🌀 Fans")
+    expect(memory_page.locator("#screen select[name=category]")).to_have_count(0)
+    memory_page.get_by_role("button",name="Desk light").click()
+    assert memory_page.evaluate("deviceCalls.map(call => [call.domain,call.service,call.target.entity_id])") == [
+        ["switch", "turn_on", "switch.desk"],
+    ]
+    expect(memory_page.get_by_role("dialog")).to_have_count(0)
+    memory_page.get_by_role("button",name="Hall light").click()
+    expect(memory_page.get_by_role("dialog")).to_be_visible()
+    expect(memory_page.get_by_role("heading",name="Hall light · Hall")).to_be_visible()
     browser.close()

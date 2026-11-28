@@ -12,22 +12,22 @@ with sync_playwright() as pw:
     for script in ("controls.js", "management.js"):
         page.add_script_tag(path=str(web / script))
     page.evaluate("""() => {
-      const state={state:'off', attributes:{temperature:23,min_temp:16,max_temp:24,
+      const state={state:'off', attributes:{temperature:30.5,min_temp:16,max_temp:88,target_temp_step:0.5,
         hvac_modes:['heat','cool','off'],fan_modes:['low','high']}};
       openStevoraDevice({id:'climate.test',entity:()=>state,
         profile:()=>({controls:['hvac_mode','temperature','fan_mode']}),canControl:()=>true,
-        tr:(bg,en)=>en,name:'AC · Living room',call:async({service,service_data})=>{
+        temperatureUnit:"°C",tr:(bg,en)=>en,name:'AC · Living room',call:async({service,service_data})=>{
           if(service==='set_temperature')state.attributes.temperature=service_data.temperature;
           if(service==='set_hvac_mode')state.state=service_data.hvac_mode;
           document.dispatchEvent(new Event('stevora-device-update'));
         }});
     }""")
     page.get_by_role("button", name="+", exact=True).click()
-    expect(page.locator(".setpoint strong")).to_have_text("24°")
+    expect(page.locator(".setpoint strong")).to_have_text("31°C")
     expect(page.get_by_role("button", name="+", exact=True)).to_be_disabled()
     page.get_by_role("button", name="Cooling", exact=True).click()
     expect(page.get_by_role("button", pressed=True)).to_have_text("Cooling")
-    page.get_by_text("Additional settings").click()
+    page.get_by_text("Additional controls").click()
     expect(page.get_by_role("combobox")).to_be_visible()
     page.get_by_role("button", name="Close").click()
     page.evaluate("""async () => {

@@ -17,6 +17,8 @@ LABELS = {
     "covers": ("Covers", "Щори"), "media": ("Media", "Мултимедия"),
     "heat_pump": ("Heat pumps", "Термопомпи"), "irrigation": ("Irrigation", "Напояване"),
     "general": ("Devices", "Устройства"),
+    "switches": ("Switches", "Ключове"), "sensors": ("Sensors", "Сензори"),
+    "binary_sensors": ("Binary sensors", "Двоични сензори"), "locks": ("Locks", "Ключалки"),
 }
 ACTION_LABELS = {
     "turn_on": ("Turn on", "Включи"), "turn_off": ("Turn off", "Изключи"),
@@ -174,7 +176,9 @@ def build_catalog(scoped, states, has_service, overrides, language, *, configura
         device_class = item["device_class"] or attrs.get("device_class")
         category = DOMAIN_CATEGORIES.get(domain) or CLASS_CATEGORIES.get(domain, {}).get(device_class)
         source = "ha_domain" if domain in DOMAIN_CATEGORIES else "ha_device_class" if category else "fallback"
-        manual = overrides.get(device_id, {}).get("category") or item["profile_category"]
+        manual = item["profile_category"]
+        if manual not in LABELS:
+            manual = overrides.get(device_id, {}).get("category")
         if manual in LABELS:
             category, source = manual, "admin"
         controls = item["controls"] if item["controls"] is not None else item["available_controls"]

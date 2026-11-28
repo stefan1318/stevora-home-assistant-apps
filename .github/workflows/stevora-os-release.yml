@@ -1,5 +1,7 @@
 name: Publish signed STEVORA OS releases
 on:
+  push:
+    tags: ['stevora-os-lab-v*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,7 +22,7 @@ jobs:
           test "$GITHUB_REF_NAME" != stevora-os-v0.0.0
           permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$APPROVER/permission" --jq .permission)
           test "$permission" = admin
-      - run: '[[ "$GITHUB_REF_NAME" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]'
+      - run: '[[ "$GITHUB_REF_NAME" =~ ^stevora-os-(lab-)?v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]'
   publisher-certificate:
     needs: version
     runs-on: ubuntu-24.04
@@ -45,10 +47,15 @@ jobs:
     needs: publisher-certificate
     uses: ./.github/workflows/stevora-os-native-utm-build.yml
   ova:
+    if: '!startsWith(github.ref, ''refs/tags/stevora-os-lab-v'')'
     needs: publisher-certificate
     uses: ./.github/workflows/stevora-os-native-integrated-build.yml
   publish:
     needs: [pi, utm, ova]
+    if: >-
+      !cancelled() && needs.pi.result == 'success' && needs.utm.result == 'success' &&
+      (needs.ova.result == 'success' ||
+       (startsWith(github.ref, 'refs/tags/stevora-os-lab-v') && needs.ova.result == 'skipped'))
     runs-on: ubuntu-24.04
     environment: stevora-os-release
     permissions:
@@ -66,15 +73,21 @@ jobs:
           name: release-publisher-certificate
           path: publisher-certificate
       - run: sudo apt-get update -qq && sudo apt-get install -y rauc
-      - name: Sign and verify the three bundles
+      - name: Sign and verify the target bundles
         env:
           PUBLISHER_KEY: ${{ secrets.STEVORA_RAUC_KEY_PEM }}
         run: |
           export PUBLISHER_CERT="$(cat publisher-certificate/publisher.pem)"
-          bash distribution/native-image/scripts/sign-release.sh inputs signed
+          targets=(rpi4_64 generic_aarch64)
+          if [[ "$GITHUB_REF_NAME" != stevora-os-lab-v* ]]; then targets+=(ova); fi
+          bash distribution/native-image/scripts/sign-release.sh inputs signed "${targets[@]}"
       - name: Generate bundle checksums
         run: cd signed && sha256sum *.raucb > SHA256SUMS.txt
       - name: Publish verified release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb signed/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes
+        run: |
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == stevora-os-lab-v* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" signed/*.raucb signed/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --verify-tag "${flags[@]}" --title "$GITHUB_REF_NAME" --generate-notes

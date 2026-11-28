@@ -76,6 +76,17 @@ class AdaptiveCatalogTests(unittest.TestCase):
         self.assertEqual(admin["devices"][0]["override"], overrides["device:a"])
         self.assertEqual(admin["management"]["configuration_revision"], 2)
 
+    def test_device_manager_category_takes_precedence_without_changing_service_domain(self):
+        lamp = entity("switch.lamp", "lamp", "relay", ("toggle",),
+                      profile_category="lighting", icon="mdi:led-strip")
+        catalog = self.build([lamp], {"switch.lamp": state("switch.lamp", "off")},
+                             ["switch.lamp"], overrides={"device:relay": {"category": "energy"}})
+        self.assertEqual([system["category"] for system in catalog["systems"]], ["lighting"])
+        capability = catalog["capabilities"][0]
+        self.assertEqual(capability["icon"], "mdi:led-strip")
+        self.assertEqual(capability["semantic_type"], "switch")
+        self.assertEqual(capability["actions"][0]["service"], "switch.turn_on")
+
     def test_evidence_and_authorization_each_required_for_actions(self):
         item = entity("switch.relay", "sw", controls=("toggle",))
         states = {"switch.relay": state("switch.relay")}

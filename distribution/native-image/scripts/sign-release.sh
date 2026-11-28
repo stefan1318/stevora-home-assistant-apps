@@ -9,7 +9,10 @@ printf '%s\n' "${PUBLISHER_CERT:?missing release certificate}" > "$tmp/cert.pem"
 printf '%s\n' "${PUBLISHER_KEY:?missing release key}" > "$tmp/key.pem"
 unset PUBLISHER_KEY
 mkdir -p "$output_dir"
-for board in rpi4_64 generic_aarch64 ova; do
+shift 2
+if [[ $# -eq 0 ]]; then set -- rpi4_64 generic_aarch64 ova; fi
+for board in "$@"; do
+  case "$board" in rpi4_64|generic_aarch64|ova) ;; *) exit 1 ;; esac
   target="$output_dir/stevora-os-$board.raucb"
   rauc --no-verify --cert="$tmp/cert.pem" --key="$tmp/key.pem" resign \
     "$input_dir/publisher-input-$board/publisher-input.raucb" "$target"

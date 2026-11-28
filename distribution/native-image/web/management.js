@@ -12,7 +12,7 @@ function profileGlyph(icon) {
 "use strict";
 
 // Core and Supervisor authorize every operation using the active user's connection.
-function createStevoraManagement({call, supervisor, rest, tr, refresh, setLanguage, currentLanguage, currentCatalog}) {
+function createStevoraManagement({call, supervisor, rest, tr, refresh, setLanguage, currentLanguage}) {
   const l = tr;
   const pick = (key,label,options,value) => ({key,label,options,value});
   const field = (key,label,value="",type="text",extra={}) => ({key,label,value,type,...extra});
@@ -124,30 +124,6 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
       });
     },l("Редактирай","Edit"));
   }
-  async function capabilityGroups(){
-    const catalog=currentCatalog();
-    const settings=catalog?.management;
-    if(!settings)return;
-    const locale=currentLanguage();
-    const names=new Map(catalog.capabilities.map(item=>[item.id,item.names?.[locale]||item.entity_id]));
-    const choices=catalog.devices.map(d=>[d.id,d.capability_ids.map(id=>names.get(id)).filter(Boolean).join(", ")||d.id]);
-    editor(l("Категории и групи","Categories and groups"),[
-      pick("id",l("Устройство","Device"),choices,choices[0]?.[0])
-    ],({id})=>{
-      const device=catalog.devices.find(d=>d.id===id);
-      if(!device)throw Error(l("Няма устройства","No devices"));
-      const saved=device.override||{};
-      const categories=Object.entries(settings.categories).map(([key,labels])=>[key,labels[locale]||key]);
-      editor(choices.find(([key])=>key===id)[1],[
-        pick("category",l("Категория","Category"),[inherit(),...categories],saved.category||""),
-        field("group",l("Идентификатор на група","Group ID"),saved.group,"text",{maxLength:64,pattern:"[a-z0-9][a-z0-9_\\-]{0,63}"})
-      ],async({category,group})=>{
-        await call({type:"stevora/os/v1/capabilities/override",device_id:id,
-          expected_revision:settings.configuration_revision,...(category?{category}:{}),...(group?{group}:{})});
-        await refresh();
-      });
-    },l("Редактирай","Edit"));
-  }
   async function visibility(){
     const s=await call({type:"stevora/admin/rooms/get"});
     editor(l("Видимост на устройство","Device visibility"),[pick("id",l("Устройство","Device"),s.entities.map(x=>[x.entity_id,x.name+" · "+(s.visibility[x.entity_id]||"default")]),s.entities[0]?.entity_id),
@@ -253,7 +229,7 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
     if(!confirm(l("Изпълни избраното системно действие?","Run the selected system operation?")))return;
     await supervisor(endpoints[action],"POST",{});
   }
-  const actions={rooms,devices,localizedDevices,capabilityGroups,visibility,assist,general,network,profile,password,issueToken,revokeToken,accounts,
+  const actions={rooms,devices,localizedDevices,visibility,assist,general,network,profile,password,issueToken,revokeToken,accounts,
     check:async()=>{const s=await rest("/api/config/core/check_config","POST");alert([s.result,s.errors,s.warnings].filter(Boolean).join("\n"));}};
   return {closeAll,run:action=>actions[action]?actions[action]():host(action)};
 }

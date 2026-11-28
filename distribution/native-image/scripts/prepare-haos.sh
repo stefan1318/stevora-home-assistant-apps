@@ -79,9 +79,9 @@ install -m 0644 "$SELF_DIR/systemd/stevora-native-web.service" "$SERVICE_TARGET"
 install -m 0755 "$GATEWAY" "$GATEWAY_TARGET"
 mkdir -p "$PUBLIC_DIR" "$COMPONENTS_DIR"
 feed_tag=stevora-os-v0.0.0
-if [[ "${GITHUB_REF:-}" == refs/tags/stevora-os-v* ]]; then
+if [[ "${GITHUB_REF:-}" == refs/tags/stevora-os-v* || "${GITHUB_REF:-}" == refs/tags/stevora-os-lab-v* ]]; then
   feed_tag="${GITHUB_REF_NAME:?missing release tag}"
-  [[ "$feed_tag" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]] || exit 1
+  [[ "$feed_tag" =~ ^stevora-os-(lab-)?v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]] || exit 1
 fi
 if [[ -n "${STEVORA_OTA_LAB_VERSION:-}" ]]; then
   [[ "$TARGET" == generic_aarch64 && "$STEVORA_OTA_LAB_VERSION" =~ ^1\.0\.[0123]$ ]] || exit 1
