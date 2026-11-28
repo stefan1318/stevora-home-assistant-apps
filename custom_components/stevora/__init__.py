@@ -171,7 +171,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ])
         data["_static_registered"] = True
     state = {"panel_registered": False, "panel_conflict": False}
-    if panel_requested(entry):
+    if panel_requested(entry) and not entry.data.get("native_bootstrap"):
         state["panel_registered"] = await async_register_panel(hass)
         state["panel_conflict"] = not state["panel_registered"]
     data[entry.entry_id] = state

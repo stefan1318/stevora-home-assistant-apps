@@ -380,7 +380,13 @@
     if(view==="backups"){const a=await supervisor("/backups").catch(()=>({}));state.backups=a.backups||[]}
     if(view==="users")state.userList=await tryCall({type:"config/auth/list"},[]);
   }
-  const areaName=id=>(state.stevoraManifest?.rooms||[]).find(r=>r.id===id)?.name ||
+  function nativeRooms(){
+    return state.adaptiveCatalog?.rooms||state.stevoraManifest?.rooms||state.areas;
+  }
+  const roomId=room=>room.area_id||room.id;
+  const localizedRoom=room=>room.translations?.[locale]||room.name;
+  const areaName=id=>nativeRooms().find(room=>roomId(room)===id)?.translations?.[locale] ||
+    nativeRooms().find(room=>roomId(room)===id)?.name ||
     state.areas.find(a=>a.area_id===id)?.name||id||t("roomAll");
   function entityArea(e){
     const r=state.registry.find(x=>x.entity_id===e.entity_id);
@@ -449,13 +455,23 @@
     const current=domain==="climate"&&e.attributes?.current_temperature!=null?e.attributes.current_temperature+"° · ":"";
     return '<article class="device-card" data-detail="'+esc(id)+'"><div class="entity-head"><span class="tile-icon">'+(profileGlyph(deviceProfile(id)?.icon)||{light:"☼",climate:"◈",fan:"✺",switch:"◉",scene:"✦",automation:"◇"}[domain]||"▣")+'</span><div><button class="device-open" data-open-detail="'+esc(id)+'">'+esc(name)+'</button></div></div><div class="state-value">'+esc(current+stateLabel)+'</div><div class="actions">'+buttons+'</div></article>';
   }
+  function roomTiles(rooms){
+    const devices=state.adaptiveCatalog?.capabilities||state.entities;
+    return rooms.map(room=>{
+      const id=roomId(room);
+      const count=devices.filter(device=>state.adaptiveCatalog?device.area_id===id:
+        isAllowed(device)&&entityArea(device)===id).length;
+      return '<button class="room-tile" data-select-room="'+esc(id)+'"><strong>'+
+        esc(localizedRoom(room))+'</strong><small>'+count+' '+esc(t("devices"))+'</small></button>';
+    }).join("")||empty();
+  }
   function home(){
     const available=count();
     const climates=state.entities.filter(e=>e.entity_id.startsWith("climate.")&&isAllowed(e));
-    const rooms=state.stevoraManifest?.rooms||state.areas;
+    const rooms=nativeRooms();
     return hdr("STEVORA "+t("home"))+
     '<div class="metrics">'+stat(t("total"),state.entities.length)+stat(t("online"),available)+stat(t("rooms"),rooms.length)+stat(t("climate"),climates.length)+'</div>'+
-    '<section class="panel"><h2>'+esc(t("rooms"))+'</h2><div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div></section>'+
+    '<section class="panel"><h2>'+esc(t("rooms"))+'</h2><div class="room-grid">'+roomTiles(rooms)+'</div></section>'+
     '<section class="panel"><h2>'+esc(t("climate"))+'</h2><div class="cards">'+(climates.slice(0,4).map(card).join("")||empty())+'</div></section>';
   }
   function entityScreen(view){
@@ -468,8 +484,8 @@
       toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
   }
   function roomsView(){
-    const rooms=state.stevoraManifest?.rooms||[];
-    return hdr(t("rooms"))+(state.admin?managementButton("rooms","Управление на помещения","Rooms Manager"):"")+'<div class="room-grid">'+(rooms.map(a=>'<button class="room-tile" data-select-room="'+esc(a.area_id||a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+state.entities.filter(e=>entityArea(e)===(a.area_id||a.id)).length+' '+esc(t("devices"))+'</small></button>').join("")||empty())+'</div>';
+    const rooms=nativeRooms();
+    return hdr(t("rooms"))+(state.admin?managementButton("rooms","Управление на помещения","Rooms Manager"):"")+'<div class="room-grid">'+roomTiles(rooms)+'</div>';
   }
   function integrationView(){
     if(!state.admin)return hdr(t("integrations"))+empty(t("notAdmin"));

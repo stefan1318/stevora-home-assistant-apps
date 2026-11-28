@@ -27,7 +27,9 @@ def describe_modules(hass, entry) -> dict:
     if not isinstance(running, dict):
         running = {}
     requested = panel_requested(entry)
-    if not requested:
+    if entry.data.get("native_bootstrap"):
+        panel_status = "active"
+    elif not requested:
         panel_status = "disabled"
     elif running.get("panel_registered"):
         panel_status = "active"
@@ -52,7 +54,7 @@ def describe_modules(hass, entry) -> dict:
         "core": {"bundled": True, "enabled": True, "status": "active"},
         "home_panel": {
             "bundled": True,
-            "enabled": requested,
+            "enabled": requested or bool(entry.data.get("native_bootstrap")),
             "status": panel_status,
         },
         "home_hub": {"bundled": True, "enabled": hub_enabled, "status": hub_status},

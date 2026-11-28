@@ -155,6 +155,12 @@ class IntegrationLifecycleTests(unittest.TestCase):
         self.assertEqual(len(self.hass.static_paths), 1)
         self.assertEqual(self.panel_events, ["register", "remove", "register"])
 
+    def test_native_os_does_not_register_a_separate_panel(self):
+        self.hass.entry.data["native_bootstrap"] = True
+        asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
+        self.assertEqual(self.panel_events, [])
+        self.assertFalse(self.hass.data["stevora"][self.hass.entry.entry_id]["panel_registered"])
+
     def test_disabled_panel_does_not_install_or_remove_panel(self):
         self.hass.entry.options["panel_enabled"] = False
         asyncio.run(self.integration.async_setup_entry(self.hass, self.hass.entry))
