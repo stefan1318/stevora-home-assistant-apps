@@ -23,7 +23,7 @@ on:
       lab_version:
         description: Laboratory baseline or follow-up update
         type: choice
-        options: ["1.0.0", "1.0.1"]
+        options: ["1.0.0", "1.0.1", "1.0.2"]
         default: "1.0.0"
 
 permissions:
@@ -255,6 +255,7 @@ jobs:
           cat > release/BUILD-IDENTITY.txt <<META
           STEVORA OS Native Integrated Developer Preview 4
           STEVORA build commit: $GITHUB_SHA
+          OTA lab version: ${{ inputs.lab_ota && inputs.lab_version || 'not configured' }}
           Raspberry Pi 4 baseline: 74456c70dc821d70822b60309b6e33a50e24e39a
           Pinned Home Assistant OS: 495bedb8d70a92ad189efb64829ece34b165d3bd
           Target: generic_aarch64 / qemuarm-64 / ARM64 UEFI
@@ -274,7 +275,7 @@ jobs:
 
   sign-lab-ota:
     name: Sign UTM laboratory OTA bundle
-    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-auto-ota-test' && inputs.lab_version == '1.0.1'
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-auto-ota-test' && (inputs.lab_version == '1.0.1' || inputs.lab_version == '1.0.2')
     needs: [boot-utm]
     permissions:
       contents: write
@@ -316,8 +317,10 @@ jobs:
       - name: Publish the boot-checked update to the isolated prerelease channel
         env:
           GH_TOKEN: ${{ github.token }}
+          LAB_VERSION: ${{ inputs.lab_version }}
         run: |
-          gh release create stevora-os-lab-v1.0.1 lab/stevora-os-generic_aarch64.raucb lab/SHA256SUMS.txt \
+          case "$LAB_VERSION" in 1.0.1|1.0.2) ;; *) exit 1 ;; esac
+          gh release create "stevora-os-lab-v$LAB_VERSION" lab/stevora-os-generic_aarch64.raucb lab/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "STEVORA OS UTM automated OTA lab 1.0.1" \
+            --title "STEVORA OS UTM automated OTA lab $LAB_VERSION" \
             --notes "Laboratory UTM ARM64 update. Source: $GITHUB_SHA. Install from Update Center with administrator approval."
