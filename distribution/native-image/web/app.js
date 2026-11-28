@@ -426,7 +426,7 @@
   function hdr(title,subtitle=""){return '<div class="section-head"><h1>'+esc(title)+'</h1><small>'+esc(subtitle)+'</small></div>'}
   function empty(message=t("noData")){return '<p class="empty">'+esc(message)+'</p>'}
   function toolbar(type, rooms=state.stevoraManifest?.rooms||state.areas){
-    const options=[["",t("roomAll")],...rooms.map(a=>[a.area_id||a.id,a.name])];
+    const options=[["",t("roomAll")],...rooms.map(room=>[roomId(room),localizedRoom(room)])];
     return '<div class="filters"><select data-room>'+options.map(([id,name])=>'<option value="'+esc(id)+'" '+(state.room===id?"selected":"")+'>'+esc(name)+'</option>').join("")+'</select><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div>'
   }
   function matches(name){return !state.filter || String(name).toLocaleLowerCase().includes(state.filter.toLocaleLowerCase())}
