@@ -84,7 +84,7 @@ if [[ "${GITHUB_REF:-}" == refs/tags/stevora-os-v* ]]; then
   [[ "$feed_tag" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]] || exit 1
 fi
 if [[ -n "${STEVORA_OTA_LAB_VERSION:-}" ]]; then
-  [[ "$TARGET" == generic_aarch64 && "$STEVORA_OTA_LAB_VERSION" =~ ^1\.0\.[012]$ ]] || exit 1
+  [[ "$TARGET" == generic_aarch64 && "$STEVORA_OTA_LAB_VERSION" =~ ^1\.0\.[0123]$ ]] || exit 1
   [[ "${GITHUB_REF:-}" == refs/heads/codex/utm-auto-ota-test ]] || exit 1
   feed_tag="stevora-os-lab-v$STEVORA_OTA_LAB_VERSION"
 fi

@@ -23,7 +23,7 @@ on:
       lab_version:
         description: Laboratory baseline or follow-up update
         type: choice
-        options: ["1.0.0", "1.0.1", "1.0.2"]
+        options: ["1.0.0", "1.0.1", "1.0.2", "1.0.3"]
         default: "1.0.0"
 
 permissions:
@@ -63,6 +63,7 @@ jobs:
           node --test distribution/native-image/tests/adaptive_renderer.test.cjs
           "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_adaptive_renderer.py
           "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_device_controls.py
+          "$RUNNER_TEMP/stevora-browser/bin/python" distribution/native-image/tests/browser_onboarding.py
 
       - name: Verify RAUC publisher signing with disposable test keys
         run: |
@@ -275,7 +276,7 @@ jobs:
 
   sign-lab-ota:
     name: Sign UTM laboratory OTA bundle
-    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-auto-ota-test' && (inputs.lab_version == '1.0.1' || inputs.lab_version == '1.0.2')
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-auto-ota-test' && (inputs.lab_version == '1.0.1' || inputs.lab_version == '1.0.2' || inputs.lab_version == '1.0.3')
     needs: [boot-utm]
     permissions:
       contents: write
@@ -319,7 +320,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           LAB_VERSION: ${{ inputs.lab_version }}
         run: |
-          case "$LAB_VERSION" in 1.0.1|1.0.2) ;; *) exit 1 ;; esac
+          case "$LAB_VERSION" in 1.0.1|1.0.2|1.0.3) ;; *) exit 1 ;; esac
           gh release create "stevora-os-lab-v$LAB_VERSION" lab/stevora-os-generic_aarch64.raucb lab/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "STEVORA OS UTM automated OTA lab $LAB_VERSION" \
