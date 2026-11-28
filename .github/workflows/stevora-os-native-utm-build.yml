@@ -15,6 +15,11 @@ on:
       - '.github/workflows/stevora-os-*.yml'
   workflow_call:
   workflow_dispatch:
+    inputs:
+      lab_ota:
+        description: Build a publisher-signed UTM OTA bundle for manual lab enrollment
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -150,7 +155,7 @@ jobs:
           cp "$image" staging/stevora-native-dev4-utm-arm64.qcow2.xz
 
       - name: Collect release input from this build
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v') || (github.event_name == 'workflow_dispatch' && inputs.lab_ota)
         run: |
           shopt -s nullglob
           bundles=(haos/output_generic_aarch64/images/*.raucb)
@@ -158,7 +163,7 @@ jobs:
           cp "${bundles[0]}" publisher-input.raucb
 
       - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/stevora-os-v')
+        if: startsWith(github.ref, 'refs/tags/stevora-os-v') || (github.event_name == 'workflow_dispatch' && inputs.lab_ota)
         with:
           name: publisher-input-generic_aarch64
           path: publisher-input.raucb
@@ -230,4 +235,43 @@ jobs:
           path: release/
           retention-days: 7
           compression-level: 0
+          if-no-files-found: error
+
+  sign-lab-ota:
+    name: Sign UTM laboratory OTA bundle
+    if: github.event_name == 'workflow_dispatch' && inputs.lab_ota && github.ref == 'refs/heads/codex/utm-ota-lab'
+    needs: [build-utm]
+    runs-on: ubuntu-24.04
+    environment: stevora-os-release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: publisher-input-generic_aarch64
+          path: input
+      - run: sudo apt-get update -qq && sudo apt-get install -y rauc
+      - name: Sign and verify the laboratory bundle
+        env:
+          PUBLISHER_CERT: ${{ secrets.STEVORA_RAUC_CERT_PEM }}
+          PUBLISHER_KEY: ${{ secrets.STEVORA_RAUC_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          umask 077
+          signing=$(mktemp -d)
+          trap 'rm -rf "$signing"' EXIT
+          mkdir -p lab
+          openssl x509 -checkend 0 -noout <<< "${PUBLISHER_CERT:?missing public certificate}"
+          openssl x509 <<< "$PUBLISHER_CERT" > lab/publisher.pem
+          printf '%s\n' "${PUBLISHER_KEY:?missing signing key}" > "$signing/key.pem"
+          unset PUBLISHER_KEY
+          rauc --no-verify --cert=lab/publisher.pem --key="$signing/key.pem" resign \
+            input/publisher-input.raucb lab/stevora-utm-lab.raucb
+          rauc --keyring=lab/publisher.pem info lab/stevora-utm-lab.raucb
+          openssl x509 -in lab/publisher.pem -noout -fingerprint -sha256 > lab/PUBLISHER-SHA256.txt
+          printf '%s\n' "$GITHUB_SHA" > lab/SOURCE-COMMIT.txt
+          (cd lab && sha256sum stevora-utm-lab.raucb publisher.pem > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STEVORA-UTM-ARM64-LAB-OTA
+          path: lab/
+          retention-days: 7
           if-no-files-found: error
