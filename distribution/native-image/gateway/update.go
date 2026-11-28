@@ -61,7 +61,7 @@ func newUpdateHandler(core *url.URL) http.Handler {
 		}
 		if r.Method == "GET" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"publisher_configured": cert != "", "status": status, "downloaded_release": feed.cached()})
+			json.NewEncoder(w).Encode(map[string]any{"publisher_configured": cert != "", "status": status, "downloaded_release": feed.cached(), "manual_upload_allowed": !feed.usesOfficialReleaseFeed()})
 			return
 		}
 		if r.Method != "POST" {
@@ -71,6 +71,14 @@ func newUpdateHandler(core *url.URL) http.Handler {
 		staged := r.URL.Query().Get("release")
 		if (staged == "" && r.Header.Get("Content-Type") != "application/octet-stream") || r.Header.Get("Origin") != requestOrigin(r) {
 			http.Error(w, "Invalid upload", 400)
+			return
+		}
+		if r.Header.Get("X-Stevora-Update-Approval") != "install" {
+			http.Error(w, "Administrator must explicitly approve installation", http.StatusPreconditionRequired)
+			return
+		}
+		if staged == "" && feed.usesOfficialReleaseFeed() {
+			http.Error(w, "Select a newer official release from Update Center", http.StatusConflict)
 			return
 		}
 		if cert == "" {

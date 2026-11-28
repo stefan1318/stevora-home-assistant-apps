@@ -1,7 +1,6 @@
 name: Publish signed STEVORA OS releases
 on:
-  push:
-    tags: ['stevora-os-v*']
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -11,6 +10,16 @@ jobs:
   version:
     runs-on: ubuntu-24.04
     steps:
+      - name: Verify administrator approval and selected version tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVER: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = tag
+          test "$GITHUB_REF_NAME" != stevora-os-v0.0.0
+          permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$APPROVER/permission" --jq .permission)
+          test "$permission" = admin
       - run: '[[ "$GITHUB_REF_NAME" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]'
   publisher-certificate:
     needs: version
@@ -63,7 +72,9 @@ jobs:
         run: |
           export PUBLISHER_CERT="$(cat publisher-certificate/publisher.pem)"
           bash distribution/native-image/scripts/sign-release.sh inputs signed
+      - name: Generate bundle checksums
+        run: cd signed && sha256sum *.raucb > SHA256SUMS.txt
       - name: Publish verified release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" signed/*.raucb signed/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag --title "STEVORA OS ${GITHUB_REF_NAME#stevora-os-v}" --generate-notes

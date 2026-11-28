@@ -45,3 +45,32 @@ test("escapes catalog content and uses only gateway target identifiers", () => {
     action_id:"temperature",parameters:{temperature:21.5},confirmed:true,
   });
 });
+
+test("consumes the shared v1 catalog and emits typed gateway commands", () => {
+  const fixture = require("../../../contracts/adaptive/v1/catalog.json");
+  assert.equal(ui.valid(fixture, "fixture-home-a"), true);
+  assert.equal(ui.valid(fixture, "fixture-home-b"), false);
+  assert.equal(ui.valid({...fixture, schema_version: 2}), false);
+
+  const [climate] = ui.rows(fixture, "climate", "workroom", "Климатик", "bg");
+  assert.equal(climate.id, "registry:air");
+  const mode = climate.actions.find(action => action.id === "hvac_mode");
+  const localized = {...climate, actions: [{...mode, labels: {bg: "Работен режим"}}]};
+  const controls = ui.render([localized],
+    new Map([[climate.entity_id, {state: "heat"}]]), true, "bg", String);
+  assert.match(controls, /Работен режим/);
+  assert.deepEqual(ui.command(climate, mode, () => "heat", true), {
+    type: "stevora/os/v1/capabilities/action",
+    capability_id: climate.id,
+    action_id: "hvac_mode",
+    parameters: {hvac_mode: "heat"},
+    confirmed: true,
+  });
+
+  const [meter] = ui.rows(fixture, "energy", "workroom", "", "bg");
+  assert.equal(meter.availability, "unavailable");
+  assert.equal(meter.read_only, true);
+  const html = ui.render([meter], new Map(), true, "bg", String, fixture);
+  assert.match(html, /Електромер/);
+  assert.doesNotMatch(html, /<form/);
+});

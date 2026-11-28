@@ -9,6 +9,7 @@ on:
       - '.github/workflows/stevora-os-image-contract.yml'
   pull_request:
     paths:
+      - 'contracts/adaptive/**'
       - 'distribution/**'
       - '.github/workflows/stevora-os-image-contract.yml'
   workflow_dispatch:
@@ -28,6 +29,13 @@ jobs:
           python-version: '3.13'
       - name: Verify target is real STEVORA image + root UI
         run: python -m unittest discover -s distribution/tests -p 'test_*.py' -v
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: distribution/native-image/gateway/go.mod
+          cache: false
+      - name: Test gateway authorization and release contracts
+        working-directory: distribution/native-image/gateway
+        run: go test ./...
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

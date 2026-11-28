@@ -83,7 +83,9 @@ class AdaptiveCatalogTests(unittest.TestCase):
         permitted = self.build([item], states, ["switch.relay"],
                                services=lambda _domain, service: service == "turn_on")
         self.assertEqual([action["id"] for action in permitted["capabilities"][0]["actions"]], ["turn_on"])
-        self.assertTrue(permitted["capabilities"][0]["actions"][0]["confirmation_required"])
+        action = permitted["capabilities"][0]["actions"][0]
+        self.assertTrue(action["confirmation_required"])
+        self.assertEqual(action["labels"], {"en": "Turn on", "bg": "Включи"})
 
     def test_safe_metadata_and_typed_classification(self):
         camera = entity("camera.private", "cam")

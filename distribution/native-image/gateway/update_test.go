@@ -19,4 +19,13 @@ func TestUpdateRequiresAuthorizedAdministrator(t *testing.T){
   req:=httptest.NewRequest(c.method,"https://stevora.local/stevora-update",nil);req.Header.Set("Authorization",c.token)
   w:=httptest.NewRecorder();update.ServeHTTP(w,req);if w.Code!=c.status{t.Fatalf("%s got %d",c.method,w.Code)}
  }
+ req := httptest.NewRequest("POST", "https://stevora.local/stevora-update?release=stevora-os-v1.0.0", nil)
+ req.Header.Set("Authorization", "Bearer owner")
+ req.Header.Set("Origin", "https://stevora.local")
+ w := httptest.NewRecorder()
+ update.ServeHTTP(w, req)
+ if w.Code != http.StatusPreconditionRequired {
+  t.Fatalf("unapproved staged release: got %d", w.Code)
+ }
+
 }

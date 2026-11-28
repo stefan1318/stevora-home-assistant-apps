@@ -18,6 +18,17 @@ LABELS = {
     "heat_pump": ("Heat pumps", "Термопомпи"), "irrigation": ("Irrigation", "Напояване"),
     "general": ("Devices", "Устройства"),
 }
+ACTION_LABELS = {
+    "turn_on": ("Turn on", "Включи"), "turn_off": ("Turn off", "Изключи"),
+    "open_cover": ("Open", "Отвори"), "close_cover": ("Close", "Затвори"),
+    "stop_cover": ("Stop", "Спри"), "media_play_pause": ("Play or pause", "Пусни или паузирай"),
+    "hvac_mode": ("Mode", "Режим"), "fan_mode": ("Fan mode", "Режим на вентилатора"),
+    "swing_mode": ("Swing mode", "Посока на въздуха"),
+    "preset_mode": ("Preset", "Предварителна настройка"), "effect": ("Effect", "Ефект"),
+    "source": ("Source", "Източник"), "brightness": ("Brightness", "Яркост"),
+    "percentage": ("Speed", "Скорост"), "position": ("Position", "Позиция"),
+    "volume": ("Volume", "Сила на звука"), "temperature": ("Setpoint", "Зададена температура"),
+}
 DOMAIN_CATEGORIES = {
     "climate": "climate", "water_heater": "climate", "light": "lighting",
     "fan": "fans", "cover": "covers", "media_player": "media", "valve": "water",
@@ -39,6 +50,7 @@ NO_PARAMETER = {
     "light": {"toggle": ("turn_on", "turn_off")},
     "switch": {"toggle": ("turn_on", "turn_off")},
     "fan": {"toggle": ("turn_on", "turn_off")},
+    "media_player": {"play_pause": ("media_play_pause",)},
     "cover": {"open": ("open_cover",), "close": ("close_cover",), "stop": ("stop_cover",)},
 }
 OPTIONS = {
@@ -99,6 +111,7 @@ def action_specs(domain, controls, attrs, has_service):
             actions.append({
                 "id": action_id, "service": f"{domain}.{service}",
                 "parameters": parameters or {},
+                "labels": dict(zip(("en", "bg"), ACTION_LABELS[action_id])),
                 "confirmation_required": domain in {"switch", "cover", "climate"},
             })
 

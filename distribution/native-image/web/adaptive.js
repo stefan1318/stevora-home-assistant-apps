@@ -22,8 +22,10 @@ const StevoraAdaptive = (() => {
   const label = (key, locale) => labels[key]?.[locale === "bg" ? 1 : 0] ?? key;
   const name = (item, locale) => item.names?.[locale] ?? item.entity_id;
 
-  function valid(catalog) {
+  function valid(catalog, installationId) {
     return catalog?.schema_version === 1 && typeof catalog.installation_id === "string"
+      && catalog.installation_id.length > 0
+      && (installationId == null || catalog.installation_id === installationId)
       && ["rooms","devices","systems","capabilities"].every(key => Array.isArray(catalog[key]));
   }
 
@@ -54,7 +56,7 @@ const StevoraAdaptive = (() => {
   }
 
   function actionForm(item, action, enabled, locale) {
-    const title = esc(label(action.id, locale));
+    const title = esc(action.labels?.[locale] || label(action.id, locale));
     const fields = Object.entries(action.parameters).map(([key, field]) => {
       if (field.type === "enum") {
         return '<select required aria-label="'+title+'" name="'+esc(key)+'"><option value="" selected disabled>—</option>'
