@@ -84,8 +84,13 @@ if [[ "${GITHUB_REF:-}" == refs/tags/stevora-os-v* ]]; then
   [[ "$feed_tag" =~ ^stevora-os-v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]] || exit 1
 fi
 if [[ -n "${STEVORA_OTA_LAB_VERSION:-}" ]]; then
-  [[ "$TARGET" == generic_aarch64 && "$STEVORA_OTA_LAB_VERSION" =~ ^1\.0\.[012]$ ]] || exit 1
-  [[ "${GITHUB_REF:-}" == refs/heads/codex/utm-auto-ota-test ]] || exit 1
+  case "$TARGET:${GITHUB_REF:-}" in
+    generic_aarch64:refs/heads/codex/utm-auto-ota-test)
+      [[ "$STEVORA_OTA_LAB_VERSION" =~ ^1\.0\.[012]$ ]] || exit 1 ;;
+    rpi4_64:refs/heads/codex/rpi4-auto-ota-test)
+      [[ "$STEVORA_OTA_LAB_VERSION" =~ ^1\.1\.(0|[1-9][0-9]{0,5})$ ]] || exit 1 ;;
+    *) exit 1 ;;
+  esac
   feed_tag="stevora-os-lab-v$STEVORA_OTA_LAB_VERSION"
 fi
 printf '%s %s\n' "$TARGET" "$feed_tag" > "$PUBLIC_DIR/release-feed"
