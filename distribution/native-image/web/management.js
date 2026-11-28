@@ -12,7 +12,7 @@ function profileGlyph(icon) {
 "use strict";
 
 // Core and Supervisor authorize every operation using the active user's connection.
-function createStevoraManagement({call, supervisor, rest, tr, refresh, setLanguage, currentLanguage}) {
+function createStevoraManagement({call, supervisor, rest, tr, refresh, setLanguage, currentLanguage, currentCatalog}) {
   const l = tr;
   const pick = (key,label,options,value) => ({key,label,options,value});
   const field = (key,label,value="",type="text",extra={}) => ({key,label,value,type,...extra});
@@ -44,7 +44,7 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
       const input=document.createElement(spec.options?"select":"input");
       if (spec.options) for (const [id,name] of spec.options) input.add(new Option(name,id));
       else input.type=spec.type||"text";
-      for (const k of ["min","max","step","required","maxLength","autocomplete"]) if (spec[k]!==undefined) input[k]=spec[k];
+      for (const k of ["min","max","step","required","maxLength","autocomplete","pattern"]) if (spec[k]!==undefined) input[k]=spec[k];
       if(input.type==="checkbox") input.checked=Boolean(spec.value);else input.value=spec.value??"";
       label.append(input);form.append(label);
       readers.push(data=>{data[spec.key]=input.type==="checkbox"?input.checked:input.type==="number"?input.valueAsNumber:input.value;});
@@ -103,6 +103,48 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
         const profile={...p,icon:v.icon,name:v.name,area_id:v.area_id||null,layout:v.layout,display_category:v.display_category};
         if(v.automatic)delete profile.controls;else profile.controls=available.filter(k=>v[k]);
         await call({type:"stevora/admin/devices/update",expected_revision:s.revision,profiles:{[id]:profile}});await refresh();
+      });
+    },l("Редактирай","Edit"));
+  }
+  async function localizedDevices(){
+    const config=await call({type:"stevora/admin/rooms/get"});
+    const choices=config.entities.map(e=>[e.entity_id,e.name+" · "+e.entity_id]);
+    editor(l("Имена на устройства BG/EN","Device names BG/EN"),[
+      pick("id",l("Устройство","Device"),choices,choices[0]?.[0])
+    ],({id})=>{
+      if(!choices.some(([key])=>key===id))throw Error(l("Няма устройства","No devices"));
+      const saved=config.translations?.entities?.[id]||{};
+      editor(choices.find(([key])=>key===id)[1],[
+        field("bg","Български",saved.bg,"text",{maxLength:80}),
+        field("en","English",saved.en,"text",{maxLength:80})
+      ],async({bg,en})=>{
+        await call({type:"stevora/admin/translations/update",expected_revision:config.revision,
+          rooms:{},entities:{[id]:{bg,en}}});
+        await refresh();
+      });
+    },l("Редактирай","Edit"));
+  }
+  async function capabilityGroups(){
+    const catalog=currentCatalog();
+    const settings=catalog?.management;
+    if(!settings)return;
+    const locale=currentLanguage();
+    const names=new Map(catalog.capabilities.map(item=>[item.id,item.names?.[locale]||item.entity_id]));
+    const choices=catalog.devices.map(d=>[d.id,d.capability_ids.map(id=>names.get(id)).filter(Boolean).join(", ")||d.id]);
+    editor(l("Категории и групи","Categories and groups"),[
+      pick("id",l("Устройство","Device"),choices,choices[0]?.[0])
+    ],({id})=>{
+      const device=catalog.devices.find(d=>d.id===id);
+      if(!device)throw Error(l("Няма устройства","No devices"));
+      const saved=device.override||{};
+      const categories=Object.entries(settings.categories).map(([key,labels])=>[key,labels[locale]||key]);
+      editor(choices.find(([key])=>key===id)[1],[
+        pick("category",l("Категория","Category"),[inherit(),...categories],saved.category||""),
+        field("group",l("Идентификатор на група","Group ID"),saved.group,"text",{maxLength:64,pattern:"[a-z0-9][a-z0-9_\\-]{0,63}"})
+      ],async({category,group})=>{
+        await call({type:"stevora/os/v1/capabilities/override",device_id:id,
+          expected_revision:settings.configuration_revision,...(category?{category}:{}),...(group?{group}:{})});
+        await refresh();
       });
     },l("Редактирай","Edit"));
   }
@@ -211,7 +253,7 @@ function createStevoraManagement({call, supervisor, rest, tr, refresh, setLangua
     if(!confirm(l("Изпълни избраното системно действие?","Run the selected system operation?")))return;
     await supervisor(endpoints[action],"POST",{});
   }
-  const actions={rooms,devices,visibility,assist,general,network,profile,password,issueToken,revokeToken,accounts,
+  const actions={rooms,devices,localizedDevices,capabilityGroups,visibility,assist,general,network,profile,password,issueToken,revokeToken,accounts,
     check:async()=>{const s=await rest("/api/config/core/check_config","POST");alert([s.result,s.errors,s.warnings].filter(Boolean).join("\n"));}};
   return {closeAll,run:action=>actions[action]?actions[action]():host(action)};
 }

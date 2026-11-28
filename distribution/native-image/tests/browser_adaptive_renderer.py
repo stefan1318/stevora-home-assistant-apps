@@ -57,4 +57,34 @@ with sync_playwright() as pw:
     valve = page.locator('[data-capability-card="registry:water"]')
     expect(valve.get_by_text("Недостъпно")).to_be_visible()
     expect(valve.get_by_role("button")).to_have_count(0)
+    page.add_script_tag(path=str(WEB / "management.js"))
+    page.evaluate("""() => {
+      window.managerRequests = [];
+      const catalog = {
+        capabilities:[{id:"registry:thermostat", names:{bg:"Термостат"}}],
+        devices:[{id:"device:living", capability_ids:["registry:thermostat"],
+          override:{category:"climate", group:"zone-1"}}],
+        management:{configuration_revision:2,categories:{
+          climate:{bg:"Климатизация"}, heat_pump:{bg:"Термопомпа"},
+        }},
+      };
+      const manager = createStevoraManagement({
+        call: async request => window.managerRequests.push(request),
+        tr: bg => bg, refresh: async () => {}, currentLanguage: () => "bg",
+        currentCatalog: () => catalog,
+      });
+      return manager.run("capabilityGroups");
+    }""")
+    page.get_by_role("dialog").get_by_role("button", name="Редактирай").click()
+    editor = page.get_by_role("dialog")
+    editor.get_by_label("Категория").select_option("heat_pump")
+    editor.get_by_label("Идентификатор на група").fill("zone-2")
+    editor.get_by_role("button", name="Запази").click()
+    assert page.evaluate("window.managerRequests") == [{
+        "type": "stevora/os/v1/capabilities/override",
+        "device_id": "device:living",
+        "expected_revision": 2,
+        "category": "heat_pump",
+        "group": "zone-2",
+    }]
     browser.close()

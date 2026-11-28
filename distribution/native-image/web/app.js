@@ -478,7 +478,7 @@
     const domain={lighting:"light",climate:"climate",scenes:"scene",automations:"automation"}[view]||"all";
     const name=t(view)||t("devices");
     const list=visibleEntities(domain);
-    return hdr(name,list.length+" "+t("devices"))+(view==="devices"&&state.admin?'<div class="actions">'+managementButton("devices","Управление на устройства","Device Manager")+managementButton("visibility","Видимост","Visibility")+'</div>':"")+
+    return hdr(name,list.length+" "+t("devices"))+(view==="devices"?nativeDeviceManagement():"")+
       (view==="automations"&&state.admin?
         '<div class="actions"><button data-automation-new="1">'+esc(tr("Нова автоматизация","New automation"))+'</button></div>':"")+
       toolbar()+'<div class="cards">'+(list.map(card).join("")||empty())+'</div>';
@@ -632,15 +632,20 @@
     return ["climate","lighting"].includes(state.view)
       && !state.stevoraManifest?.domain_mappings?.[state.view]?.length;
   }
+  function nativeDeviceManagement(){
+    if(!state.admin)return "";
+    return '<div class="actions">'+
+      managementButton("devices","Управление на устройства","Device Manager")+
+      managementButton("localizedDevices","Имена BG/EN","BG/EN names")+
+      (state.adaptiveCatalog?.management?managementButton("capabilityGroups","Категории и групи","Categories and groups"):"")+
+      managementButton("visibility","Видимост","Visibility")+'</div>';
+  }
   function renderAdaptive(){
     const catalog=state.adaptiveCatalog;
     const category=state.view.startsWith("system:")?state.view.slice(7):state.view==="devices"?null:state.view;
     const title=StevoraAdaptive.categories(catalog).get(category)?.[locale]||t("devices");
     const items=StevoraAdaptive.rows(catalog,category,state.room,state.filter,locale);
-    const managementActions=state.admin?'<div class="actions">'+
-      managementButton("devices","Управление на устройства","Device Manager")+
-      managementButton("visibility","Видимост","Visibility")+'</div>':"";
-    return hdr(title)+managementActions+toolbar("devices",catalog.rooms)+(items.length
+    return hdr(title)+nativeDeviceManagement()+toolbar("devices",catalog.rooms)+(items.length
       ? StevoraAdaptive.render(items,state.adaptiveStates,state.connected,locale,value=>consumerState(value,tr),catalog)
       : empty());
   }
@@ -850,7 +855,7 @@
     await openFlow(domain);
   }
   const tr=(bg,en)=>locale==="bg"?bg:en;
-  const management=createStevoraManagement({call,supervisor,rest:coreREST,tr,refresh:loadData,currentLanguage:()=>locale,
+  const management=createStevoraManagement({call,supervisor,rest:coreREST,tr,refresh:loadData,currentLanguage:()=>locale,currentCatalog:()=>state.adaptiveCatalog,
     setLanguage:value=>{locale=value;sessionStorage.setItem("stevora.lang",value);}});
   function openCoreSettings(path,label){
     if(!["/config/dashboard","/config/voice-assistants/assistants","/profile/security"].includes(path))return;
