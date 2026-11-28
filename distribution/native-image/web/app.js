@@ -69,7 +69,7 @@
     view:"home",login:false,token:null,refresh:null,expires:0,
     ws:null,connected:false,authorized:false,admin:false,id:1,pending:new Map(),
     entities:[],areas:[],registry:[],deviceRegistry:[],configEntries:[],apps:[],
-    store:[],backups:[],system:{},userList:[],messages:[],installations:{},
+    store:[],appErrors:{},backups:[],system:{},userList:[],messages:[],installations:{},
     room:"",filter:"",busy:false,error:"",lastError:"",selectedApp:"",stevoraManifest:null,
     adaptiveCatalog:null,adaptiveStates:new Map(),adaptiveSubscription:null,
     memoryHealth:null,memoryData:null,
@@ -93,7 +93,7 @@
   }
   function formatError(error){return (error?.message || error?.code || String(error)).slice(0,300)}
   const uniqueID = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,"0")).join("");
-  let retryTimer, syncTimer, syncSerial=0, connectDelay=1000;
+  let retryTimer, syncTimer, syncSerial=0, appsSerial=0, connectDelay=1000;
   function resetSession() {
     clearTimeout(retryTimer);clearTimeout(syncTimer);syncTimer=null;syncSerial++;state.voice?.end();
     management.closeAll(); for(const d of document.querySelectorAll("dialog[open]"))d.close();
@@ -105,7 +105,7 @@
     for(const pending of state.pending.values())pending.reject(new Error("Session ended"));
     state.pending.clear();
     state.people=[];mapVisible=false;state.agent=null;state.entities=[];state.areas=[];state.registry=[];state.deviceRegistry=[];state.stevoraManifest=null;
-    state.configEntries=[];state.apps=[];state.store=[];state.backups=[];state.system={};
+    state.configEntries=[];state.apps=[];state.store=[];state.appErrors={};state.backups=[];state.system={};
     state.adaptiveCatalog=null;state.adaptiveStates.clear();state.adaptiveSubscription=null;
     state.memoryHealth=null;state.memoryData=null;
     if(state.view==="memory")state.view="home";
@@ -250,7 +250,7 @@
       if(state.view==="memory"){state.view="home";renderContent();}
       else q('#navigation [data-view="memory"]')?.remove();
       for(const button of q("#screen").querySelectorAll(".adaptive-action button,.adaptive-profile button"))button.disabled=true;
-      q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);scheduleReconnect(ws);});
+      q("#conn-indicator").textContent="OFFLINE";q("#conn-indicator").className="status";rejectPending();if(document.body.classList.contains("setup-mode"))notice(t("stillStarting")+" · "+t("reload"),true);if(state.view==="apps")renderContent();scheduleReconnect(ws);});
   }
   function scheduleReconnect(ws){
     if(!state.token||state.ws!==ws)return;
@@ -380,10 +380,20 @@
       state.handlers=await coreREST("/api/config/config_entries/flow_handlers?type=integration").catch(()=>[]);
     }
     if(view==="apps"){
-      const [installed,store]=await Promise.all([
-        supervisor("/addons").catch(()=>({})),supervisor("/store").catch(()=>({}))
-      ]);
-      state.apps=installed.addons||[];state.store=store.addons||[];
+      const socket=state.ws, request=++appsSerial;
+      await Promise.all([["apps","/addons"],["store","/store"]].map(async ([key,endpoint])=>{
+        try {
+          const result=await supervisor(endpoint);
+          if(!Array.isArray(result?.addons))throw new Error("Invalid add-on list");
+          if(socket!==state.ws||request!==appsSerial||!state.admin)return;
+          state[key]=result.addons;
+          state.appErrors[key]=false;
+        } catch {
+          if(socket!==state.ws||request!==appsSerial||!state.admin)return;
+          state.appErrors[key]=true;
+        }
+        if(state.view==="apps")renderContent();
+      }));
     }
     if(view==="updates")state.updateInfo=await updateRequest().then(r=>r.json()).catch(()=>null);
     if(view==="system" || view==="updates"){
@@ -568,11 +578,16 @@
         '<button data-addon="'+esc(id)+'" data-addon-action="uninstall" class="danger">'+esc(t("remove"))+'</button>';
       if(current && a.state==="started" && a.ingress!==false)buttons+='<button data-addon="'+esc(id)+'" data-addon-action="open">'+esc(tr("Отвори","Open"))+'</button>';
       if(current && a.update_available)buttons+='<button data-addon="'+esc(id)+'" data-addon-action="update">'+esc(t("update"))+'</button>';
+      if(!state.connected || state.appErrors.apps || (stored && state.appErrors.store))buttons="";
       return '<article class="device-card"><strong>'+esc(a.name||id)+'</strong><small>'+esc(id)+'</small><p>'+esc(a.description||"")+'</p><small>'+esc((a.state||"not installed")+" · "+(a.version||""))+'</small><div class="actions">'+buttons+'</div></article>';
     };
-    return hdr(t("apps"),t("managed"))+stat(t("installed"),installed.length)+
-      '<section class="panel"><h2>'+esc(t("installed"))+'</h2><div class="filters"><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div><div class="cards">'+(installed.map(a=>appCard(a)).join("")||empty())+'</div></section>'+
-      '<section class="panel"><h2>'+esc(t("available"))+'</h2><div class="cards">'+(catalog.filter(a=>!installedIds.has(a.slug)).map(a=>appCard(a,true)).join("")||empty())+'</div></section>';
+    const appError=key=>state.appErrors[key]?'<p role="status">'+esc(key==="apps"?
+      tr("Supervisor не върна инсталираните приложения. Отвори Apps отново за нов опит.","Supervisor could not load installed apps. Reopen Apps to retry."):
+      tr("Каталогът на приложенията е временно недостъпен. Отвори Apps отново за нов опит.","The app catalog is temporarily unavailable. Reopen Apps to retry."))+'</p>':"";
+    return hdr(t("apps"),t("managed"))+appError("apps")+appError("store")+
+      (state.appErrors.apps?"":stat(t("installed"),installed.length))+
+      '<section class="panel"><h2>'+esc(t("installed"))+'</h2><div class="filters"><input data-search type="search" placeholder="'+esc(t("search"))+'" value="'+esc(state.filter)+'"></div><div class="cards">'+(installed.map(a=>appCard(a)).join("")||(state.appErrors.apps?"":empty()))+'</div></section>'+
+      '<section class="panel"><h2>'+esc(t("available"))+'</h2><div class="cards">'+(catalog.filter(a=>!installedIds.has(a.slug)).map(a=>appCard(a,true)).join("")||(state.appErrors.store?"":empty()))+'</div></section>';
   }
   async function updateRequest(file,release){
     const response=await fetch("/stevora-update"+(release?"?release="+encodeURIComponent(release):""),{method:file||release?"POST":"GET",
